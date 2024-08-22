@@ -2,6 +2,8 @@
 
 # Content Based image Retrieval Analysis
 
+A python library that illustrates how to do "Content Based image Retrieval Analysis", a technique for prompting vision-enabled LLMs to extract details from video and image content.
+
 > This repo has been populated by an initial template to help get you started. Please
 > make sure to update the content to build a great experience for community-building.
 
