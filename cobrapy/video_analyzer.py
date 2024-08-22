@@ -1,0 +1,524 @@
+import os
+import json
+import time
+import asyncio
+import nest_asyncio
+from typing import Union, Type
+from dotenv import load_dotenv
+from openai import AzureOpenAI, AsyncAzureOpenAI
+
+from .models.video import VideoManifest, Segment
+from .analysis import AnalysisConfig
+from .analysis.base_analysis_config import SequentialAnalysisConfig
+from .prompts.action_summary import action_summary_prompt, action_summary_template
+from .cobra_utils import (
+    encode_image_base64,
+    validate_video_manifest,
+    write_video_manifest,
+)
+
+
+class VideoAnalyzer:
+    # take either a video manifest object or a path to a video manifest file
+    def __init__(
+        self,
+        manifest: Union[str, VideoManifest],
+    ):
+        # get and validate video manifest
+        self.manifest = validate_video_manifest(manifest)
+
+        # get and validate environment variables
+        self._validate_environment_variables()
+
+    # Primary method to analyze the video
+    def analyze_video(
+        self, analysis_config: Type[AnalysisConfig], run_async=False, **kwargs
+    ):
+
+        stopwatch_start_time = time.time()
+
+        print(
+            f'Starting video analysis: "{analysis_config.name}" for {self.manifest.name}'
+        )
+
+        ## Analyze videos using the mapreduce sequence
+        if analysis_config.analysis_sequence == "mapreduce":
+            print(f"Populating prompts for each segment")
+
+            self.generate_segment_prompts(analysis_config)
+
+            if run_async:
+                print("Running analysis asynchronously")
+                nest_asyncio.apply()
+                results_list = asyncio.run(
+                    self._analyze_segment_list_async(analysis_config)
+                )
+            else:
+                print("Running analysis.")
+                results_list = self._analyze_segment_list(analysis_config)
+
+            ## generate the final summary if enabled
+            if analysis_config.run_final_summary is True:
+                print(
+                    f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
+                )
+                summary_prompt = self.generate_summary_prompt(
+                    analysis_config, results_list
+                )
+                summary_results = self._call_llm(summary_prompt)
+                self.manifest.final_summary = summary_results.choices[0].message.content
+
+                results_list = [
+                    {
+                        "final_summary": self.manifest.final_summary,
+                        "results": results_list,
+                    }
+                ]
+        ## For refine-style analyses that need to be run sequentially
+        elif analysis_config.analysis_sequence == "refine":
+            print(f"Analyzing segments sequentially with refinement")
+            results_list = self._analyze_segment_list_sequentially(analysis_config)
+        else:
+            raise ValueError(
+                f"You have provided an AnalyisConfig with a analysis_sequence that has not yet been implmented: {analysis_config.analysis_sequence}"
+            )
+
+        ## write the results list to the output directory
+        results_list_output_path = os.path.join(
+            self.manifest.processing_params.output_directory,
+            f"_video_analysis_results_{analysis_config.name}.json",
+        )
+        print(f"Writing results to {results_list_output_path}")
+
+        with open(results_list_output_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(results_list, indent=4))
+
+        stopwatch_end_time = time.time()
+
+        elapsed_time = stopwatch_end_time - stopwatch_start_time
+
+        print(
+            f'Video analysis completed in {round(elapsed_time, 3)}: "{analysis_config.name}" for {self.manifest.name}'
+        )
+        ## write the video manifest to the output directory
+        write_video_manifest(self.manifest)
+        return results_list
+
+    def generate_segment_prompts(self, analysis_config: Type[AnalysisConfig]):
+        for segment in self.manifest.segments:
+            self._generate_segment_prompt(segment, analysis_config)
+
+    def generate_summary_prompt(
+        self, analysis_config: Type[AnalysisConfig], results_list
+    ):
+        messages = [
+            {"role": "system", "content": analysis_config.summary_prompt},
+            {"role": "user", "content": json.dumps(results_list)},
+        ]
+        return messages
+
+    def _analyze_segment_list(
+        self,
+        analysis_config: Type[AnalysisConfig],
+    ):
+        results_list = []
+        for i, segment in enumerate(self.manifest.segments):
+
+            parsed_response = self._analyze_segment(
+                segment=segment, analysis_config=analysis_config
+            )
+
+            results_list.append(parsed_response)
+
+        return results_list
+
+    def _analyze_segment_list_sequentially(
+        self, analysis_config: Type[SequentialAnalysisConfig]
+    ):
+        # if the analysis config is not a SequentialAnalysisConfig, raise an error
+        # if not isinstance(analysis_config, SequentialAnalysisConfig):
+        #     raise ValueError(
+        #         f"Sequential analysis can only be run with an obect that is a subclass of SequentialAnalysisConfig. You have provided an object of type {type(analysis_config)}"
+        #     )
+
+        # Start the timer
+        stopwatch_start_time = time.time()
+
+        results_list = []
+
+        for i, segment in enumerate(self.manifest.segments):
+            # check if the segment has already been analyzed, if so, skip it
+            if segment.analyzed_by_llm:
+                print(
+                    f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
+                )
+                results_list.append(segment.analyzed_result)
+            else:
+                print(f"Analyzing segment {segment.segment_name}")
+
+            messages = []
+            number_of_previous_results_to_refine = (
+                analysis_config.number_of_previous_results_to_refine
+            )
+            # generate the prompt for the segment
+            # include the right number of previous results to refine and generate the prompt
+            if len(results_list) == 0:
+                result_list_subset = None
+            if len(results_list) <= number_of_previous_results_to_refine:
+                result_list_subset = results_list[: len(results_list)]
+            else:
+                result_list_subset = results_list[:number_of_previous_results_to_refine]
+
+            result_list_subset_string = json.dumps(result_list_subset)
+
+            # if it's the first segment, generate without the refine prompt; if it is not the first segment, generate with the refine prompt
+            if i == 0:
+                system_prompt_template = (
+                    analysis_config.generate_system_prompt_template(
+                        is_refine_step=False
+                    )
+                )
+
+                system_prompt = system_prompt_template.format(
+                    start_time=segment.start_time,
+                    end_time=segment.end_time,
+                    segment_duration=segment.segment_duration,
+                    number_of_frames=segment.number_of_frames,
+                    number_of_previous_results_to_refine=number_of_previous_results_to_refine,
+                    video_duration=self.manifest.source_video.duration,
+                    analysis_lens=analysis_config.lens_prompt,
+                    results_template=analysis_config.results_template,
+                    current_summary=result_list_subset_string,
+                )
+            else:
+                system_prompt_template = (
+                    analysis_config.generate_system_prompt_template(is_refine_step=True)
+                )
+
+                system_prompt = system_prompt_template.format(
+                    start_time=segment.start_time,
+                    end_time=segment.end_time,
+                    segment_duration=segment.segment_duration,
+                    number_of_frames=segment.number_of_frames,
+                    number_of_previous_results_to_refine=number_of_previous_results_to_refine,
+                    video_duration=self.manifest.source_video.duration,
+                    analysis_lens=analysis_config.lens_prompt,
+                    results_template=analysis_config.results_template,
+                    current_summary=result_list_subset_string,
+                )
+
+            messages.append({"role": "system", "content": system_prompt})
+
+            # Form the user prompt with the refine prompt, the audio transcription, and the frames
+            user_content = []
+            user_content.append(
+                {
+                    "type": "text",
+                    "text": f"Audio Transcription for the next {segment.segment_duration} seconds: {segment.transcription}",
+                }
+            )
+            user_content.append(
+                {
+                    "type": "text",
+                    "text": f"Next are the {segment.number_of_frames} frames from the next {segment.segment_duration} seconds of the video:",
+                }
+            )
+            # Include the frames
+            for frame in segment.segment_frames_file_path:
+                base64_image = encode_image_base64(frame)
+                user_content.append(
+                    {
+                        "type": "text",
+                        "text": f"Below this is {frame} (s is for seconds). use this to provide timestamps and understand time",
+                    }
+                )
+                user_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}",
+                            "detail": "high",
+                        },
+                    }
+                )
+
+            # add user content to the messages
+            messages.append({"role": "user", "content": user_content})
+
+            # write the prompt to the manifest
+            prompt_output_path = os.path.join(
+                segment.segment_folder_path, f"{segment.segment_name}_prompt.json"
+            )
+
+            with open(prompt_output_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(messages, indent=4))
+
+            segment.segment_prompt_path = prompt_output_path
+
+            # call the LLM to analyze the segment
+            response = self._call_llm(messages)
+            parsed_response = self._parse_llm_json_response(response)
+
+            # append the result to the results list
+            results_list.append(parsed_response)
+            elapsed_time = time.time() - stopwatch_start_time
+            print(
+                f"Segment {segment.segment_name} analyzed in {round(elapsed_time, 2)} seconds."
+            )
+
+            # update the segment object with the analyzed results
+            segment.analyzed_result = parsed_response
+            segment.analyzed_by_llm = True
+
+            # update the manifest on disk (allows for checkpointing)
+            write_video_manifest(self.manifest)
+
+        elapsed_time = time.time() - stopwatch_start_time
+        print(f"Analysis completed in {round(elapsed_time,2)} seconds.")
+
+        return results_list
+
+    async def _analyze_segment_list_async(self, analysis_config: Type[AnalysisConfig]):
+        segment_task_list = [
+            self._analyze_segment_async(segment, analysis_config)
+            for segment in self.manifest.segments
+        ]
+
+        results_list = await asyncio.gather(*segment_task_list)
+
+        return results_list
+
+    def _analyze_segment(
+        self, segment: Segment, analysis_config: AnalysisConfig = None
+    ):
+        start_time = time.time()
+        print(f"Starting analysis for segment {segment.segment_name}")
+
+        ## get the prompt to analyze the segment
+        if segment.segment_prompt_path:
+            with open(segment.segment_prompt_path, "r", encoding="utf-8") as f:
+                segment_prompt = json.loads(f.read())
+        else:
+            segment_prompt = self._generate_segment_prompt(segment, analysis_config)
+
+        ## call the LLM to analyze the segment
+        response = self._call_llm(segment_prompt)
+
+        ## parse the response and update the segment object
+        parsed_response = self._parse_llm_json_response(response)
+        segment.analyzed_result = parsed_response
+        segment.analyzed_by_llm = True
+
+        ## write the raw response outputs
+        llm_response_output_path = os.path.join(
+            segment.segment_folder_path, f"_segment_llm_response.json"
+        )
+        with open(llm_response_output_path, "w", encoding="utf-8") as f:
+            f.write(response.model_dump_json(indent=4))
+
+        ## write the LLM generated analysis
+        parsed_response_output_path = os.path.join(
+            segment.segment_folder_path, f"_segment_analyzed_result.json"
+        )
+        with open(parsed_response_output_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(parsed_response))
+
+        endtime = time.time()
+        elapsed_time = endtime - start_time
+        print(
+            f"Segment {segment.segment_name} analyzed in {round(elapsed_time, 3)} seconds"
+        )
+
+        return parsed_response
+
+    async def _analyze_segment_async(
+        self,
+        segment: Segment,
+        analysis_config: AnalysisConfig,
+    ):
+
+        start_time = time.time()
+        print(f"Starting analysis for segment {segment.segment_name}")
+
+        ## Generate the prompt
+        segment_prompt = self._generate_segment_prompt(segment, analysis_config)
+
+        ## submit call the LLM to analyze the segment
+        response = await self._call_llm_async(segment_prompt)
+
+        ## parse the response and update the segment object
+        parsed_response = self._parse_llm_json_response(response)
+        segment.analyzed_result = parsed_response
+        segment.analyzed_by_llm = True
+
+        ## write the raw response outputs
+        llm_response_output_path = os.path.join(
+            segment.segment_folder_path, f"_segment_llm_response.json"
+        )
+        with open(llm_response_output_path, "w", encoding="utf-8") as f:
+            f.write(response.model_dump_json(indent=4))
+
+        ## write the LLM generated analysis
+        parsed_response_output_path = os.path.join(
+            segment.segment_folder_path, f"_segment_analyzed_result.json"
+        )
+        with open(parsed_response_output_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(parsed_response))
+
+        endtime = time.time()
+        elapsed_time = endtime - start_time
+        print(
+            f"Segment {segment.segment_name} analyzed in {round(elapsed_time, 3)} seconds"
+        )
+
+        return parsed_response
+
+    def _generate_segment_refine_prompts(self, Segment, AnalysisConfig):
+        pass
+
+    def _generate_segment_prompt(
+        self,
+        segment: Segment,
+        analysis_config: AnalysisConfig,
+    ):
+        print(f"Generating prompt for segment {segment.segment_name}")
+        # populate the system prompt
+        system_prompt_template = analysis_config.generate_system_prompt_template()
+        system_prompt = system_prompt_template.format(
+            start_time=segment.start_time,
+            end_time=segment.end_time,
+            segment_duration=segment.segment_duration,
+            number_of_frames=segment.number_of_frames,
+            video_duration=self.manifest.source_video.duration,
+            analysis_lens=analysis_config.lens_prompt,
+            results_template=analysis_config.results_template,
+        )
+        # populate the user prompt with alternating text describing the time of the frame
+        # and the images themselves
+        user_prompt_list = []
+
+        ## Provide the audio transcription for the segment
+        user_prompt_list.append(
+            {
+                "type": "text",
+                "text": f'This is the audio transcription for the segment from {segment.start_time} to {segment.end_time}. TRANSCRIPTION START: \n"{segment.transcription}"\nTRANSCRIPTION END',
+            }
+        )
+
+        for j, frame in enumerate(segment.segment_frames_file_path):
+            frame_time = segment.segment_frame_time_intervals[j]
+            # Include some text to explain the time frame
+            user_prompt_list.append(
+                {
+                    "type": "text",
+                    "text": f"Below this is the image from frame {frame_time} seconds. Use this to provide timestamps and understand time",
+                }
+            )
+            # Include the image
+            base64_image = encode_image_base64(frame)
+            user_prompt_list.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}",
+                        "detail": "high",
+                    },
+                }
+            )
+
+        # create the messages payload in the OpenAI API format
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt_list},
+        ]
+
+        prompt_output_path = os.path.join(
+            segment.segment_folder_path, f"{segment.segment_name}_prompt.json"
+        )
+
+        with open(prompt_output_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(messages, indent=4))
+
+        segment.segment_prompt_path = prompt_output_path
+
+        return messages
+
+    def _call_llm(self, messages_list: list):
+        self._validate_environment_variables()
+        client = AzureOpenAI(
+            api_key=self.azure_openai_api_key,
+            api_version=self.azure_openai_api_version,
+            azure_endpoint=self.azure_openai_endpoint,
+        )
+
+        response = client.chat.completions.create(
+            model=self.azure_openai_gpt4_vision_deployment,
+            messages=messages_list,
+            max_tokens=2000,
+        )
+
+        return response
+
+    async def _call_llm_async(self, messages_list: list):
+        self._validate_environment_variables()
+
+        client = AsyncAzureOpenAI(
+            api_key=self.azure_openai_api_key,
+            api_version=self.azure_openai_api_version,
+            azure_endpoint=self.azure_openai_endpoint,
+        )
+
+        response = await client.chat.completions.create(
+            model=self.azure_openai_gpt4_vision_deployment,
+            messages=messages_list,
+            max_tokens=2000,
+        )
+
+        return response
+
+    def _parse_llm_json_response(self, response) -> dict:
+        content = response.choices[0].message.content
+        ## remove the ```json from the beginning of response and ``` from the end
+        content = content.replace("```json", "")
+        content = content.replace("```", "")
+
+        try:
+            parsed_content = json.loads(content)
+            return parsed_content
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON response: {e}")
+            print(f"Response: {content}")
+            return content
+
+    def _validate_environment_variables(self):
+        load_dotenv()
+        azure_openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        azure_openai_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+        azure_openai_whisper_deployment = os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT")
+        azure_openai_gpt4_vision_deployment = os.getenv(
+            "AZURE_OPENAI_GPT4_VISION_DEPLOYMENT"
+        )
+
+        if not azure_openai_api_key:
+            raise ValueError("AZURE_OPENAI_API_KEY not found in environment variables")
+        if not azure_openai_endpoint:
+            raise ValueError("AZURE_OPENAI_ENDPOINT not found in environment variables")
+        if not azure_openai_api_version:
+            raise ValueError(
+                "AZURE_OPENAI_API_VERSION not found in environment variables"
+            )
+        if not azure_openai_whisper_deployment:
+            raise ValueError(
+                "AZURE_OPENAI_WHISPER_DEPLOYMENT not found in environment variables"
+            )
+        if not azure_openai_gpt4_vision_deployment:
+            raise ValueError(
+                "AZURE_OPENAI_GPT4_VISION_DEPLOYMENT not found in environment variables"
+            )
+
+        self.azure_openai_api_key = azure_openai_api_key
+        self.azure_openai_endpoint = azure_openai_endpoint
+        self.azure_openai_api_version = azure_openai_api_version
+        self.azure_openai_whisper_deployment = azure_openai_whisper_deployment
+        self.azure_openai_gpt4_vision_deployment = azure_openai_gpt4_vision_deployment
