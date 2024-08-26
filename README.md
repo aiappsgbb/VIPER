@@ -1,18 +1,17 @@
-# Project:
-
-# Content Based image Retrieval Analysis
+# Content Based Image Retrieval Analysis (a.k.a. COBRA)
 
 A python library that illustrates how to do "Content Based image Retrieval Analysis", a technique for prompting vision-enabled LLMs to extract details from video and image content.
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+## Getting Started
 
-As the maintainer of this project, please make a few updates:
+Clone the repository to your device.
+Navigate to the repository directory and do a local install, i.e.
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+```bash
+cd /path/to/local/repo/cobrapy
+
+pip install -e . #"." means install at the current location
+```
 
 ## Contributing
 
