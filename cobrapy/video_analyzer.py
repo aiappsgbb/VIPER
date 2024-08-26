@@ -446,13 +446,13 @@ class VideoAnalyzer:
     def _call_llm(self, messages_list: list):
         self._validate_environment_variables()
         client = AzureOpenAI(
-            api_key=self.azure_openai_api_key,
-            api_version=self.azure_openai_api_version,
-            azure_endpoint=self.azure_openai_endpoint,
+            api_key=self.azure_openai_gptvision_api_key,
+            api_version=self.azure_openai_gptvision_api_version,
+            azure_endpoint=self.azure_openai_gptvision_endpoint,
         )
 
         response = client.chat.completions.create(
-            model=self.azure_openai_gpt4_vision_deployment,
+            model=self.azure_openai_gptvision_deployment,
             messages=messages_list,
             max_tokens=2000,
         )
@@ -463,13 +463,13 @@ class VideoAnalyzer:
         self._validate_environment_variables()
 
         client = AsyncAzureOpenAI(
-            api_key=self.azure_openai_api_key,
-            api_version=self.azure_openai_api_version,
-            azure_endpoint=self.azure_openai_endpoint,
+            api_key=self.azure_openai_gptvision_api_key,
+            api_version=self.azure_openai_gptvision_api_version,
+            azure_endpoint=self.azure_openai_gptvision_endpoint,
         )
 
         response = await client.chat.completions.create(
-            model=self.azure_openai_gpt4_vision_deployment,
+            model=self.azure_openai_gptvision_deployment,
             messages=messages_list,
             max_tokens=2000,
         )
@@ -492,19 +492,21 @@ class VideoAnalyzer:
 
     def _validate_environment_variables(self):
         load_dotenv()
-        azure_openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        azure_openai_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-        azure_openai_whisper_deployment = os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT")
-        azure_openai_gpt4_vision_deployment = os.getenv(
-            "AZURE_OPENAI_GPT4_VISION_DEPLOYMENT"
+        azure_openai_gptvision_api_key = os.getenv("AZURE_OPENAI_GPT_VISION_API_KEY")
+        azure_openai_gptvision_endpoint = os.getenv("AZURE_OPENAI_GPT_VISION_ENDPOINT")
+        azure_openai_gptvision_api_version = os.getenv(
+            "AZURE_OPENAI_GPT_VISION_API_VERSION"
         )
+        azure_openai_gptvision_deployment = os.getenv(
+            "AZURE_OPENAI_GPT_VISION_DEPLOYMENT"
+        )
+        azure_openai_whisper_deployment = os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT")
 
-        if not azure_openai_api_key:
+        if not azure_openai_gptvision_api_key:
             raise ValueError("AZURE_OPENAI_API_KEY not found in environment variables")
-        if not azure_openai_endpoint:
+        if not azure_openai_gptvision_endpoint:
             raise ValueError("AZURE_OPENAI_ENDPOINT not found in environment variables")
-        if not azure_openai_api_version:
+        if not azure_openai_gptvision_api_version:
             raise ValueError(
                 "AZURE_OPENAI_API_VERSION not found in environment variables"
             )
@@ -512,13 +514,13 @@ class VideoAnalyzer:
             raise ValueError(
                 "AZURE_OPENAI_WHISPER_DEPLOYMENT not found in environment variables"
             )
-        if not azure_openai_gpt4_vision_deployment:
+        if not azure_openai_gptvision_deployment:
             raise ValueError(
                 "AZURE_OPENAI_GPT4_VISION_DEPLOYMENT not found in environment variables"
             )
 
-        self.azure_openai_api_key = azure_openai_api_key
-        self.azure_openai_endpoint = azure_openai_endpoint
-        self.azure_openai_api_version = azure_openai_api_version
+        self.azure_openai_gptvision_api_key = azure_openai_gptvision_api_key
+        self.azure_openai_gptvision_endpoint = azure_openai_gptvision_endpoint
+        self.azure_openai_gptvision_api_version = azure_openai_gptvision_api_version
         self.azure_openai_whisper_deployment = azure_openai_whisper_deployment
-        self.azure_openai_gpt4_vision_deployment = azure_openai_gpt4_vision_deployment
+        self.azure_openai_gptvision_deployment = azure_openai_gptvision_deployment

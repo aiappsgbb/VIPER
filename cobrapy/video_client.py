@@ -36,7 +36,7 @@ class VideoClient:
         self,
         video_path: Union[str, None] = None,
         manifest: Union[str, VideoManifest, None] = None,
-        connection_config_list: List[Dict[str, str]] = None,
+        # connection_config_list: List[Dict[str, str]] = None, # Not Implemented Yet
     ):
         # Video path is required if manifest is not provided
         if video_path is None and manifest is None:

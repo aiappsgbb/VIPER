@@ -32,9 +32,9 @@ def generate_transcript(audio_file_path: str, deployment: str = None):
             )
 
     client = AzureOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_WHISPER_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_WHISPER_API_VERSION"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_WHISPER_ENDPOINT"),
     )
 
     with open(audio_file_path, "rb") as f:
