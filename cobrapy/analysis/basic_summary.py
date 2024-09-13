@@ -9,7 +9,7 @@ class BasicSummary(AnalysisConfig):
 ## Video and Clip Details:
 * overall video is {video_duration} seconds long. 
 * the current subclip is {segment_duration} seconds long, starting at {start_time} seconds and ending at {end_time} seconds. 
-* You may receive both corresponding audio transcriptions and frame images. 
+* You may or may not receive both corresponding audio transcriptions and frame images. 
 * {number_of_frames} frame images spread evenly throughout the subclip are provided seconds. 
 Use this information in your analysis."""
     )

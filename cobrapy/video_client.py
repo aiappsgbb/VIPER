@@ -53,7 +53,7 @@ class VideoClient:
 
         self.manifest = manifest
 
-        ## Initialize the preprocessor and analyzer
+        # Initialize the preprocessor and analyzer
         self.preprocessor = VideoPreProcessor(self.manifest)
         self.analyzer = VideoAnalyzer(self.manifest)
 
@@ -96,9 +96,12 @@ class VideoClient:
         print(f"({get_elapsed_time(start_time)})Setting processing parameters...")
         self.manifest.processing_params.fps = fps
         self.manifest.processing_params.segment_length = segment_length
-        self.manifest.processing_params.generate_transcript_flag = (
-            generate_transcripts_flag
-        )
+        if (self.manifest.source_video.audio_found is False):
+            self.manifest.processing_params.generate_transcript_flag = (False)
+        else:
+            self.manifest.processing_params.generate_transcript_flag = (
+                generate_transcripts_flag
+            )
         self.manifest.processing_params.trim_to_nearest_second = trim_to_nearest_second
         self.manifest.processing_params.allow_partial_segments = allow_partial_segments
 
@@ -128,7 +131,7 @@ class VideoClient:
         self._generate_segments()
 
         # Extract the audio
-        if self.manifest.processing_params.generate_transcript_flag:
+        if self.manifest.source_video.audio_found and self.manifest.processing_params.generate_transcript_flag:
             print(f"({get_elapsed_time(start_time)}s) Extracting audio...")
             # name the audio file the same thing as the video file but with a .mp3 extension
             audio_path = os.path.join(
@@ -169,7 +172,8 @@ class VideoClient:
                 if segment.processed:
                     continue
                 futures.append(
-                    executor.submit(self._preprocess_segment, segment=segment, index=i)
+                    executor.submit(self._preprocess_segment,
+                                    segment=segment, index=i)
                 )
 
             # as the tasks (futures) are completed, update the video manifest
@@ -227,7 +231,8 @@ class VideoClient:
             # Determine how many frames should be in the segment and what time they would be at.
             segment_duration = end_time - start_time
 
-            number_of_frames_in_segment = math.ceil(segment_duration * analysis_fps)
+            number_of_frames_in_segment = math.ceil(
+                segment_duration * analysis_fps)
 
             segment_frames_times = np.linspace(
                 start_time, end_time, number_of_frames_in_segment
@@ -275,7 +280,7 @@ class VideoClient:
 
             video = VideoFileClip(input_video_path)
 
-            ## Sample and then save the segment frames as images in the "frames" directory
+            # Sample and then save the segment frames as images in the "frames" directory
             frames_dir = os.path.join(segment_path, "frames")
 
             os.makedirs(frames_dir, exist_ok=True)
@@ -295,13 +300,13 @@ class VideoClient:
                 f"**Segment {index} {segment.segment_name} - extracted frames in {get_elapsed_time(stop_watch_time)}"
             )
 
-            ## Extract and save the audio for the segment
+            # Extract and save the audio for the segment
             if create_transcript_flag is True:
                 transcript = self.manifest.audio_transcription
                 segment.transcription = parse_transcript(
                     transcript, start_time, end_time
                 )
-            ### BDL: this is commented out in favor of extracting the transcript for the entire video, then parsing the word-level timestamps for each segment. If it appears that there are benefits to extracting individual audio clips, this would be a good way to do it.
+            # BDL: this is commented out in favor of extracting the transcript for the entire video, then parsing the word-level timestamps for each segment. If it appears that there are benefits to extracting individual audio clips, this would be a good way to do it.
             # if create_transcript_flag is True:
             #     subclip = video.subclip(start_time, end_time)
             #     segment_audio_filename = os.path.join(
@@ -352,18 +357,22 @@ class VideoClient:
 
         # Get video metadata
         with VideoFileClip(video_path) as video_file_clip:
+            manifest_source = {
+                "video_found": video_file_clip.reader.infos["video_found"],
+                "size": video_file_clip.size,
+                "rotation": video_file_clip.rotation,
+                "fps": video_file_clip.fps,
+                "duration": video_file_clip.duration,
+                "nframes": video_file_clip.reader.nframes,
+                "audio_found": video_file_clip.reader.infos["audio_found"]
+            }
+
+            if video_file_clip.reader.infos["audio_found"] is True:
+                manifest_source["audio_duration"] = video_file_clip.audio.duration
+                manifest_source["audio_fps"] = video_file_clip.audio.fps
+
             manifest.source_video = manifest.source_video.model_copy(
-                update={
-                    "video_found": video_file_clip.reader.infos["video_found"],
-                    "size": video_file_clip.size,
-                    "rotation": video_file_clip.rotation,
-                    "fps": video_file_clip.fps,
-                    "duration": video_file_clip.duration,
-                    "nframes": video_file_clip.reader.nframes,
-                    "audio_found": video_file_clip.reader.infos["audio_found"],
-                    "audio_duration": video_file_clip.audio.duration,
-                    "audio_fps": video_file_clip.audio.fps,
-                }
+                update=manifest_source
             )
 
         return manifest
@@ -392,7 +401,7 @@ class VideoClient:
             os.makedirs(asset_directory_path)
         else:
             if overwrite_output is True:
-                ## delete the directory and all of its contents
+                # delete the directory and all of its contents
                 rmtree(asset_directory_path)
                 os.makedirs(asset_directory_path)
             else:
