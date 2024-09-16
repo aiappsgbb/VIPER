@@ -59,3 +59,7 @@ Always and only return as your output the updated Current Action Summary in form
             "key_objects": "Any objects in the timerange, include colors along with descriptions. all people should be in this, all people should be in this, with as much detail as possible extracted from the frame (clothing,colors,age). Be incredibly detailed",
         },
     ]
+    run_final_summary: bool = False
+    summary_prompt: str = (
+        """You are being provided the output of of a video analysis system. Your job is to summarize the video based on the provided inputs. Return the summary as a single paragraph."""
+    )
