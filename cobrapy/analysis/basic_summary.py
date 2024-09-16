@@ -26,11 +26,17 @@ Follow this template as a guide of what information to collect and include in yo
     )
     results_template: dict = {
         "segment_summary": "Text summary of what is happening in the clip",
+        "segment_start_time": "10s",
+        "segment_end_time": "20s",
         "moments": [
             {
-                "start_time": 0,
-                "summary": "Brief summary of what is happening in this moment",
-            }
+                "event_start_time": "11s",
+                "summary": "The main character picks up an apple",
+            },
+            {
+                "event_start_time": "13s",
+                "summary": "The main character throws the apple at a clock",
+            },
         ],
     }
     run_final_summary: bool = False
