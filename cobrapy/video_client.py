@@ -96,8 +96,8 @@ class VideoClient:
         print(f"({get_elapsed_time(start_time)})Setting processing parameters...")
         self.manifest.processing_params.fps = fps
         self.manifest.processing_params.segment_length = segment_length
-        if (self.manifest.source_video.audio_found is False):
-            self.manifest.processing_params.generate_transcript_flag = (False)
+        if self.manifest.source_video.audio_found is False:
+            self.manifest.processing_params.generate_transcript_flag = False
         else:
             self.manifest.processing_params.generate_transcript_flag = (
                 generate_transcripts_flag
@@ -131,7 +131,10 @@ class VideoClient:
         self._generate_segments()
 
         # Extract the audio
-        if self.manifest.source_video.audio_found and self.manifest.processing_params.generate_transcript_flag:
+        if (
+            self.manifest.source_video.audio_found
+            and self.manifest.processing_params.generate_transcript_flag
+        ):
             print(f"({get_elapsed_time(start_time)}s) Extracting audio...")
             # name the audio file the same thing as the video file but with a .mp3 extension
             audio_path = os.path.join(
@@ -172,8 +175,7 @@ class VideoClient:
                 if segment.processed:
                     continue
                 futures.append(
-                    executor.submit(self._preprocess_segment,
-                                    segment=segment, index=i)
+                    executor.submit(self._preprocess_segment, segment=segment, index=i)
                 )
 
             # as the tasks (futures) are completed, update the video manifest
@@ -187,10 +189,17 @@ class VideoClient:
 
         return self.manifest.video_manifest_path
 
-    def analyze_video(self, analysis_config: Type[AnalysisConfig], run_async=False):
+    def analyze_video(
+        self,
+        analysis_config: Type[AnalysisConfig],
+        run_async=False,
+        max_concurrent_tasks=None,
+    ):
 
         analysis_result = self.analyzer.analyze_video(
-            analysis_config=analysis_config, run_async=run_async
+            analysis_config=analysis_config,
+            run_async=run_async,
+            max_concurrent_tasks=max_concurrent_tasks,
         )
 
         return analysis_result
@@ -231,8 +240,7 @@ class VideoClient:
             # Determine how many frames should be in the segment and what time they would be at.
             segment_duration = end_time - start_time
 
-            number_of_frames_in_segment = math.ceil(
-                segment_duration * analysis_fps)
+            number_of_frames_in_segment = math.ceil(segment_duration * analysis_fps)
 
             segment_frames_times = np.linspace(
                 start_time, end_time, number_of_frames_in_segment
@@ -364,7 +372,7 @@ class VideoClient:
                 "fps": video_file_clip.fps,
                 "duration": video_file_clip.duration,
                 "nframes": video_file_clip.reader.nframes,
-                "audio_found": video_file_clip.reader.infos["audio_found"]
+                "audio_found": video_file_clip.reader.infos["audio_found"],
             }
 
             if video_file_clip.reader.infos["audio_found"] is True:

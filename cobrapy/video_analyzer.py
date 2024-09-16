@@ -32,7 +32,11 @@ class VideoAnalyzer:
 
     # Primary method to analyze the video
     def analyze_video(
-        self, analysis_config: Type[AnalysisConfig], run_async=False, **kwargs
+        self,
+        analysis_config: Type[AnalysisConfig],
+        run_async=False,
+        max_concurrent_tasks=None,
+        **kwargs,
     ):
 
         stopwatch_start_time = time.time()
@@ -51,7 +55,9 @@ class VideoAnalyzer:
                 print("Running analysis asynchronously")
                 nest_asyncio.apply()
                 results_list = asyncio.run(
-                    self._analyze_segment_list_async(analysis_config)
+                    self._analyze_segment_list_async(
+                        analysis_config, max_concurrent_tasks=max_concurrent_tasks
+                    )
                 )
             else:
                 print("Running analysis.")
@@ -278,11 +284,23 @@ class VideoAnalyzer:
 
         return results_list
 
-    async def _analyze_segment_list_async(self, analysis_config: Type[AnalysisConfig]):
-        segment_task_list = [
-            self._analyze_segment_async(segment, analysis_config)
-            for segment in self.manifest.segments
-        ]
+    async def _analyze_segment_list_async(
+        self, analysis_config: Type[AnalysisConfig], max_concurrent_tasks=None
+    ):
+        if max_concurrent_tasks is None:
+            max_concurrent_tasks = len(self.manifest.segments)
+        else:
+            max_concurrent_tasks = min(
+                int(max_concurrent_tasks), len(self.manifest.segments)
+            )
+
+        sempahore = asyncio.Semaphore(max_concurrent_tasks)
+
+        async def sem_task(segment):
+            async with sempahore:
+                return await self._analyze_segment_async(segment, analysis_config)
+
+        segment_task_list = [sem_task(segment) for segment in self.manifest.segments]
 
         results_list = await asyncio.gather(*segment_task_list)
 
