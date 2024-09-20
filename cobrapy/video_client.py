@@ -175,6 +175,7 @@ class VideoClient:
                     else:
                         transcripts[0].text+=generate_transcript(audio_file_path=audio_path).text
                     counter+=1
+                    starting_time=chunk_size*counter
                 
 
                 self.manifest.source_audio.path = audio_path
