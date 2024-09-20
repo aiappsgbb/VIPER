@@ -162,20 +162,32 @@ class VideoClient:
                 duration=vc.duration
                 chunk_size=duration/splitting_value
                 starting_time=0
-                while(counter<splitting_value):
-                    audio_path = os.path.join(
+
+                while(counter<splitting_value+1):
+                    
+                    new_audio_path = os.path.join(
+
                         self.manifest.processing_params.output_directory,
                         f"{self.manifest.name.split('.')[0]}_{counter}.mp3",
                     )
                     
                     subclip = vc.subclip(starting_time, chunk_size*counter)
-                    subclip.audio.write_audiofile(audio_path, verbose=False, logger=None)
-                    if(len(transcripts)==0):
-                        transcripts.append(generate_transcript(audio_file_path=audio_path))
+
+                    subclip.audio.write_audiofile(new_audio_path, verbose=False, logger=None)
+                    if(counter==1):
+                        transcripts.append(generate_transcript(audio_file_path=new_audio_path))
                     else:
-                        transcripts[0].text+=generate_transcript(audio_file_path=audio_path).text
-                    counter+=1
+                        new_data=generate_transcript(audio_file_path=new_audio_path)
+                        try:
+                            transcripts[0].segments.extend(new_data.segments)
+                            transcripts[0].text+=new_data.text
+                            transcripts[0].duration+=new_data.duration
+                            transcripts[0].words.extend(new_data.words)
+                        except:
+                            raise ValueError("Malformed Transcript data")
                     starting_time=chunk_size*counter
+                    counter+=1
+
                 
 
                 self.manifest.source_audio.path = audio_path
