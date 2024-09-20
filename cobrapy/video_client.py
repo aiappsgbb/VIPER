@@ -154,9 +154,35 @@ class VideoClient:
                 transcript = generate_transcript(audio_file_path=audio_path)
                 self.manifest.audio_transcription = transcript
             else:
-                raise ValueError(
-                    f"This library currently supports up to 25MB audio file sizes. Your audio file is too large ({audio_file_size_mb}MB). Please split it into smaller files."
-                )
+                ###this code defines a splitting value based off of 15 MB chunks, and then uses that value to divide the runtime by that value.
+                ###The result is chunking each audio segment of approx 15MB over the runtime to achieve full transcripton of audio >25MB
+                splitting_value=int(audio_file_size_mb/15)
+                counter=1
+                transcripts=[]
+                duration=vc.duration
+                chunk_size=duration/splitting_value
+                starting_time=0
+                while(counter<splitting_value):
+                    audio_path = os.path.join(
+                        self.manifest.processing_params.output_directory,
+                        f"{self.manifest.name.split('.')[0]}_{counter}.mp3",
+                    )
+                    
+                    subclip = vc.subclip(starting_time, chunk_size*counter)
+                    subclip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+                    if(len(transcripts)==0):
+                        transcripts.append(generate_transcript(audio_file_path=audio_path))
+                    else:
+                        transcripts[0].text+=generate_transcript(audio_file_path=audio_path).text
+                    counter+=1
+                
+
+                self.manifest.source_audio.path = audio_path
+                self.manifest.source_audio.file_size_mb = audio_file_size_mb
+                self.manifest.audio_transcription = transcripts[0]
+                # raise ValueError(
+                #     f"This library currently supports up to 25MB audio file sizes. Your audio file is too large ({audio_file_size_mb}MB). Please split it into smaller files."
+                # )
 
         # process the segements
         print(f"({get_elapsed_time(start_time)}s) Processing segments...")
