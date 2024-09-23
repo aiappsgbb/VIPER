@@ -154,8 +154,8 @@ class VideoClient:
                 transcript = generate_transcript(audio_file_path=audio_path)
                 self.manifest.audio_transcription = transcript
             else:
-                ###this code defines a splitting value based off of 15 MB chunks, and then uses that value to divide the runtime by that value.
-                ###The result is chunking each audio segment of approx 15MB over the runtime to achieve full transcripton of audio >25MB
+                ##this code defines a splitting value based off of 15 MB chunks, and then uses that value to divide the runtime by that value.
+                ##The result is chunking each audio segment of approx 15MB over the runtime to achieve full transcripton of audio >25MB
                 splitting_value=int(audio_file_size_mb/15)
                 counter=1
                 transcripts=[]
@@ -367,7 +367,7 @@ class VideoClient:
             #         f"**Segment {index} {segment.segment_name} - extracted and saved audio clip in {get_elapsed_time(stop_watch_time)}"
             #     )
 
-            #     ## If generate_transcripts is True, generate a transcript for the segment
+            #     # If generate_transcripts is True, generate a transcript for the segment
             #     transcript = generate_transcript(segment_audio_filename)
             #     # save the transcript to file and add it to the segment in the video manifest
             #     segment_transcript_filename = os.path.join(
@@ -382,9 +382,7 @@ class VideoClient:
             #         f"**Segment {index} {segment.segment_name} - generated transcript in {get_elapsed_time(stop_watch_time)}"
             #     )
             else:
-                self.manifest.segments[index].transcription = (
-                    "No transcript for this segment."
-                )
+                self.manifest.segments[index].transcription = None
 
             return index, True
         except Exception as e:

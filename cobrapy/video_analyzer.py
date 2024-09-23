@@ -45,7 +45,7 @@ class VideoAnalyzer:
             f'Starting video analysis: "{analysis_config.name}" for {self.manifest.name}'
         )
 
-        ## Analyze videos using the mapreduce sequence
+        # Analyze videos using the mapreduce sequence
         if analysis_config.analysis_sequence == "mapreduce":
             print(f"Populating prompts for each segment")
 
@@ -63,7 +63,7 @@ class VideoAnalyzer:
                 print("Running analysis.")
                 results_list = self._analyze_segment_list(analysis_config)
 
-            ## generate the final summary if enabled
+            # generate the final summary if enabled
             if analysis_config.run_final_summary is True:
                 print(
                     f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
@@ -80,7 +80,7 @@ class VideoAnalyzer:
                         "results": results_list,
                     }
                 ]
-        ## For refine-style analyses that need to be run sequentially
+        # For refine-style analyses that need to be run sequentially
         elif analysis_config.analysis_sequence == "refine":
             print(f"Analyzing segments sequentially with refinement")
             results_list = self._analyze_segment_list_sequentially(analysis_config)
@@ -89,7 +89,7 @@ class VideoAnalyzer:
                 f"You have provided an AnalyisConfig with a analysis_sequence that has not yet been implmented: {analysis_config.analysis_sequence}"
             )
 
-        ## write the results list to the output directory
+        # write the results list to the output directory
         results_list_output_path = os.path.join(
             self.manifest.processing_params.output_directory,
             f"_video_analysis_results_{analysis_config.name}.json",
@@ -106,7 +106,7 @@ class VideoAnalyzer:
         print(
             f'Video analysis completed in {round(elapsed_time, 3)}: "{analysis_config.name}" for {self.manifest.name}'
         )
-        ## write the video manifest to the output directory
+        # write the video manifest to the output directory
         write_video_manifest(self.manifest)
         return results_list
 
@@ -215,14 +215,15 @@ class VideoAnalyzer:
 
             messages.append({"role": "system", "content": system_prompt})
 
-            # Form the user prompt with the refine prompt, the audio transcription, and the frames
+            # Form the user prompt with the refine prompt, the audio transcription (if available), and the video frames
             user_content = []
-            user_content.append(
-                {
-                    "type": "text",
-                    "text": f"Audio Transcription for the next {segment.segment_duration} seconds: {segment.transcription}",
-                }
-            )
+            if segment.transcription is not None:
+                user_content.append(
+                    {
+                        "type": "text",
+                        "text": f"Audio Transcription for the next {segment.segment_duration} seconds: {segment.transcription}",
+                    }
+                )
             user_content.append(
                 {
                     "type": "text",
@@ -230,12 +231,13 @@ class VideoAnalyzer:
                 }
             )
             # Include the frames
-            for frame in segment.segment_frames_file_path:
+            for i, frame in enumerate(segment.segment_frames_file_path):
+                frame_time = segment.segment_frame_time_intervals[i]
                 base64_image = encode_image_base64(frame)
                 user_content.append(
                     {
                         "type": "text",
-                        "text": f"Below this is {frame} (s is for seconds). use this to provide timestamps and understand time",
+                        "text": f"Below is the frame at start_time {frame_time} seconds. Use this to provide timestamps and understand time.",
                     }
                 )
                 user_content.append(
@@ -312,29 +314,29 @@ class VideoAnalyzer:
         start_time = time.time()
         print(f"Starting analysis for segment {segment.segment_name}")
 
-        ## get the prompt to analyze the segment
+        # get the prompt to analyze the segment
         if segment.segment_prompt_path:
             with open(segment.segment_prompt_path, "r", encoding="utf-8") as f:
                 segment_prompt = json.loads(f.read())
         else:
             segment_prompt = self._generate_segment_prompt(segment, analysis_config)
 
-        ## call the LLM to analyze the segment
+        # call the LLM to analyze the segment
         response = self._call_llm(segment_prompt)
 
-        ## parse the response and update the segment object
+        # parse the response and update the segment object
         parsed_response = self._parse_llm_json_response(response)
         segment.analyzed_result = parsed_response
         segment.analyzed_by_llm = True
 
-        ## write the raw response outputs
+        # write the raw response outputs
         llm_response_output_path = os.path.join(
             segment.segment_folder_path, f"_segment_llm_response.json"
         )
         with open(llm_response_output_path, "w", encoding="utf-8") as f:
             f.write(response.model_dump_json(indent=4))
 
-        ## write the LLM generated analysis
+        # write the LLM generated analysis
         parsed_response_output_path = os.path.join(
             segment.segment_folder_path, f"_segment_analyzed_result.json"
         )
@@ -358,25 +360,25 @@ class VideoAnalyzer:
         start_time = time.time()
         print(f"Starting analysis for segment {segment.segment_name}")
 
-        ## Generate the prompt
+        # Generate the prompt
         segment_prompt = self._generate_segment_prompt(segment, analysis_config)
 
-        ## submit call the LLM to analyze the segment
+        # submit call the LLM to analyze the segment
         response = await self._call_llm_async(segment_prompt)
 
-        ## parse the response and update the segment object
+        # parse the response and update the segment object
         parsed_response = self._parse_llm_json_response(response)
         segment.analyzed_result = parsed_response
         segment.analyzed_by_llm = True
 
-        ## write the raw response outputs
+        # write the raw response outputs
         llm_response_output_path = os.path.join(
             segment.segment_folder_path, f"_segment_llm_response.json"
         )
         with open(llm_response_output_path, "w", encoding="utf-8") as f:
             f.write(response.model_dump_json(indent=4))
 
-        ## write the LLM generated analysis
+        # write the LLM generated analysis
         parsed_response_output_path = os.path.join(
             segment.segment_folder_path, f"_segment_analyzed_result.json"
         )
@@ -415,21 +417,22 @@ class VideoAnalyzer:
         # and the images themselves
         user_prompt_list = []
 
-        ## Provide the audio transcription for the segment
-        user_prompt_list.append(
-            {
-                "type": "text",
-                "text": f'This is the audio transcription for the segment from {segment.start_time} to {segment.end_time}. TRANSCRIPTION START: \n"{segment.transcription}"\nTRANSCRIPTION END',
-            }
-        )
+        # Provide the audio transcription for the segment
+        if segment.transcription is not None:
+            user_prompt_list.append(
+                {
+                    "type": "text",
+                    "text": f'This is the audio transcription for the segment from {segment.start_time} to {segment.end_time}. TRANSCRIPTION START: \n"{segment.transcription}"\nTRANSCRIPTION END',
+                }
+            )
 
-        for j, frame in enumerate(segment.segment_frames_file_path):
-            frame_time = segment.segment_frame_time_intervals[j]
+        for i, frame in enumerate(segment.segment_frames_file_path):
+            frame_time = segment.segment_frame_time_intervals[i]
             # Include some text to explain the time frame
             user_prompt_list.append(
                 {
                     "type": "text",
-                    "text": f"Below this is the image from frame {frame_time} seconds. Use this to provide timestamps and understand time",
+                    "text": f"Below is the frame at start_time {frame_time} seconds. Use this to provide timestamps and understand time",
                 }
             )
             # Include the image
@@ -496,7 +499,7 @@ class VideoAnalyzer:
 
     def _parse_llm_json_response(self, response) -> dict:
         content = response.choices[0].message.content
-        ## remove the ```json from the beginning of response and ``` from the end
+        # remove the ```json from the beginning of response and ``` from the end
         content = content.replace("```json", "")
         content = content.replace("```", "")
 

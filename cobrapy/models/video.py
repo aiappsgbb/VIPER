@@ -15,7 +15,7 @@ class Segment(BaseModel):
     segment_prompt_path: Optional[str] = None
     processed: Optional[bool] = False
     analyzed_by_llm: Optional[bool] = False
-    analyzed_result: Optional[str] = None
+    analyzed_result: Optional[dict] = None
     transcription: Optional[str] = None
 
 
