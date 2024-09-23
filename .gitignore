@@ -600,3 +600,8 @@ Temporary Items
 
 # .nfs files are created when an open file is removed but is still being accessed
 .nfs*
+
+# samples so we dont spam the git with pngs
+samples/*.png
+samples/*.jpg
+samples/*.jpeg

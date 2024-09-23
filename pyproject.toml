@@ -2,7 +2,7 @@
 name = "cobrapy"
 version = "0.1.0"
 description = "Content Based Image Retrieval Analysis - a python package for parsing videos using multi-modal large langauge models"
-authors = ["Brady Leavitt <brady.d.leavitt@gmail.com>"]
+authors = ["Brady Leavitt <brady.d.leavitt@gmail.com>","Owen Van Valkenburg <owenv@microsoft.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -22,3 +22,5 @@ pytest = "^8.3.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
