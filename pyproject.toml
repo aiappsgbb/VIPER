@@ -5,6 +5,10 @@ description = "Content Based Image Retrieval Analysis - a python package for par
 authors = ["Brady Leavitt <brady.d.leavitt@gmail.com>","Owen Van Valkenburg <owenv@microsoft.com>"]
 readme = "README.md"
 
+packages = [
+    { include = "cobrapy", from = "src" }
+]
+
 [tool.poetry.dependencies]
 python = "^3.11"
 openai = "^1.37.0"
@@ -13,7 +17,7 @@ python-dotenv = "^1.0.1"
 pydantic = "^2.8.2"
 numpy = "^2.0.1"
 nest-asyncio = "^1.6.0"
-
+opencv-python = "^4.10.0.84"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
@@ -22,5 +26,3 @@ pytest = "^8.3.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-

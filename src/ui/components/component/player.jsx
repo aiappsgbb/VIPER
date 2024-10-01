@@ -323,8 +323,8 @@ const VideoSearch=({res})=>{
 const VideoSummaryDisplay = ({ currentSecond }) => {  
   const currentSummary = useMemo(() => {  
     const currentSummaryData = videoSummaries.find(summary => {  
-      const start = parseTimestamp(summary.Start_Timestamp);  
-      const end = parseTimestamp(summary.End_Timestamp);  
+      const start = parseTimestamp(summary.start_timestamp);  
+      const end = parseTimestamp(summary.end_timestamp);  
       return currentSecond >= start && currentSecond <= end;  
     });  
     return currentSummaryData ? currentSummaryData.summary : '';  
@@ -394,16 +394,16 @@ const VideoSummaryDisplay = ({ currentSecond }) => {
           return(
             {  
               ...item,  
-              start_frame: item.Start_Timestamp.slice(0, -1),  
-              end_frame: item.End_Timestamp.slice(0, -1) ,
+              start_frame: item.start_timestamp.slice(0, -1),  
+              end_frame: item.end_timestamp.slice(0, -1) ,
               rank:count 
             }
           )
         });  
         // const results = response.data.message.map(item => ({  
         //   ...item,  
-        //   start_frame: item.Start_Timestamp.slice(0, -1),  
-        //   end_frame: item.End_Timestamp.slice(0, -1) ,
+        //   start_frame: item.start_timestamp.slice(0, -1),  
+        //   end_frame: item.end_timestamp.slice(0, -1) ,
         //   rank:count 
         // }));  
         setSearchResults(results);  

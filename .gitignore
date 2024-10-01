@@ -602,6 +602,18 @@ Temporary Items
 .nfs*
 
 # samples so we dont spam the git with pngs
+<<<<<<< HEAD
+<<<<<<< HEAD
+
+
+poc/
+=======
 samples/*.png
 samples/*.jpg
 samples/*.jpeg
+>>>>>>> 55a2d304d21a95877a2f2f6cf4122d7356a52514
+=======
+samples/*.png
+samples/*.jpg
+samples/*.jpeg
+>>>>>>> 9d98690879d992d4aec38b497d977b92c94d3adf
