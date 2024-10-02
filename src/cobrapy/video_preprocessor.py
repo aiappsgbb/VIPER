@@ -117,7 +117,7 @@ class VideoPreProcessor:
             and self.manifest.processing_params.generate_transcript_flag
         ):
             print(f"({get_elapsed_time(start_time)}s) Extracting audio...")
-            self._extract_audio(self, max_workers)
+            self._extract_audio(max_workers)
 
         # Process the segments
         print(f"({get_elapsed_time(start_time)}s) Processing segments...")
