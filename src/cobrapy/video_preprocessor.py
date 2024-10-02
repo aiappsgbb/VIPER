@@ -8,19 +8,12 @@ from typing import Union, Type
 import concurrent.futures
 
 from .models.video import VideoManifest, Segment
-from .analysis import AnalysisConfig
 from .cobra_utils import (
-    encode_image_base64,
-    validate_video_manifest,
     get_elapsed_time,
-    generate_safe_dir_name,
     generate_transcript,
     parse_transcript,
     get_elapsed_time,
-    validate_video_manifest,
     write_video_manifest,
-    extract_audio_chunk,
-    process_chunk,
     extract_base_audio,
     segment_and_extract,
     parallelize_audio,

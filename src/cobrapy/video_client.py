@@ -1,28 +1,14 @@
 import os
-import time
-from typing import Union, List, Dict, Optional, Type
-import cv2
+from typing import Union, Type
 from moviepy.editor import VideoFileClip
-import numpy as np
-from PIL import Image
 
 from .video_preprocessor import VideoPreProcessor
 from .video_analyzer import VideoAnalyzer
 from .models.video import VideoManifest
 from .analysis import AnalysisConfig
 from .cobra_utils import (
-    generate_safe_dir_name,
-    generate_transcript,
-    parse_transcript,
-    get_elapsed_time,
     validate_video_manifest,
     write_video_manifest,
-    extract_audio_chunk,
-    process_chunk,
-    extract_base_audio,
-    segment_and_extract,
-    parallelize_audio,
-    parallelize_transcription,
 )
 
 

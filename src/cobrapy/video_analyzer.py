@@ -10,7 +10,6 @@ from openai import AzureOpenAI, AsyncAzureOpenAI
 from .models.video import VideoManifest, Segment
 from .analysis import AnalysisConfig
 from .analysis.base_analysis_config import SequentialAnalysisConfig
-from .prompts.action_summary import action_summary_prompt, action_summary_template
 from .cobra_utils import (
     encode_image_base64,
     validate_video_manifest,
