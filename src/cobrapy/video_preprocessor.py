@@ -117,66 +117,14 @@ class VideoPreProcessor:
             max_workers = min(cpu_count, int(memory // 2))
         else:
             max_workers = max_workers
+
         # Extract the audio using FFmpeg
         if (
             self.manifest.source_video.audio_found
             and self.manifest.processing_params.generate_transcript_flag
         ):
             print(f"({get_elapsed_time(start_time)}s) Extracting audio...")
-
-            # Define the audio output path
-            audio_path = os.path.join(
-                self.manifest.processing_params.output_directory,
-                f"{os.path.splitext(self.manifest.name)[0]}.mp3",
-            )
-
-            # Use FFmpeg to extract audio
-            extract_base_audio(self.manifest.source_video.path, audio_path)
-
-            audio_file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-
-            # Process audio based on file size
-            if audio_file_size_mb <= 25.0:
-                # For small audio files, process directly
-                self.manifest.source_audio.path = audio_path
-                self.manifest.source_audio.file_size_mb = audio_file_size_mb
-                transcript = generate_transcript(audio_file_path=audio_path)
-                self.manifest.audio_transcription = transcript
-            else:
-                # For large audio files, split into chunks and process in parallel
-                print(
-                    f"Audio file size is {audio_file_size_mb:.2f}MB; splitting into chunks..."
-                )
-
-                # Calculate number of chunks
-                splitting_value = int(audio_file_size_mb / 20)
-                duration = float(self.manifest.source_video.duration)
-                chunk_size = duration / splitting_value
-                audio_chunks = []
-
-                # Prepare arguments for parallel extraction
-                extract_args_list = []
-                for counter in range(splitting_value):
-                    start = chunk_size * counter
-                    end = min(chunk_size * (counter + 1), duration)
-                    audio_chunk_path = os.path.join(
-                        self.manifest.processing_params.output_directory,
-                        f"{os.path.splitext(self.manifest.name)[0]}_{counter + 1}.mp3",
-                    )
-                    extract_args_list.append(
-                        (self.manifest.source_video.path, start, end, audio_chunk_path)
-                    )
-                # Parallelize audio chunk extraction
-
-                extracted_chunks = parallelize_audio(extract_args_list, max_workers)
-                # Prepare arguments for parallel transcription
-                process_args_list = [
-                    (chunk_path, start) for chunk_path, start in extracted_chunks
-                ]
-                combined_transcript = parallelize_transcription(process_args_list)
-                self.manifest.source_audio.path = audio_path
-                self.manifest.source_audio.file_size_mb = audio_file_size_mb
-                self.manifest.audio_transcription = combined_transcript
+            self._extract_audio(self, max_workers)
 
         # Process the segments
         print(f"({get_elapsed_time(start_time)}s) Processing segments...")
@@ -200,6 +148,18 @@ class VideoPreProcessor:
                 self.manifest.segments[i].processed = res
 
         print(f"({get_elapsed_time(start_time)}s) All segments pre-processed")
+
+        # Check to make sure the frame intervals in the manifest and the frame file paths in the manfest match.
+        for segment in self.manifest.segments:
+            frame_file_paths = segment.segment_frames_file_path
+            frame_intervals = segment.segment_frame_time_intervals
+            if len(frame_file_paths) != len(frame_intervals):
+                print(
+                    f"Segment {segment.segment_name}: Frame file paths and frame intervals do not match. Adjusting..."
+                )
+                min_list_length = min(len(frame_file_paths), len(frame_intervals))
+                segment.segment_frames_file_path = frame_file_paths[:min_list_length]
+                segment.segment_frame_time_intervals = frame_intervals[:min_list_length]
 
         write_video_manifest(self.manifest)
 
@@ -328,3 +288,58 @@ class VideoPreProcessor:
         except Exception as e:
             print(f"Error processing segment {segment.segment_name}: {e}")
             return index, segment, False
+
+    # Define the audio output path
+    def _extract_audio(self, max_workers: int):
+        audio_path = os.path.join(
+            self.manifest.processing_params.output_directory,
+            f"{os.path.splitext(self.manifest.name)[0]}.mp3",
+        )
+
+        # Use FFmpeg to extract audio
+        extract_base_audio(self.manifest.source_video.path, audio_path)
+
+        audio_file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+
+        # Process audio based on file size
+        if audio_file_size_mb <= 25.0:
+            # For small audio files, process directly
+            self.manifest.source_audio.path = audio_path
+            self.manifest.source_audio.file_size_mb = audio_file_size_mb
+            transcript = generate_transcript(audio_file_path=audio_path)
+            self.manifest.audio_transcription = transcript
+        else:
+            # For large audio files, split into chunks and process in parallel
+            print(
+                f"Audio file size is {audio_file_size_mb:.2f}MB; splitting into chunks..."
+            )
+
+            # Calculate number of chunks
+            splitting_value = int(audio_file_size_mb / 20)
+            duration = float(self.manifest.source_video.duration)
+            chunk_size = duration / splitting_value
+
+            # Prepare arguments for parallel extraction
+            extract_args_list = []
+            for counter in range(splitting_value):
+                start = chunk_size * counter
+                end = min(chunk_size * (counter + 1), duration)
+                audio_chunk_path = os.path.join(
+                    self.manifest.processing_params.output_directory,
+                    f"{os.path.splitext(self.manifest.name)[0]}_{counter + 1}.mp3",
+                )
+                extract_args_list.append(
+                    (self.manifest.source_video.path, start, end, audio_chunk_path)
+                )
+            # Parallelize audio chunk extraction
+            extracted_chunks = parallelize_audio(extract_args_list, max_workers)
+
+            # Prepare arguments for parallel transcription
+            process_args_list = [
+                (chunk_path, start) for chunk_path, start in extracted_chunks
+            ]
+            combined_transcript = parallelize_transcription(process_args_list)
+
+            self.manifest.source_audio.path = audio_path
+            self.manifest.source_audio.file_size_mb = audio_file_size_mb
+            self.manifest.audio_transcription = combined_transcript
