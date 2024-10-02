@@ -2,6 +2,7 @@ from .base_analysis_config import AnalysisConfig
 
 
 class ActionSummary(AnalysisConfig):
+    name: str = "ActionSummary"
     analysis_sequence: str = "mapreduce"
     system_prompt: str = (
         """You are VideoAnalyzerGPT. 
