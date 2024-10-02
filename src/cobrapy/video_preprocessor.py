@@ -150,6 +150,7 @@ class VideoPreProcessor:
         print(f"({get_elapsed_time(start_time)}s) All segments pre-processed")
 
         # Check to make sure the frame intervals in the manifest and the frame file paths in the manfest match.
+        # Not sure why there is a possibility of a mismatch, but it has definitely been observed in testing.
         for segment in self.manifest.segments:
             frame_file_paths = segment.segment_frames_file_path
             frame_intervals = segment.segment_frame_time_intervals
