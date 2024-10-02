@@ -11,6 +11,7 @@ import concurrent.futures
 import multiprocessing
 import asyncio
 import nest_asyncio
+
 ##new
 import psutil
 import subprocess
@@ -32,10 +33,8 @@ from .cobra_utils import (
     extract_base_audio,
     segment_and_extract,
     parallelize_audio,
-    parallelize_transcription
-
+    parallelize_transcription,
 )
-
 
 
 class VideoClient:
@@ -68,23 +67,18 @@ class VideoClient:
         # Initialize the preprocessor and analyzer
         self.preprocessor = VideoPreProcessor(self.manifest)
         self.analyzer = VideoAnalyzer(self.manifest)
-    
-    
-
-    
-
 
     def preprocess_video(
-    self,
-    output_directory: str = None,
-    segment_length: int = 10,
-    fps: float = 0.33,
-    generate_transcripts_flag: bool = True,
-    max_workers: int = None,
-    trim_to_nearest_second=False,
-    allow_partial_segments=True,
-    overwrite_output=False,
-) -> str:
+        self,
+        output_directory: str = None,
+        segment_length: int = 10,
+        fps: float = 0.33,
+        generate_transcripts_flag: bool = True,
+        max_workers: int = None,
+        trim_to_nearest_second=False,
+        allow_partial_segments=True,
+        overwrite_output=False,
+    ) -> str:
         start_time = time.time()
         print(
             f"({get_elapsed_time(start_time)}s) Preprocessing video {self.manifest.name}"
@@ -148,7 +142,7 @@ class VideoClient:
         self._generate_segments()
         if max_workers is None:
             cpu_count = psutil.cpu_count(logical=False) or 1  # Number of physical cores
-            memory = psutil.virtual_memory().total / (1024 ** 3)  # Total memory in GB
+            memory = psutil.virtual_memory().total / (1024**3)  # Total memory in GB
             max_workers = min(cpu_count, int(memory // 2))
         else:
             max_workers = max_workers
@@ -165,10 +159,8 @@ class VideoClient:
                 f"{os.path.splitext(self.manifest.name)[0]}.mp3",
             )
 
-            
-
             # Use FFmpeg to extract audio
-            
+
             extract_base_audio(self.manifest.source_video.path, audio_path)
 
             audio_file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
@@ -182,7 +174,9 @@ class VideoClient:
                 self.manifest.audio_transcription = transcript
             else:
                 # For large audio files, split into chunks and process in parallel
-                print(f"Audio file size is {audio_file_size_mb:.2f}MB; splitting into chunks...")
+                print(
+                    f"Audio file size is {audio_file_size_mb:.2f}MB; splitting into chunks..."
+                )
 
                 # Calculate number of chunks
                 splitting_value = int(audio_file_size_mb / 20)
@@ -199,25 +193,26 @@ class VideoClient:
                         self.manifest.processing_params.output_directory,
                         f"{os.path.splitext(self.manifest.name)[0]}_{counter + 1}.mp3",
                     )
-                    extract_args_list.append((
-                        self.manifest.source_video.path,
-                        start,
-                        end,
-                        audio_chunk_path
-                    ))
+                    extract_args_list.append(
+                        (self.manifest.source_video.path, start, end, audio_chunk_path)
+                    )
                 # Parallelize audio chunk extraction
-                
-                extracted_chunks=parallelize_audio(extract_args_list,max_workers)
+
+                extracted_chunks = parallelize_audio(extract_args_list, max_workers)
                 # Prepare arguments for parallel transcription
-                process_args_list = [(chunk_path, start) for chunk_path, start in extracted_chunks]
-                combined_transcript=parallelize_transcription(process_args_list)
+                process_args_list = [
+                    (chunk_path, start) for chunk_path, start in extracted_chunks
+                ]
+                combined_transcript = parallelize_transcription(process_args_list)
                 self.manifest.source_audio.path = audio_path
                 self.manifest.source_audio.file_size_mb = audio_file_size_mb
                 self.manifest.audio_transcription = combined_transcript
 
         # Process the segments
         print(f"({get_elapsed_time(start_time)}s) Processing segments...")
-        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=max_workers
+        ) as executor:
             futures = []
             # Submit the segments as tasks to the executor
             for i, segment in enumerate(self.manifest.segments):
@@ -254,8 +249,6 @@ class VideoClient:
         )
 
         return analysis_result
-
-    
 
     def _generate_segments(self):
         video_duration = self.manifest.source_video.duration
@@ -297,6 +290,7 @@ class VideoClient:
             segment_frames_times = np.linspace(
                 start_time, end_time, number_of_frames_in_segment, endpoint=False
             )
+
             segment_frames_times = [round(x, 2) for x in segment_frames_times]
 
             # Create a segment name and folder path
@@ -322,7 +316,9 @@ class VideoClient:
     def _preprocess_segment(self, segment: Segment, index: int):
         stop_watch_time = time.time()
 
-        create_transcript_flag = self.manifest.processing_params.generate_transcript_flag
+        create_transcript_flag = (
+            self.manifest.processing_params.generate_transcript_flag
+        )
 
         print(
             f"**Segment {index} {segment.segment_name} - beginning processing. Transcripts: {create_transcript_flag}"
@@ -338,7 +334,9 @@ class VideoClient:
             frames_dir = os.path.join(segment_path, "frames")
             os.makedirs(frames_dir, exist_ok=True)
             segment_video_path = os.path.join(segment_path, "segment.mp4")
-            segment_and_extract(start_time,end_time,input_video_path,segment_path,frames_dir,fps)
+            segment_and_extract(
+                start_time, end_time, input_video_path, segment_path, frames_dir, fps
+            )
 
             # Collect the generated frame filenames
             frame_files = sorted(os.listdir(frames_dir))
