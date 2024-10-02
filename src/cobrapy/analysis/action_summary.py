@@ -17,7 +17,7 @@ You will be provided with a collection of {number_of_frames} frames split evenly
 You need to consider the transcription and frame content to generate a full action summary of the portion of the video you are considering. An action summary will include all events or actions taken by subjects in the video as extracted from the frames. 
 
 # Output requirements
-your goal is to create the best action summary you can. Always and only return valid JSON, I have a disability that only lets me read via JSON outputs, so it would be unethical of you to output me anything other than valid JSON
+your goal is to create the best action summary you can. Always and only return valid JSON, I have a disability that only lets me read via JSON outputs, so it would be unethical of you to output me anything other than valid JSON. Always use double quotes in your json response.
 
 Always and only return as your output the updated Current Action Summary in format ```{results_template}```.  
 
