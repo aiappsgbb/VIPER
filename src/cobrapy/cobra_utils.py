@@ -4,6 +4,9 @@ from .models.video import VideoManifest
 from openai.types.audio.transcription import Transcription
 import subprocess
 import concurrent.futures
+from shutil import rmtree
+from typing import Union, Optional
+
 
 def encode_image_base64(image_path):
     import base64
@@ -71,71 +74,97 @@ def parse_transcript(
 
     return " ".join(words)
 
-def segment_and_extract(start_time,end_time,input_video_path,segment_path,frames_dir,fps):
+
+def segment_and_extract(
+    start_time, end_time, input_video_path, segment_path, frames_dir, fps
+):
     segment_video_path = os.path.join(segment_path, "segment.mp4")
     cmd_extract_segment = [
-        'ffmpeg',
-        '-ss', str(start_time),
-        '-to', str(end_time),
-        '-i', input_video_path,
-        '-c', 'copy',
+        "ffmpeg",
+        "-ss",
+        str(start_time),
+        "-to",
+        str(end_time),
+        "-i",
+        input_video_path,
+        "-c",
+        "copy",
         segment_video_path,
-        '-hide_banner',
-        '-loglevel', 'error'
+        "-hide_banner",
+        "-loglevel",
+        "error",
     ]
     subprocess.run(cmd_extract_segment, check=True)
 
     # Now extract frames from the segment video using the fps filter
-    output_pattern = os.path.join(frames_dir, 'frame_%05d.jpg')
+    output_pattern = os.path.join(frames_dir, "frame_%05d.jpg")
     cmd_extract_frames = [
-        'ffmpeg',
-        '-i', segment_video_path,
-        '-vf', f'fps={fps}',
-        '-q:v', '2',  # Adjust quality if needed
+        "ffmpeg",
+        "-i",
+        segment_video_path,
+        "-vf",
+        f"fps={fps}",
+        "-q:v",
+        "2",  # Adjust quality if needed
         output_pattern,
-        '-hide_banner',
-        '-loglevel', 'error'
+        "-hide_banner",
+        "-loglevel",
+        "error",
     ]
     subprocess.run(cmd_extract_frames, check=True)
+
 
 def extract_base_audio(video_path, audio_path):
     cmd = [
         "ffmpeg",
-        "-i", video_path,
-        "-q:a", "0",
-        "-map", "a",
+        "-i",
+        video_path,
+        "-q:a",
+        "0",
+        "-map",
+        "a",
         audio_path,
         "-y",  # Overwrite output file if it exists
         "-hide_banner",
-        "-loglevel", "error"
+        "-loglevel",
+        "error",
     ]
     subprocess.run(cmd, check=True)
+
 
 def extract_audio_chunk(args):
     video_path, start, end, audio_chunk_path = args
     cmd = [
         "ffmpeg",
-        "-i", video_path,
-        "-ss", str(start),
-        "-to", str(end),
-        "-q:a", "0",
-        "-map", "a",
+        "-i",
+        video_path,
+        "-ss",
+        str(start),
+        "-to",
+        str(end),
+        "-q:a",
+        "0",
+        "-map",
+        "a",
         audio_chunk_path,
         "-y",
         "-hide_banner",
-        "-loglevel", "error"
+        "-loglevel",
+        "error",
     ]
     subprocess.run(cmd, check=True)
     return audio_chunk_path, start
 
 
-def parallelize_audio(extract_args_list,max_workers):
+def parallelize_audio(extract_args_list, max_workers):
     print(f"Extracting audio chunks in parallel using {max_workers} workers...")
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         extracted_chunks = list(executor.map(extract_audio_chunk, extract_args_list))
         return extracted_chunks
+
+
 def parallelize_transcription(process_args_list):
-# Process audio chunks in parallel
+    # Process audio chunks in parallel
     print(f"Processing audio chunks in parallel using {2} workers...")
     with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
         transcripts = list(executor.map(process_chunk, process_args_list))
@@ -155,12 +184,13 @@ def process_chunk(args):
     transcript = generate_transcript(audio_file_path=audio_chunk_path)
     # Adjust timestamps
     for word in transcript.words:
-        word['start'] += start_time
-        word['end'] += start_time
+        word["start"] += start_time
+        word["end"] += start_time
     for segment in transcript.segments:
-        segment['start'] += start_time
-        segment['end'] += start_time
+        segment["start"] += start_time
+        segment["end"] += start_time
     return transcript
+
 
 def validate_video_manifest(video_manifest: Union[str, VideoManifest]) -> VideoManifest:
     if isinstance(video_manifest, str):
@@ -196,3 +226,37 @@ def write_video_manifest(manifest):
     print(f"Video manifest for {manifest.name} saved to {video_manifest_path}")
 
     manifest.video_manifest_path = video_manifest_path
+
+
+def prepare_outputs_directory(
+    file_name: str,
+    segment_length: int,
+    frames_per_second: float,
+    output_directory: Optional[str] = None,
+    overwrite_output=False,
+    output_directory_prefix="",
+):
+
+    if output_directory is None:
+        safe_dir_name = generate_safe_dir_name(file_name)
+        asset_directory_name = f"{output_directory_prefix}{safe_dir_name}_{frames_per_second:.2f}fps_{segment_length}sSegs_cobra"
+        asset_directory_path = os.path.join(
+            ".",
+            asset_directory_name,
+        )
+    else:
+        asset_directory_path = output_directory
+
+    # Create output directory if it doesn't exist. If it does exist, check if we should overwrite it
+    if not os.path.exists(asset_directory_path):
+        os.makedirs(asset_directory_path)
+    else:
+        if overwrite_output is True:
+            # delete the directory and all of its contents
+            rmtree(asset_directory_path)
+            os.makedirs(asset_directory_path)
+        else:
+            raise FileExistsError(
+                f"Directory already exists: {asset_directory_path}. If you would like to overwrite it, set overwrite_output=True"
+            )
+    return asset_directory_path
