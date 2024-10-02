@@ -102,11 +102,11 @@ class VideoAnalyzer:
 
         ##creates ActionSummary in UI format
         try:
-            final_action_summary=[]
+            final_action_summary = []
             for item in results_list:
                 for elem in item:
                     final_action_summary.append(elem)
-            
+
             with open(results_list_output_path_as, "w", encoding="utf-8") as f:
                 f.write(json.dumps(final_action_summary, indent=4))
         except:
@@ -483,7 +483,7 @@ class VideoAnalyzer:
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/jpeg;base64,{base64_image}",
-                        "detail": "high",
+                        "detail": "low",
                     },
                 }
             )
