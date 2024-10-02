@@ -1,4 +1,4 @@
-from .base_analysis_config import AnalysisConfig, SequentialAnalysisConfig
+from .base_analysis_config import SequentialAnalysisConfig
 
 
 class ChapterAnalysis(SequentialAnalysisConfig):
