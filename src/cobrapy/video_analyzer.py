@@ -195,13 +195,17 @@ class VideoAnalyzer:
 
         for i, segment in enumerate(self.manifest.segments):
             # check if the segment has already been analyzed, if so, skip it
-            if segment.analyzed_by_llm:
-                print(
-                    f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
-                )
-                results_list.append(segment.analyzed_result)
-            else:
-                print(f"Analyzing segment {segment.segment_name}")
+
+            ## This is being temporarily disabled to allow for re-analysis of segments. Needs to be updated to allow for a flag to re-analyze.
+            ## Would be good to allow for multiple analyses based on the same prepocessed data.
+
+            # if segment.analyzed_by_llm:
+            #     print(
+            #         f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
+            #     )
+            #     results_list.append(segment.analyzed_result)
+            # else:
+            #     print(f"Analyzing segment {segment.segment_name}")
 
             messages = []
             number_of_previous_results_to_refine = (
