@@ -1,10 +1,12 @@
 import os
 from typing import Union, Type
 from moviepy.editor import VideoFileClip
+from dotenv import load_dotenv
 
 from .video_preprocessor import VideoPreProcessor
 from .video_analyzer import VideoAnalyzer
 from .models.video import VideoManifest
+from .models.environment import CobraEnvironment
 from .analysis import AnalysisConfig
 from .cobra_utils import (
     validate_video_manifest,
@@ -15,13 +17,18 @@ from .cobra_utils import (
 class VideoClient:
     manifest: VideoManifest
     video_path: str
+    env_file_path: str
+    env: CobraEnvironment
     preprocessor: VideoPreProcessor
     analyzer: VideoAnalyzer
+    upload_to_azure: bool
 
     def __init__(
         self,
         video_path: Union[str, None] = None,
         manifest: Union[str, VideoManifest, None] = None,
+        env_file_path: str = None,
+        upload_to_azure: bool = False,
         # connection_config_list: List[Dict[str, str]] = None, # Not Implemented Yet
     ):
         # Video path is required if manifest is not provided
@@ -39,9 +46,20 @@ class VideoClient:
 
         self.manifest = manifest
 
+        # If the environment file path is set, attempt to load the environment variables from the file
+        self.env_file_path = env_file_path
+
+        if self.env_file_path is not None:
+            load_dotenv(dotenv_path=self.env_file_path, override=True)
+
+        # Load the environment variables in the pydantic model
+        self.env = CobraEnvironment()
+
         # Initialize the preprocessor and analyzer
-        self.preprocessor = VideoPreProcessor(self.manifest)
-        self.analyzer = VideoAnalyzer(self.manifest)
+        self.preprocessor = VideoPreProcessor(
+            video_manifest=self.manifest, env=self.env
+        )
+        self.analyzer = VideoAnalyzer(video_manifest=self.manifest, env=self.env)
 
     def preprocess_video(
         self,
