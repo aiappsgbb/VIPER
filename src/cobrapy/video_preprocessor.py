@@ -8,6 +8,7 @@ from typing import Union, Type
 import concurrent.futures
 
 from .models.video import VideoManifest, Segment
+from .models.environment import CobraEnvironment
 from .cobra_utils import (
     get_elapsed_time,
     generate_transcript,
@@ -25,10 +26,10 @@ from .cobra_utils import (
 class VideoPreProcessor:
     # take either a video manifest object or a path to a video manifest file
     def __init__(
-        self,
-        video_manifest: Union[str, VideoManifest],
+        self, video_manifest: Union[str, VideoManifest], env: CobraEnvironment
     ):
         self.manifest = video_manifest
+        self.env = env
 
     def preprocess_video(
         self,
@@ -56,14 +57,13 @@ class VideoPreProcessor:
         if fps is None or fps <= 0:
             raise ValueError("'fps' must be a positive number")
 
-        if (
-            segment_length is None
-            or segment_length <= 0
-            or segment_length > self.manifest.source_video.duration
-        ):
-            raise ValueError(
-                "'segment_length' must be a positive number and less than the video duration"
+        if segment_length is None or segment_length <= 0:
+            raise ValueError("'segment_length' must be a positive number")
+        elif segment_length > self.manifest.source_video.duration:
+            print(
+                "Segment length is longer than the video duration. Setting the segment length to the video duration."
             )
+            segment_length = self.manifest.source_video.duration
 
         # Set processing parameters
         print(f"({get_elapsed_time(start_time)}) Setting processing parameters...")
@@ -300,7 +300,7 @@ class VideoPreProcessor:
             # For small audio files, process directly
             self.manifest.source_audio.path = audio_path
             self.manifest.source_audio.file_size_mb = audio_file_size_mb
-            transcript = generate_transcript(audio_file_path=audio_path)
+            transcript = generate_transcript(audio_file_path=audio_path, env=self.env)
             self.manifest.audio_transcription = transcript
         else:
             # For large audio files, split into chunks and process in parallel

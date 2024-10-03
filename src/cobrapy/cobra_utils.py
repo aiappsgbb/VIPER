@@ -1,6 +1,7 @@
 import os
 from typing import Union
 from .models.video import VideoManifest
+from .models.environment import CobraEnvironment
 from openai.types.audio.transcription import Transcription
 import subprocess
 import concurrent.futures
@@ -22,29 +23,19 @@ def generate_safe_dir_name(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*.]', "_", name).replace(" ", "_")
 
 
-def generate_transcript(audio_file_path: str, deployment: str = None):
-    from dotenv import load_dotenv
+def generate_transcript(audio_file_path: str, env: CobraEnvironment):
     from openai import AzureOpenAI
 
-    load_dotenv()
-
-    if deployment is None:
-        deployment = os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT", None)
-        if deployment is None:
-            raise ValueError(
-                "No deployment was supplied and AZURE_OPENAI_WHISPER_DEPLOYMENT environment variable is not set."
-            )
-
     client = AzureOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_WHISPER_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_WHISPER_API_VERSION"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_WHISPER_ENDPOINT"),
+        api_key=env.whisper.api_key.get_secret_value(),
+        api_version=env.whisper.api_version,
+        azure_endpoint=env.whisper.endpoint,
     )
 
     with open(audio_file_path, "rb") as f:
         result = client.audio.transcriptions.create(
             file=f,
-            model=deployment,
+            model=env.whisper.deployment,
             response_format="verbose_json",
             timestamp_granularities=["word", "segment"],
         )

@@ -4,10 +4,10 @@ import time
 import asyncio
 import nest_asyncio
 from typing import Union, Type
-from dotenv import load_dotenv
 from openai import AzureOpenAI, AsyncAzureOpenAI
 
 from .models.video import VideoManifest, Segment
+from .models.environment import CobraEnvironment
 from .analysis import AnalysisConfig
 from .analysis.base_analysis_config import SequentialAnalysisConfig
 from .cobra_utils import (
@@ -20,14 +20,11 @@ from .cobra_utils import (
 class VideoAnalyzer:
     # take either a video manifest object or a path to a video manifest file
     def __init__(
-        self,
-        manifest: Union[str, VideoManifest],
+        self, video_manifest: Union[str, VideoManifest], env: CobraEnvironment
     ):
         # get and validate video manifest
-        self.manifest = validate_video_manifest(manifest)
-
-        # get and validate environment variables
-        self._validate_environment_variables()
+        self.manifest = validate_video_manifest(video_manifest)
+        self.env = env
 
     # Primary method to analyze the video
     def analyze_video(
@@ -84,21 +81,26 @@ class VideoAnalyzer:
             )
 
             # generate the final summary if enabled
-            if analysis_config.run_final_summary is True:
-                print(
-                    f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
-                )
-                summary_prompt = self.generate_summary_prompt(
-                    analysis_config, final_results
-                )
-                summary_results = self._call_llm(summary_prompt)
+            ## check to see if analysis_config has an attribute called run_final_summary
 
-                self.manifest.final_summary = summary_results.choices[0].message.content
+            if hasattr(analysis_config, "run_final_summary"):
+                if analysis_config.run_final_summary is True:
+                    print(
+                        f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
+                    )
+                    summary_prompt = self.generate_summary_prompt(
+                        analysis_config, final_results
+                    )
+                    summary_results = self._call_llm(summary_prompt)
 
-                final_results = {
-                    "final_summary": self.manifest.final_summary,
-                    "results": final_results,
-                }
+                    self.manifest.final_summary = summary_results.choices[
+                        0
+                    ].message.content
+
+                    final_results = {
+                        "final_summary": self.manifest.final_summary,
+                        "results": final_results,
+                    }
 
             print(f"Writing results to {final_results_output_path}")
 
@@ -487,15 +489,14 @@ class VideoAnalyzer:
         return messages
 
     def _call_llm(self, messages_list: list):
-        self._validate_environment_variables()
         client = AzureOpenAI(
-            api_key=self.azure_openai_gptvision_api_key,
-            api_version=self.azure_openai_gptvision_api_version,
-            azure_endpoint=self.azure_openai_gptvision_endpoint,
+            api_key=self.env.vision.api_key.get_secret_value(),
+            api_version=self.env.vision.api_version,
+            azure_endpoint=self.env.vision.endpoint,
         )
 
         response = client.chat.completions.create(
-            model=self.azure_openai_gptvision_deployment,
+            model=self.env.vision.deployment,
             messages=messages_list,
             max_tokens=2000,
         )
@@ -503,16 +504,14 @@ class VideoAnalyzer:
         return response
 
     async def _call_llm_async(self, messages_list: list):
-        self._validate_environment_variables()
-
         client = AsyncAzureOpenAI(
-            api_key=self.azure_openai_gptvision_api_key,
-            api_version=self.azure_openai_gptvision_api_version,
-            azure_endpoint=self.azure_openai_gptvision_endpoint,
+            api_key=self.env.vision.api_key.get_secret_value(),
+            api_version=self.env.vision.api_version,
+            azure_endpoint=self.env.vision.endpoint,
         )
 
         response = await client.chat.completions.create(
-            model=self.azure_openai_gptvision_deployment,
+            model=self.env.vision.deployment,
             messages=messages_list,
             max_tokens=2000,
         )
@@ -532,38 +531,3 @@ class VideoAnalyzer:
             print(f"Error parsing JSON response: {e}")
             print(f"Response: {content}")
             return content
-
-    def _validate_environment_variables(self):
-        load_dotenv()
-        azure_openai_gptvision_api_key = os.getenv("AZURE_OPENAI_GPT_VISION_API_KEY")
-        azure_openai_gptvision_endpoint = os.getenv("AZURE_OPENAI_GPT_VISION_ENDPOINT")
-        azure_openai_gptvision_api_version = os.getenv(
-            "AZURE_OPENAI_GPT_VISION_API_VERSION"
-        )
-        azure_openai_gptvision_deployment = os.getenv(
-            "AZURE_OPENAI_GPT_VISION_DEPLOYMENT"
-        )
-        azure_openai_whisper_deployment = os.getenv("AZURE_OPENAI_WHISPER_DEPLOYMENT")
-
-        if not azure_openai_gptvision_api_key:
-            raise ValueError("AZURE_OPENAI_API_KEY not found in environment variables")
-        if not azure_openai_gptvision_endpoint:
-            raise ValueError("AZURE_OPENAI_ENDPOINT not found in environment variables")
-        if not azure_openai_gptvision_api_version:
-            raise ValueError(
-                "AZURE_OPENAI_API_VERSION not found in environment variables"
-            )
-        if not azure_openai_whisper_deployment:
-            raise ValueError(
-                "AZURE_OPENAI_WHISPER_DEPLOYMENT not found in environment variables"
-            )
-        if not azure_openai_gptvision_deployment:
-            raise ValueError(
-                "AZURE_OPENAI_GPT4_VISION_DEPLOYMENT not found in environment variables"
-            )
-
-        self.azure_openai_gptvision_api_key = azure_openai_gptvision_api_key
-        self.azure_openai_gptvision_endpoint = azure_openai_gptvision_endpoint
-        self.azure_openai_gptvision_api_version = azure_openai_gptvision_api_version
-        self.azure_openai_whisper_deployment = azure_openai_whisper_deployment
-        self.azure_openai_gptvision_deployment = azure_openai_gptvision_deployment
