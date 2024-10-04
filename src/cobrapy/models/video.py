@@ -14,8 +14,8 @@ class Segment(BaseModel):
     segment_frames_file_path: List[str] = Field(default_factory=list)
     segment_prompt_path: Optional[str] = None
     processed: Optional[bool] = False
-    analyzed_by_llm: Optional[bool] = False
-    analyzed_result: Optional[dict] = None
+    analysis_completed: Optional[list] = []
+    analyzed_result: Optional[dict] = {}
     transcription: Optional[str] = None
 
 
