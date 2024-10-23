@@ -4,14 +4,16 @@ A python library that illustrates how to do "Content Based image Retrieval Analy
 
 ## Getting Started
 
-Clone the repository to your device.
-Navigate to the repository directory and do a local install, i.e.
+1. Clone the repository to your device.
+Navigate to the repository directory and install dependencies:
 
 ```bash
 cd /path/to/local/repo/cobrapy
-
 pip install -e . #"." means install at the current location
 ```
+
+2. Follow the official instructions to download and install FFmpeg:
+[https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
 
 ## Contributing
 

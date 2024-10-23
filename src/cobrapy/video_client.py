@@ -1,11 +1,12 @@
 import os
 from typing import Union, Type
-from moviepy.editor import VideoFileClip
+from ast import literal_eval
 from dotenv import load_dotenv
+from cobra_utils import get_file_info
 
 from .video_preprocessor import VideoPreProcessor
 from .video_analyzer import VideoAnalyzer
-from .models.video import VideoManifest
+from .models.video import VideoManifest, SourceVideoMetadata
 from .models.environment import CobraEnvironment
 from .analysis import AnalysisConfig
 from .cobra_utils import (
@@ -59,7 +60,8 @@ class VideoClient:
         self.preprocessor = VideoPreProcessor(
             video_manifest=self.manifest, env=self.env
         )
-        self.analyzer = VideoAnalyzer(video_manifest=self.manifest, env=self.env)
+        self.analyzer = VideoAnalyzer(
+            video_manifest=self.manifest, env=self.env)
 
     def preprocess_video(
         self,
@@ -112,20 +114,37 @@ class VideoClient:
             manifest.source_video.path = os.path.abspath(video_path)
 
         # Get video metadata
-        with VideoFileClip(video_path) as video_file_clip:
-            manifest_source = {
-                "video_found": video_file_clip.reader.infos["video_found"],
-                "size": video_file_clip.size,
-                "rotation": video_file_clip.rotation,
-                "fps": video_file_clip.fps,
-                "duration": video_file_clip.duration,
-                "nframes": video_file_clip.reader.nframes,
-                "audio_found": video_file_clip.reader.infos["audio_found"],
+        file_metadata = get_file_info(video_path)
+        if file_metadata is not None:
+            manifest_source: SourceVideoMetadata = {
+                "path": video_path,
+                "video_found": False,
+                "size": [],
+                "rotation": 0,
+                "fps": 0,
+                "duration": 0,
+                "nframes": 0,
+                "audio_found": False,
+                "audio_duration": 0,
+                "audio_fps": 0,
             }
 
-            if video_file_clip.reader.infos["audio_found"] is True:
-                manifest_source["audio_duration"] = video_file_clip.audio.duration
-                manifest_source["audio_fps"] = video_file_clip.audio.fps
+            if file_metadata["video_info"] is not None:
+                manifest_source["video_found"] = True
+                manifest_source["size"] = [file_metadata["video_info"]
+                                           ["width"], file_metadata["video_info"]["height"]]
+                manifest_source["fps"] = literal_eval(
+                    file_metadata["video_info"]["fps"])
+                manifest_source["duration"] = file_metadata["video_info"]["duration"]
+                manifest_source["nframes"] = file_metadata["video_info"]["nb_frames"]
+                if "rotation" in file_metadata["video_info"]["side_data_list"]:
+                    manifest_source["rotation"] = file_metadata["video_info"]["side_data_list"]["rotation"]
+
+            if file_metadata["audio_info"] is not None and file_metadata["audio_info"]["bits_per_sample"] > 0:
+                manifest.source_video.audio_found = True
+                manifest.source_video.audio_duration = file_metadata["audio_info"]["duration"]
+                manifest.source_video.audio_fps = literal_eval(
+                    file_metadata["audio_info"]["avg_frame_rate"])
 
             manifest.source_video = manifest.source_video.model_copy(
                 update=manifest_source

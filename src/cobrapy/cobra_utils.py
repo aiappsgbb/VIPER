@@ -66,10 +66,41 @@ def parse_transcript(
     return " ".join(words)
 
 
+def get_file_info(video_path):
+    cmd = [
+        "ffprobe",
+        "-i", video_path,
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        "-hide_banner",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(
+            f"Failed to get info for file {video_path}\n"
+            f"{e.stderr}", end='', flush=True)
+        return None
+
+    file_info = {}
+
+    for stream in result.stdout["streams"]:
+        if stream["codec_type"] == "video":
+            file_info["video_info"] = stream
+        if stream["codec_type"] == "audio":
+            file_info["audio_info"] = stream
+
+    return file_info
+
+
 def segment_and_extract(
     start_time, end_time, input_video_path, segment_path, frames_dir, fps
 ):
-    segment_video_path = os.path.join(segment_path, "segment.mp4")
+    segment_file_name = "segment.mp4"
+    segment_video_path = os.path.join(segment_path, segment_file_name)
     cmd_extract_segment = [
         "ffmpeg",
         "-ss",
@@ -148,9 +179,11 @@ def extract_audio_chunk(args):
 
 
 def parallelize_audio(extract_args_list, max_workers):
-    print(f"Extracting audio chunks in parallel using {max_workers} workers...")
+    print(
+        f"Extracting audio chunks in parallel using {max_workers} workers...")
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        extracted_chunks = list(executor.map(extract_audio_chunk, extract_args_list))
+        extracted_chunks = list(executor.map(
+            extract_audio_chunk, extract_args_list))
         return extracted_chunks
 
 
@@ -188,7 +221,8 @@ def validate_video_manifest(video_manifest: Union[str, VideoManifest]) -> VideoM
         # check to see if the path is valid
         if os.path.isfile(video_manifest):
             with open(video_manifest, "r", encoding="utf-8") as f:
-                video_manifest = VideoManifest.model_validate_json(json_data=f.read())
+                video_manifest = VideoManifest.model_validate_json(
+                    json_data=f.read())
             return video_manifest
         else:
             raise FileNotFoundError(
@@ -197,7 +231,8 @@ def validate_video_manifest(video_manifest: Union[str, VideoManifest]) -> VideoM
     elif isinstance(video_manifest, VideoManifest):
         return video_manifest
     else:
-        raise ValueError("video_manifest must be a string or a VideoManifest object")
+        raise ValueError(
+            "video_manifest must be a string or a VideoManifest object")
 
 
 def get_elapsed_time(start_time):

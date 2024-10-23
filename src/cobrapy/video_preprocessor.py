@@ -105,7 +105,8 @@ class VideoPreProcessor:
         print(f"({get_elapsed_time(start_time)}s) Generating segments...")
         self._generate_segments()
         if max_workers is None:
-            cpu_count = psutil.cpu_count(logical=False) or 1  # Number of physical cores
+            # Number of physical cores
+            cpu_count = psutil.cpu_count(logical=False) or 1
             memory = psutil.virtual_memory().total / (1024**3)  # Total memory in GB
             max_workers = min(cpu_count, int(memory // 2))
         else:
@@ -131,7 +132,8 @@ class VideoPreProcessor:
                 if segment.processed:
                     continue
                 futures.append(
-                    executor.submit(self._preprocess_segment, segment=segment, index=i)
+                    executor.submit(self._preprocess_segment,
+                                    segment=segment, index=i)
                 )
 
             # As tasks are completed, update the video manifest
@@ -151,7 +153,8 @@ class VideoPreProcessor:
                 print(
                     f"Segment {segment.segment_name}: Frame file paths and frame intervals do not match. Adjusting..."
                 )
-                min_list_length = min(len(frame_file_paths), len(frame_intervals))
+                min_list_length = min(
+                    len(frame_file_paths), len(frame_intervals))
                 segment.segment_frames_file_path = frame_file_paths[:min_list_length]
                 segment.segment_frame_time_intervals = frame_intervals[:min_list_length]
 
@@ -194,7 +197,8 @@ class VideoPreProcessor:
             # Determine how many frames should be in the segment and what time they would be at.
             segment_duration = end_time - start_time
 
-            number_of_frames_in_segment = math.ceil(segment_duration * analysis_fps)
+            number_of_frames_in_segment = math.ceil(
+                segment_duration * analysis_fps)
 
             segment_frames_times = np.linspace(
                 start_time, end_time, number_of_frames_in_segment, endpoint=False
@@ -253,7 +257,8 @@ class VideoPreProcessor:
 
             # Calculate frame times based on fps
             segment_duration = end_time - start_time
-            frame_times = [start_time + n / fps for n in range(number_of_frames)]
+            frame_times = [start_time + n /
+                           fps for n in range(number_of_frames)]
             frame_times = [round(t, 2) for t in frame_times]
 
             # Rename frames to match the original naming convention
@@ -300,7 +305,8 @@ class VideoPreProcessor:
             # For small audio files, process directly
             self.manifest.source_audio.path = audio_path
             self.manifest.source_audio.file_size_mb = audio_file_size_mb
-            transcript = generate_transcript(audio_file_path=audio_path, env=self.env)
+            transcript = generate_transcript(
+                audio_file_path=audio_path, env=self.env)
             self.manifest.audio_transcription = transcript
         else:
             # For large audio files, split into chunks and process in parallel
@@ -326,7 +332,8 @@ class VideoPreProcessor:
                     (self.manifest.source_video.path, start, end, audio_chunk_path)
                 )
             # Parallelize audio chunk extraction
-            extracted_chunks = parallelize_audio(extract_args_list, max_workers)
+            extracted_chunks = parallelize_audio(
+                extract_args_list, max_workers)
 
             # Prepare arguments for parallel transcription
             process_args_list = [
