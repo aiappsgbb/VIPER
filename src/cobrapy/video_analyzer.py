@@ -18,6 +18,10 @@ from .cobra_utils import (
 
 
 class VideoAnalyzer:
+    manifest: VideoManifest
+    env: CobraEnvironment
+    reprocess_segments: bool
+
     # take either a video manifest object or a path to a video manifest file
     def __init__(
         self, video_manifest: Union[str, VideoManifest], env: CobraEnvironment
@@ -32,8 +36,11 @@ class VideoAnalyzer:
         analysis_config: Type[AnalysisConfig],
         run_async=False,
         max_concurrent_tasks=None,
+        reprocess_segments=False,
         **kwargs,
     ):
+
+        self.reprocess_segments = reprocess_segments
 
         stopwatch_start_time = time.time()
 
@@ -148,8 +155,7 @@ class VideoAnalyzer:
         analysis_config: Type[AnalysisConfig],
     ):
         results_list = []
-        for i, segment in enumerate(self.manifest.segments):
-
+        for segment in self.manifest.segments:
             parsed_response = self._analyze_segment(
                 segment=segment, analysis_config=analysis_config
             )
@@ -162,10 +168,10 @@ class VideoAnalyzer:
         self, analysis_config: Type[SequentialAnalysisConfig]
     ):
         # if the analysis config is not a SequentialAnalysisConfig, raise an error
-        # if not isinstance(analysis_config, SequentialAnalysisConfig):
-        #     raise ValueError(
-        #         f"Sequential analysis can only be run with an obect that is a subclass of SequentialAnalysisConfig. You have provided an object of type {type(analysis_config)}"
-        #     )
+        if not isinstance(analysis_config, SequentialAnalysisConfig):
+            raise ValueError(
+                f"Sequential analysis can only be run with an obect that is a subclass of SequentialAnalysisConfig. You have provided an object of type {type(analysis_config)}"
+            )
 
         # Start the timer
         stopwatch_start_time = time.time()
@@ -174,17 +180,17 @@ class VideoAnalyzer:
 
         for i, segment in enumerate(self.manifest.segments):
             # check if the segment has already been analyzed, if so, skip it
-
-            ## This is being temporarily disabled to allow for re-analysis of segments. Needs to be updated to allow for a flag to re-analyze.
-            ## Would be good to allow for multiple analyses based on the same prepocessed data.
-
-            # if segment.analyzed_by_llm:
-            #     print(
-            #         f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
-            #     )
-            #     results_list.append(segment.analyzed_result)
-            # else:
-            #     print(f"Analyzing segment {segment.segment_name}")
+            if (
+                self.reprocess_segments is False
+                and analysis_config.name in segment.analysis_completed
+            ):
+                print(
+                    f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
+                )
+                results_list.append(segment.analyzed_result[analysis_config.name])
+                continue
+            else:
+                print(f"Analyzing segment {segment.segment_name}")
 
             messages = []
             number_of_previous_results_to_refine = (
@@ -299,8 +305,8 @@ class VideoAnalyzer:
             )
 
             # update the segment object with the analyzed results
-            segment.analyzed_result = parsed_response
-            segment.analyzed_by_llm = True
+            segment.analyzed_result[analysis_config.name] = parsed_response
+            segment.analysis_completed.append(analysis_config.name)
 
             # update the manifest on disk (allows for checkpointing)
             write_video_manifest(self.manifest)
@@ -326,7 +332,23 @@ class VideoAnalyzer:
             async with sempahore:
                 return await self._analyze_segment_async(segment, analysis_config)
 
-        segment_task_list = [sem_task(segment) for segment in self.manifest.segments]
+        async def return_value_task(segment):
+            return segment.analyzed_result[analysis_config.name]
+
+        segment_task_list = []
+
+        for segment in self.manifest.segments:
+            if (
+                self.reprocess_segments is False
+                and analysis_config.name in segment.analysis_completed
+            ):
+                print(
+                    f"Segment {segment.segment_name} has already been analyzed, loading the stored value."
+                )
+                segment_task_list.append(return_value_task(segment))
+                continue
+            else:
+                segment_task_list.append(sem_task(segment))
 
         results_list = await asyncio.gather(*segment_task_list)
 
@@ -350,8 +372,8 @@ class VideoAnalyzer:
 
         # parse the response and update the segment object
         parsed_response = self._parse_llm_json_response(response)
-        segment.analyzed_result = parsed_response
-        segment.analyzed_by_llm = True
+        segment.analyzed_result[analysis_config.name] = parsed_response
+        segment.analysis_completed.append(analysis_config.name)
 
         # write the raw response outputs
         llm_response_output_path = os.path.join(
@@ -392,8 +414,8 @@ class VideoAnalyzer:
 
         # parse the response and update the segment object
         parsed_response = self._parse_llm_json_response(response)
-        segment.analyzed_result = parsed_response
-        segment.analyzed_by_llm = True
+        segment.analyzed_result[analysis_config.name] = parsed_response
+        segment.analysis_completed.append(analysis_config.name)
 
         # write the raw response outputs
         llm_response_output_path = os.path.join(

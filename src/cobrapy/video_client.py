@@ -92,12 +92,14 @@ class VideoClient:
         analysis_config: Type[AnalysisConfig],
         run_async=False,
         max_concurrent_tasks=None,
+        reprocess_segments=False,
     ):
 
         analysis_result = self.analyzer.analyze_video(
             analysis_config=analysis_config,
             run_async=run_async,
             max_concurrent_tasks=max_concurrent_tasks,
+            reprocess_segments=reprocess_segments,
         )
 
         return analysis_result
