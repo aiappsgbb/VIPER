@@ -205,7 +205,8 @@ def parallelize_transcription(process_args_list):
 
 def process_chunk(args):
     audio_chunk_path, start_time = args
-    transcript = generate_transcript(audio_file_path=audio_chunk_path)
+    envs=CobraEnvironment()
+    transcript = generate_transcript(audio_file_path=audio_chunk_path,env=envs)
     # Adjust timestamps
     for word in transcript.words:
         word["start"] += start_time
