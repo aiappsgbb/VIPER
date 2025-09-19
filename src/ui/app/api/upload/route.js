@@ -10,6 +10,21 @@ import { randomUUID } from "crypto";
 import { extname } from "path";
 import { buildBackendUrl } from "@/lib/backend";
 
+class CobraUploadError extends Error {
+  constructor(message, options = {}) {
+    super(message);
+    this.name = "CobraUploadError";
+    this.endpoint = options.endpoint ?? null;
+    this.status = options.status ?? null;
+    this.statusText = options.statusText ?? null;
+    this.responseBody = options.responseBody ?? null;
+    this.details = options.details ?? null;
+    if (options.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
+
 let cachedBlobServiceClient = null;
 
 function getAccountUrl() {
@@ -67,16 +82,35 @@ async function uploadToCobra(buffer, fileName, mimeType) {
   formData.append("file", blob, fileName);
   formData.append("upload_to_azure", "true");
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    body: formData,
-  });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    const cause = error instanceof Error ? error : new Error(String(error));
+    throw new CobraUploadError("Failed to reach CobraPy upload endpoint.", {
+      endpoint,
+      cause,
+      details: { message: cause.message },
+    });
+  }
+
+  let rawBody = null;
+  try {
+    rawBody = await response.text();
+  } catch (error) {
+    rawBody = null;
+  }
 
   let data = null;
-  try {
-    data = await response.json();
-  } catch (error) {
-    // ignore body parsing errors so we can surface a generic message below
+  if (rawBody && rawBody.length) {
+    try {
+      data = JSON.parse(rawBody);
+    } catch (error) {
+      data = null;
+    }
   }
 
   if (!response.ok) {
@@ -84,8 +118,26 @@ async function uploadToCobra(buffer, fileName, mimeType) {
       data?.detail ||
       data?.error ||
       data?.message ||
+      (typeof rawBody === "string" && rawBody.length ? rawBody : null) ||
       "Video upload service returned an unexpected error.";
-    throw new Error(message);
+    throw new CobraUploadError(message, {
+      endpoint,
+      status: response.status,
+      statusText: response.statusText,
+      responseBody: data ?? rawBody,
+    });
+  }
+
+  if (!data) {
+    throw new CobraUploadError(
+      "Video upload service returned an unexpected response body.",
+      {
+        endpoint,
+        status: response.status,
+        statusText: response.statusText,
+        responseBody: rawBody,
+      },
+    );
   }
 
   return data;
@@ -160,7 +212,38 @@ export async function POST(request) {
   try {
     cobraUpload = await uploadToCobra(buffer, originalFilename, mimeType);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 502 });
+    if (error instanceof CobraUploadError) {
+      console.error("[upload] Cobra upload failed", {
+        endpoint: error.endpoint,
+        status: error.status,
+        statusText: error.statusText,
+        responseBody: error.responseBody,
+        details: error.details,
+        cause: error.cause instanceof Error ? error.cause.stack ?? error.cause.message : error.cause,
+      });
+
+      const status = error.status && error.status >= 400 ? error.status : 502;
+      return NextResponse.json(
+        {
+          error: error.message,
+          cobraEndpoint: error.endpoint,
+          cobraStatus: error.status,
+          cobraStatusText: error.statusText,
+          cobraResponse: error.responseBody ?? null,
+          details: error.details ?? null,
+        },
+        { status },
+      );
+    }
+
+    console.error("[upload] Unexpected error contacting Cobra", error);
+    return NextResponse.json(
+      {
+        error: "Failed to upload video due to an unexpected error.",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 502 },
+    );
   }
 
   const localVideoPath = cobraUpload?.local_path;
