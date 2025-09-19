@@ -3,6 +3,8 @@ import { BlobServiceClient } from "@azure/storage-blob";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { canUploadContent } from "@/lib/rbac";
+import { buildCollectionAccessWhere } from "@/lib/access";
 import { randomUUID } from "crypto";
 import { extname } from "path";
 
@@ -94,7 +96,7 @@ function buildProcessingMetadata({ localPath, storageUrl }) {
 export async function POST(request) {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !canUploadContent(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -113,14 +115,7 @@ export async function POST(request) {
   }
 
   const collection = await prisma.collection.findFirst({
-    where: {
-      id: collectionId,
-      memberships: {
-        some: {
-          userId: session.user.id,
-        },
-      },
-    },
+    where: buildCollectionAccessWhere(session.user, collectionId),
     include: {
       organization: true,
     },

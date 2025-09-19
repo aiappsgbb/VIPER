@@ -8,8 +8,11 @@ datasource db {
 }
 
 enum Role {
-  MEMBER
   ADMIN
+  SUPER_USER
+  ORGANIZATION_ADMIN
+  COLLECTION_ADMIN
+  USER
 }
 
 enum MembershipRole {
@@ -31,7 +34,7 @@ model User {
   email         String                   @unique
   name          String?
   password      String?
-  role          Role                     @default(MEMBER)
+  role          Role                     @default(USER)
   organizations OrganizationMembership[]
   collections   CollectionMembership[]
   contents      Content[]                @relation("UploaderContent")
@@ -116,7 +119,7 @@ model ApprovedEmail {
   email          String   @unique
   organizationId String?  @db.Uuid
   collectionIds  String[]
-  role           Role     @default(MEMBER)
+  role           Role     @default(USER)
   createdAt      DateTime @default(now())
 
   organization Organization? @relation(fields: [organizationId], references: [id])

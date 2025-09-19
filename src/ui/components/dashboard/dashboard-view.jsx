@@ -388,7 +388,13 @@ function summarizeArtifacts(artifacts) {
   return String(artifacts);
 }
 
-export default function DashboardView({ collections, selectedContent }) {
+export default function DashboardView({
+  collections,
+  selectedContent,
+  managementOrganizations,
+  canManageCollections,
+  canCreateCollections,
+}) {
   const router = useRouter();
   const playerRef = useRef(null);
   const [activeCollectionId, setActiveCollectionId] = useState(
@@ -397,8 +403,9 @@ export default function DashboardView({ collections, selectedContent }) {
   const [activeOrganizationId, setActiveOrganizationId] = useState(
     selectedContent?.organization?.id ?? collections[0]?.organization?.id ?? null,
   );
-  const [activeContentFilterId, setActiveContentFilterId] = useState(selectedContent?.id ?? "");
+  const [activeContentFilterId, setActiveContentFilterId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState("");
@@ -496,7 +503,7 @@ export default function DashboardView({ collections, selectedContent }) {
     setIsRunningChapterAnalysis(false);
     setActionSummaryData(selectedContent?.processingMetadata?.cobra?.actionSummary ?? null);
     setChapterAnalysisData(selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null);
-    setActiveContentFilterId(selectedContent?.id ?? "");
+    setActiveContentFilterId("");
 
     if (selectedContent?.collection?.id && selectedContent.collection.id !== activeCollectionId) {
       setActiveCollectionId(selectedContent.collection.id);
@@ -537,7 +544,7 @@ export default function DashboardView({ collections, selectedContent }) {
 
     const hasVideo = collection.contents.some((content) => content.id === activeContentFilterId);
     if (!hasVideo) {
-      setActiveContentFilterId(collection.contents[0]?.id ?? "");
+      setActiveContentFilterId("");
     }
   }, [activeCollectionId, activeContentFilterId, collections]);
 
@@ -637,24 +644,28 @@ export default function DashboardView({ collections, selectedContent }) {
     [chapterAnalysisData?.filters, organizationLookup, collectionLookup, contentLookup],
   );
 
-  const handleSearch = async (event) => {
-    event.preventDefault();
-    if (!searchQuery) {
+  const executeSearch = async ({ query, organizationId, collectionId, contentId }) => {
+    const trimmedQuery = (query ?? "").toString().trim();
+
+    if (!trimmedQuery) {
+      setSearchError("Enter a question to search.");
       return;
     }
 
     setIsSearching(true);
     setSearchError("");
+    setSearchQuery(trimmedQuery);
+    setCollectionSearchQuery(trimmedQuery);
 
     try {
       const response = await fetch("/api/cog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          query: searchQuery,
-          organizationId: activeOrganizationId || null,
-          collectionId: activeCollectionId || null,
-          contentId: activeContentFilterId || null,
+          query: trimmedQuery,
+          organizationId: organizationId || null,
+          collectionId: collectionId || null,
+          contentId: contentId || null,
         }),
       });
 
@@ -669,6 +680,34 @@ export default function DashboardView({ collections, selectedContent }) {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleSearch = async (event) => {
+    event.preventDefault();
+    await executeSearch({
+      query: searchQuery,
+      organizationId: activeOrganizationId || null,
+      collectionId: activeCollectionId || null,
+      contentId: activeContentFilterId || null,
+    });
+  };
+
+  const handleQuickCollectionSearch = async (event) => {
+    event.preventDefault();
+
+    if (!activeCollectionId) {
+      setSearchError("Select a collection before searching.");
+      return;
+    }
+
+    setActiveContentFilterId("");
+
+    await executeSearch({
+      query: collectionSearchQuery,
+      organizationId: activeOrganizationId || null,
+      collectionId: activeCollectionId,
+      contentId: null,
+    });
   };
 
   const handleSeekToTimestamp = (timestamp) => {
@@ -686,7 +725,7 @@ export default function DashboardView({ collections, selectedContent }) {
       const firstContent = collection?.contents?.[0] ?? null;
 
       setActiveCollectionId(collection?.id ?? null);
-      setActiveContentFilterId(firstContent?.id ?? "");
+      setActiveContentFilterId("");
 
       if (firstContent && firstContent.id !== selectedContent?.id) {
         router.push(`/dashboard?contentId=${firstContent.id}`);
@@ -700,12 +739,11 @@ export default function DashboardView({ collections, selectedContent }) {
   const handleCollectionChange = (event) => {
     const collectionId = event.target.value || null;
     setActiveCollectionId(collectionId);
+    setActiveContentFilterId("");
 
     if (collectionId) {
       const collection = collections.find((item) => item.id === collectionId);
       const firstContent = collection?.contents?.[0] ?? null;
-
-      setActiveContentFilterId(firstContent?.id ?? "");
 
       if (firstContent && firstContent.id !== selectedContent?.id) {
         router.push(`/dashboard?contentId=${firstContent.id}`);
@@ -1364,7 +1402,46 @@ export default function DashboardView({ collections, selectedContent }) {
         </div>
 
         <div className="space-y-6">
-          <VideoUploadPanel collections={collections} defaultCollectionId={activeCollectionId} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Search this collection</CardTitle>
+              <CardDescription>
+                Ask a question to search every video in the selected collection. Results appear in the AI search panel.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleQuickCollectionSearch}>
+                <Input
+                  onChange={(event) => setCollectionSearchQuery(event.target.value)}
+                  placeholder="Ask about this collection"
+                  value={collectionSearchQuery}
+                />
+                <Button
+                  className="sm:self-start"
+                  disabled={
+                    isSearching ||
+                    !collectionSearchQuery.trim() ||
+                    !activeCollectionId
+                  }
+                  type="submit"
+                >
+                  {isSearching ? "Searching…" : "Search collection"}
+                </Button>
+              </form>
+              {!activeCollectionId ? (
+                <p className="text-xs text-slate-500">
+                  Select a collection from the sidebar to search across its videos.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+          <VideoUploadPanel
+            canCreateCollections={canCreateCollections}
+            canManageCollections={canManageCollections}
+            collections={collections}
+            defaultCollectionId={activeCollectionId}
+            managementOrganizations={managementOrganizations}
+          />
           <Card>
             <CardHeader>
               <CardTitle>Collection videos</CardTitle>

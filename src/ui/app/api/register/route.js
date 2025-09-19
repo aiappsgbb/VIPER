@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import prisma from "@/lib/prisma";
+import { Roles } from "@/lib/rbac";
 import { z } from "zod";
 
 const registerSchema = z.object({
@@ -58,33 +59,49 @@ export async function POST(request) {
 
   const hashedPassword = await hash(password, 10);
 
+  const assignedRole = isSpecialAdminEmail
+    ? Roles.ADMIN
+    : approval?.role ?? Roles.USER;
+
   const user = await prisma.user.create({
     data: {
       email,
       name,
       password: hashedPassword,
-      role: isSpecialAdminEmail ? "ADMIN" : approval?.role ?? "MEMBER",
+      role: assignedRole,
     },
   });
 
   if (approval?.organizationId) {
+    const organizationRole =
+      assignedRole === Roles.ADMIN
+        ? "OWNER"
+        : assignedRole === Roles.ORGANIZATION_ADMIN
+          ? "ADMIN"
+          : "VIEWER";
     await prisma.organizationMembership.create({
       data: {
         organizationId: approval.organizationId,
         userId: user.id,
-        role: "VIEWER",
+        role: organizationRole,
       },
     });
   }
 
   if (approval?.collectionIds?.length) {
+    const collectionRole =
+      assignedRole === Roles.ADMIN
+        ? "OWNER"
+        : assignedRole === Roles.ORGANIZATION_ADMIN || assignedRole === Roles.COLLECTION_ADMIN
+          ? "ADMIN"
+          : "VIEWER";
     await Promise.all(
       approval.collectionIds.map((collectionId) =>
         prisma.collectionMembership.create({
           data: {
             collectionId,
             userId: user.id,
-            role: "VIEWER",
+            role: collectionRole,
           },
         }),
       ),
