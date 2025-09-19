@@ -10,6 +10,94 @@ import { randomUUID } from "crypto";
 import { extname } from "path";
 import { buildBackendUrl } from "@/lib/backend";
 
+function sanitizeUploadMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const sanitized = {};
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      sanitized[key] = value;
+      continue;
+    }
+
+    if (value instanceof Date) {
+      sanitized[key] = value.toISOString();
+      continue;
+    }
+
+    try {
+      const normalized = JSON.parse(JSON.stringify(value));
+      if (normalized !== undefined) {
+        sanitized[key] = normalized;
+      }
+    } catch (error) {
+      // Ignore non-serializable metadata entries.
+    }
+  }
+
+  return Object.keys(sanitized).length ? sanitized : null;
+}
+
+function buildUploaderDisplayName(session) {
+  if (session?.user?.name && session.user.name.trim().length) {
+    return session.user.name.trim();
+  }
+
+  if (session?.user?.email && session.user.email.trim().length) {
+    return session.user.email.trim();
+  }
+
+  return null;
+}
+
+function buildCobraUploadMetadata({
+  session,
+  collection,
+  title,
+  description,
+  fileName,
+}) {
+  const uploadMetadata = {
+    metadata_version: 1,
+    organization: collection?.organizationId ?? null,
+    organization_name: collection?.organization?.name ?? null,
+    collection: collection?.id ?? null,
+    collection_name: collection?.name ?? null,
+    user: session?.user?.id ?? null,
+    user_name: buildUploaderDisplayName(session),
+    video_title: title && title.trim().length ? title.trim() : fileName ?? null,
+    video_description:
+      description && description.trim().length ? description.trim() : null,
+    video_url: null,
+    output_directory: null,
+    segment_length: 10,
+    fps: 0.33,
+    max_workers: null,
+    run_async: true,
+    overwrite_output: false,
+    reprocess_segments: false,
+    generate_transcripts: true,
+    trim_to_nearest_second: false,
+    allow_partial_segments: true,
+    upload_to_azure: true,
+    skip_preprocess: false,
+  };
+
+  return sanitizeUploadMetadata(uploadMetadata);
+}
+
 class CobraUploadError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -75,18 +163,26 @@ function resolveCobraUploadEndpoint() {
   return buildBackendUrl("/videos/upload");
 }
 
-async function uploadToCobra(buffer, fileName, mimeType) {
+async function uploadToCobra(buffer, fileName, mimeType, options = {}) {
   const endpoint = resolveCobraUploadEndpoint();
   const formData = new FormData();
   const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
   formData.append("file", blob, fileName);
-  formData.append("upload_to_azure", "true");
+  const shouldUploadToAzure =
+    typeof options.uploadToAzure === "boolean" ? options.uploadToAzure : true;
+  formData.append("upload_to_azure", shouldUploadToAzure ? "true" : "false");
+
+  const metadataPayload = sanitizeUploadMetadata(options.metadata);
+  if (metadataPayload) {
+    formData.append("metadata", JSON.stringify(metadataPayload));
+  }
 
   let response;
   try {
     response = await fetch(endpoint, {
       method: "POST",
       body: formData,
+      duplex: "half",
     });
   } catch (error) {
     const cause = error instanceof Error ? error : new Error(String(error));
@@ -160,7 +256,7 @@ async function uploadToAzureStorage(buffer, fileName, mimeType) {
   return `${containerClient.url}/${blobName}`;
 }
 
-function buildProcessingMetadata({ localPath, storageUrl }) {
+function buildProcessingMetadata({ localPath, storageUrl, uploadMetadata }) {
   const metadata = {
     cobra: {
       localVideoPath: localPath,
@@ -168,6 +264,11 @@ function buildProcessingMetadata({ localPath, storageUrl }) {
       uploadedAt: new Date().toISOString(),
     },
   };
+
+  const sanitized = sanitizeUploadMetadata(uploadMetadata);
+  if (sanitized) {
+    metadata.cobra.uploadMetadata = sanitized;
+  }
 
   return metadata;
 }
@@ -207,10 +308,22 @@ export async function POST(request) {
   const originalFilename = file.name || "video.mp4";
   const mimeType = file.type || "video/mp4";
   const buffer = Buffer.from(await file.arrayBuffer());
+  const cobraUploadMetadata = buildCobraUploadMetadata({
+    session,
+    collection,
+    title,
+    description,
+    fileName: originalFilename,
+  });
+  const shouldUploadToAzure =
+    cobraUploadMetadata?.upload_to_azure !== false && cobraUploadMetadata?.upload_to_azure !== "false";
 
   let cobraUpload;
   try {
-    cobraUpload = await uploadToCobra(buffer, originalFilename, mimeType);
+    cobraUpload = await uploadToCobra(buffer, originalFilename, mimeType, {
+      metadata: cobraUploadMetadata,
+      uploadToAzure: shouldUploadToAzure,
+    });
   } catch (error) {
     if (error instanceof CobraUploadError) {
       console.error("[upload] Cobra upload failed", {
@@ -256,7 +369,7 @@ export async function POST(request) {
     );
   }
 
-  if (!storageUrl) {
+  if (!storageUrl && shouldUploadToAzure) {
     try {
       storageUrl = await uploadToAzureStorage(buffer, originalFilename, mimeType);
     } catch (error) {
@@ -273,6 +386,11 @@ export async function POST(request) {
   const processingMetadata = buildProcessingMetadata({
     localPath: localVideoPath,
     storageUrl,
+    uploadMetadata: sanitizeUploadMetadata({
+      ...(cobraUploadMetadata || {}),
+      upload_to_azure: shouldUploadToAzure,
+      video_url: storageUrl ?? null,
+    }),
   });
 
   const content = await prisma.content.create({
