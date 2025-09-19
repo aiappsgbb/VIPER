@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -63,6 +63,10 @@ class BaseAnalysisRequest(BaseModel):
         default=None,
         description="Optional URL where the processed video can be streamed.",
     )
+    analysis_template: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description="Custom template describing the JSON fields for action summary analyses.",
+    )
 
     @model_validator(mode="after")
     def validate_source(cls, values: "BaseAnalysisRequest") -> "BaseAnalysisRequest":
@@ -102,6 +106,7 @@ def _analysis_response(
     analysis_name: str,
     result: Any,
     metadata: Optional[Dict[str, Any]] = None,
+    analysis_template: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     response: Dict[str, Any] = {
         "analysis": analysis_name,
@@ -113,6 +118,8 @@ def _analysis_response(
     }
     if metadata is not None:
         response["metadata"] = metadata
+    if analysis_template is not None:
+        response["analysis_template"] = analysis_template
     return response
 
 
@@ -167,8 +174,14 @@ def run_action_summary(request: BaseAnalysisRequest):
             "source": "cobrapy",
         }
 
+        analysis_config = (
+            ActionSummary(results_template=request.analysis_template)
+            if request.analysis_template
+            else ActionSummary()
+        )
+
         result = client.analyze_video(
-            analysis_config=ActionSummary(),
+            analysis_config=analysis_config,
             run_async=request.run_async,
             max_concurrent_tasks=request.max_workers,
             reprocess_segments=request.reprocess_segments,
@@ -180,6 +193,7 @@ def run_action_summary(request: BaseAnalysisRequest):
                 "ActionSummary",
                 result,
                 metadata=metadata,
+                analysis_template=analysis_config.results_template,
             ),
             status_code=200,
         )

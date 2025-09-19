@@ -5,8 +5,19 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Trash2 } from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
@@ -74,6 +85,105 @@ function extractNumericSeconds(value) {
 
   const numericValue = Number.parseFloat(match[0]);
   return Number.isNaN(numericValue) ? null : numericValue;
+}
+
+const DEFAULT_ACTION_SUMMARY_FIELDS = [
+  {
+    name: "start_timestamp",
+    description: "Timestamp when the scene begins in seconds (for example, 4.97s).",
+  },
+  {
+    name: "end_timestamp",
+    description: "Timestamp when the scene ends in seconds (for example, 16s).",
+  },
+  {
+    name: "sentiment",
+    description: "Overall sentiment for the scene (Positive, Negative, or Neutral).",
+  },
+  {
+    name: "scene_theme",
+    description: "Theme or tone for the scene (for example, Dramatic or Heartfelt).",
+  },
+  {
+    name: "characters",
+    description:
+      "Key characters involved in the scene with identifying details. For sports, include every player involved.",
+  },
+  {
+    name: "summary",
+    description:
+      "Detailed summary of the scene that combines the transcript and frames to describe what is happening.",
+  },
+  {
+    name: "actions",
+    description: "Specific actions taken by each subject or team within the scene.",
+  },
+  {
+    name: "key_objects",
+    description:
+      "Important objects that appear in the scene, including colors and descriptive details when available.",
+  },
+];
+
+function mapTemplateToFields(template) {
+  if (!Array.isArray(template)) {
+    return DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field }));
+  }
+
+  const firstEntry = template.find((item) => item && typeof item === "object");
+  if (!firstEntry) {
+    return DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field }));
+  }
+
+  const entries = Object.entries(firstEntry);
+  if (entries.length === 0) {
+    return DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field }));
+  }
+
+  return entries.map(([name, description]) => ({
+    name,
+    description: typeof description === "string" ? description : "",
+  }));
+}
+
+function sanitizeActionSummaryFields(fields) {
+  const seenNames = new Set();
+  const sanitized = [];
+
+  fields.forEach((field) => {
+    const trimmedName = (field?.name ?? "").trim();
+    if (!trimmedName || seenNames.has(trimmedName)) {
+      return;
+    }
+
+    seenNames.add(trimmedName);
+    sanitized.push({
+      name: trimmedName,
+      description: (field?.description ?? "").trim(),
+    });
+  });
+
+  if (sanitized.length === 0) {
+    return DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field }));
+  }
+
+  return sanitized;
+}
+
+function buildTemplateFromFields(fields) {
+  const entry = {};
+  fields.forEach((field) => {
+    if (!field?.name) {
+      return;
+    }
+    entry[field.name] = field.description ?? "";
+  });
+
+  if (Object.keys(entry).length === 0) {
+    return [];
+  }
+
+  return [entry, { ...entry }];
 }
 
 function normalizeActionSummaryEntry(entry, index) {
@@ -301,9 +411,16 @@ export default function DashboardView({ collections, selectedContent }) {
   const [actionSummaryData, setActionSummaryData] = useState(
     selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
   );
+  const [actionSummaryFields, setActionSummaryFields] = useState(() =>
+    mapTemplateToFields(
+      selectedContent?.processingMetadata?.cobra?.actionSummary?.analysisTemplate ??
+        null,
+    ),
+  );
   const [chapterAnalysisData, setChapterAnalysisData] = useState(
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
   );
+  const [isFieldBuilderOpen, setIsFieldBuilderOpen] = useState(false);
 
   const organizationLookup = useMemo(() => {
     const map = new Map();
@@ -349,6 +466,12 @@ export default function DashboardView({ collections, selectedContent }) {
     () => safeParseJson(chapterAnalysisData?.analysis),
     [chapterAnalysisData],
   );
+
+  useEffect(() => {
+    setActionSummaryFields(
+      mapTemplateToFields(actionSummaryData?.analysisTemplate ?? null),
+    );
+  }, [actionSummaryData?.analysisTemplate]);
 
   const actionSummaryEntries = useMemo(
     () => normalizeActionSummaryEntries(actionSummaryAnalysis),
@@ -597,6 +720,37 @@ export default function DashboardView({ collections, selectedContent }) {
     router.push(`/dashboard?contentId=${contentId}`);
   };
 
+  const handleAddActionSummaryField = () => {
+    setActionSummaryFields((current) => [...current, { name: "", description: "" }]);
+  };
+
+  const handleRemoveActionSummaryField = (index) => {
+    setActionSummaryFields((current) => current.filter((_, fieldIndex) => fieldIndex !== index));
+  };
+
+  const handleUpdateActionSummaryField = (index, key, value) => {
+    setActionSummaryFields((current) =>
+      current.map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, [key]: value } : field,
+      ),
+    );
+  };
+
+  const handleResetActionSummaryFields = () => {
+    setActionSummaryFields(DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field })));
+  };
+
+  const handleFieldBuilderOpenChange = (nextOpen) => {
+    setIsFieldBuilderOpen(nextOpen);
+    if (!nextOpen) {
+      setActionSummaryFields((current) => sanitizeActionSummaryFields(current));
+    }
+  };
+
+  const handleSaveActionSummaryFields = () => {
+    handleFieldBuilderOpenChange(false);
+  };
+
   const handleRunActionSummary = async () => {
     if (!selectedContent?.id) {
       return;
@@ -607,8 +761,17 @@ export default function DashboardView({ collections, selectedContent }) {
     setIsRunningActionSummary(true);
 
     try {
+      const sanitizedFields = sanitizeActionSummaryFields(actionSummaryFields);
+      setActionSummaryFields(sanitizedFields);
+      const template = buildTemplateFromFields(sanitizedFields);
+      if (template.length === 0) {
+        throw new Error("Add at least one field before running the action summary.");
+      }
+
       const response = await fetch(`/api/content/${selectedContent.id}/action-summary`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisTemplate: template }),
       });
       const data = await response.json().catch(() => ({}));
 
@@ -624,6 +787,8 @@ export default function DashboardView({ collections, selectedContent }) {
         analysisOutputPath: data?.analysisOutputPath ?? previous?.analysisOutputPath ?? null,
         storageArtifacts: data?.storageArtifacts ?? previous?.storageArtifacts ?? null,
         searchUploads: data?.searchUploads ?? previous?.searchUploads ?? [],
+        analysisTemplate:
+          data?.analysisTemplate ?? template ?? previous?.analysisTemplate ?? null,
         filters:
           data?.filters ??
           previous?.filters ?? {
@@ -632,6 +797,7 @@ export default function DashboardView({ collections, selectedContent }) {
             contentId: selectedContent.id,
           },
       }));
+      setActionSummaryFields(mapTemplateToFields(data?.analysisTemplate ?? template));
       router.refresh();
     } catch (error) {
       setActionSummaryError(error.message ?? "Action summary failed");
@@ -768,6 +934,115 @@ export default function DashboardView({ collections, selectedContent }) {
                       <p className="text-xs text-slate-500">
                         Creates scene-level recaps and uploads them to AI search for semantic discovery.
                       </p>
+                      <Dialog
+                        onOpenChange={handleFieldBuilderOpenChange}
+                        open={isFieldBuilderOpen}
+                      >
+                        <div className="space-y-2 rounded-md border border-slate-200 bg-white/60 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-600">Fields to capture</p>
+                            <DialogTrigger asChild>
+                              <Button size="sm" type="button" variant="outline">
+                                Configure fields
+                              </Button>
+                            </DialogTrigger>
+                          </div>
+                          {actionSummaryFields.length ? (
+                            <ul className="space-y-1 text-xs leading-snug text-slate-500">
+                              {actionSummaryFields.map((field, index) => (
+                                <li key={field.name || `field-${index}`}>
+                                  <span className="font-medium text-slate-700">
+                                    {field.name || `Field ${index + 1}`}
+                                  </span>
+                                  {field.description ? (
+                                    <span className="block text-slate-500">{field.description}</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-slate-500">No fields configured.</p>
+                          )}
+                        </div>
+                        <DialogContent className="max-w-2xl space-y-4">
+                          <DialogHeader>
+                            <DialogTitle>Configure action summary fields</DialogTitle>
+                            <DialogDescription>
+                              Define the JSON fields the analysis should populate for each scene. Field names become the keys in
+                              the output.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3">
+                            {actionSummaryFields.map((field, index) => (
+                              <div
+                                className="space-y-3 rounded-md border border-slate-200 bg-white p-3"
+                                key={`${field.name || "field"}-${index}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-1 space-y-2">
+                                    <label className="text-xs font-medium text-slate-600">
+                                      Field name
+                                      <Input
+                                        className="mt-1"
+                                        onChange={(event) =>
+                                          handleUpdateActionSummaryField(index, "name", event.target.value)
+                                        }
+                                        placeholder="e.g. summary"
+                                        value={field.name}
+                                      />
+                                    </label>
+                                  </div>
+                                  <Button
+                                    className="mt-6"
+                                    onClick={() => handleRemoveActionSummaryField(index)}
+                                    size="icon"
+                                    type="button"
+                                    variant="ghost"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Remove field</span>
+                                  </Button>
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Field description
+                                    <Textarea
+                                      className="mt-1"
+                                      onChange={(event) =>
+                                        handleUpdateActionSummaryField(index, "description", event.target.value)
+                                      }
+                                      placeholder="Explain what the model should capture in this field."
+                                      rows={3}
+                                      value={field.description}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Button
+                              onClick={handleResetActionSummaryFields}
+                              type="button"
+                              variant="ghost"
+                            >
+                              Reset to default
+                            </Button>
+                            <Button
+                              onClick={handleAddActionSummaryField}
+                              type="button"
+                              variant="secondary"
+                            >
+                              <Plus className="mr-2 h-4 w-4" /> Add field
+                            </Button>
+                          </div>
+                          <DialogFooter>
+                            <Button onClick={handleSaveActionSummaryFields} type="button">
+                              Save fields
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                       {actionSummaryMessage ? (
                         <p className="text-xs text-emerald-600">{actionSummaryMessage}</p>
                       ) : null}
