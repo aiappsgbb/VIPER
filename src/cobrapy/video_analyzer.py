@@ -536,14 +536,16 @@ class VideoAnalyzer:
         return messages
 
     def _call_llm(self, messages_list: list):
+        vision_config = self.env.require_vision()
+
         client = AzureOpenAI(
-            api_key=self.env.vision.api_key.get_secret_value(),
-            api_version=self.env.vision.api_version,
-            azure_endpoint=self.env.vision.endpoint,
+            api_key=vision_config.api_key.get_secret_value(),
+            api_version=vision_config.api_version,
+            azure_endpoint=vision_config.endpoint,
         )
 
         response = client.chat.completions.create(
-            model=self.env.vision.deployment,
+            model=vision_config.deployment,
             messages=messages_list,
             max_tokens=2000,
         )
@@ -551,14 +553,16 @@ class VideoAnalyzer:
         return response
 
     async def _call_llm_async(self, messages_list: list):
+        vision_config = self.env.require_vision()
+
         client = AsyncAzureOpenAI(
-            api_key=self.env.vision.api_key.get_secret_value(),
-            api_version=self.env.vision.api_version,
-            azure_endpoint=self.env.vision.endpoint,
+            api_key=vision_config.api_key.get_secret_value(),
+            api_version=vision_config.api_version,
+            azure_endpoint=vision_config.endpoint,
         )
 
         response = await client.chat.completions.create(
-            model=self.env.vision.deployment,
+            model=vision_config.deployment,
             messages=messages_list,
             max_tokens=2000,
         )
