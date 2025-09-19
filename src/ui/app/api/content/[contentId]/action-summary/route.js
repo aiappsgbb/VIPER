@@ -38,6 +38,56 @@ function buildDisplayName(session, content) {
   );
 }
 
+function coercePositiveInteger(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const intValue = Math.floor(value);
+    return intValue > 0 ? intValue : null;
+  }
+
+  if (typeof value === "string" && value.trim().length) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) || parsed <= 0 ? null : parsed;
+  }
+
+  return null;
+}
+
+function coercePositiveNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 ? value : null;
+  }
+
+  if (typeof value === "string" && value.trim().length) {
+    const parsed = Number.parseFloat(value);
+    return Number.isNaN(parsed) || parsed <= 0 ? null : parsed;
+  }
+
+  return null;
+}
+
+function coerceBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return null;
+}
+
 function normalizeAnalysisTemplate(template) {
   if (!Array.isArray(template)) {
     return null;
@@ -93,6 +143,102 @@ function buildRequestPayload({ content, session, cobraMeta, analysisTemplate }) 
     video_id: content.id,
     video_url: content.videoUrl,
   };
+
+  const uploadMetadata =
+    (typeof cobraMeta.uploadMetadata === "object" && cobraMeta.uploadMetadata !== null
+      ? cobraMeta.uploadMetadata
+      : null) || {};
+
+  const segmentLength = coercePositiveInteger(uploadMetadata.segment_length);
+  if (segmentLength != null) {
+    payload.segment_length = segmentLength;
+  }
+
+  const fps = coercePositiveNumber(uploadMetadata.fps);
+  if (fps != null) {
+    payload.fps = fps;
+  }
+
+  const maxWorkers = coercePositiveInteger(uploadMetadata.max_workers);
+  if (maxWorkers != null) {
+    payload.max_workers = maxWorkers;
+  }
+
+  const runAsync = coerceBoolean(uploadMetadata.run_async);
+  if (runAsync != null) {
+    payload.run_async = runAsync;
+  }
+
+  const overwriteOutput = coerceBoolean(uploadMetadata.overwrite_output);
+  if (overwriteOutput != null) {
+    payload.overwrite_output = overwriteOutput;
+  }
+
+  const reprocessSegments = coerceBoolean(uploadMetadata.reprocess_segments);
+  if (reprocessSegments != null) {
+    payload.reprocess_segments = reprocessSegments;
+  }
+
+  const generateTranscripts = coerceBoolean(uploadMetadata.generate_transcripts);
+  if (generateTranscripts != null) {
+    payload.generate_transcripts = generateTranscripts;
+  }
+
+  const trimToNearestSecond = coerceBoolean(uploadMetadata.trim_to_nearest_second);
+  if (trimToNearestSecond != null) {
+    payload.trim_to_nearest_second = trimToNearestSecond;
+  }
+
+  const allowPartialSegments = coerceBoolean(uploadMetadata.allow_partial_segments);
+  if (allowPartialSegments != null) {
+    payload.allow_partial_segments = allowPartialSegments;
+  }
+
+  const uploadToAzure = coerceBoolean(uploadMetadata.upload_to_azure);
+  if (uploadToAzure != null) {
+    payload.upload_to_azure = uploadToAzure;
+  }
+
+  const outputDirectory = uploadMetadata.output_directory;
+  if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
+    payload.output_directory = outputDirectory.trim();
+  }
+
+  if (payload.segment_length == null) {
+    payload.segment_length = 10;
+  }
+
+  if (payload.fps == null) {
+    payload.fps = 0.33;
+  }
+
+  if (typeof payload.generate_transcripts !== "boolean") {
+    payload.generate_transcripts = true;
+  }
+
+  if (typeof payload.trim_to_nearest_second !== "boolean") {
+    payload.trim_to_nearest_second = false;
+  }
+
+  if (typeof payload.allow_partial_segments !== "boolean") {
+    payload.allow_partial_segments = true;
+  }
+
+  if (typeof payload.overwrite_output !== "boolean") {
+    payload.overwrite_output = false;
+  }
+
+  if (typeof payload.reprocess_segments !== "boolean") {
+    payload.reprocess_segments = false;
+  }
+
+  if (typeof payload.run_async !== "boolean") {
+    payload.run_async = true;
+  }
+
+  if (typeof payload.upload_to_azure !== "boolean") {
+    payload.upload_to_azure = true;
+  }
 
   if (cobraMeta.manifestPath) {
     payload.skip_preprocess = true;
