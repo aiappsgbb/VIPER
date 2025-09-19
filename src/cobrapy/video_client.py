@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Type, Union
 from ast import literal_eval
 from dotenv import load_dotenv
-from cobra_utils import get_file_info
+from .cobra_utils import get_file_info
 
 from .video_preprocessor import VideoPreProcessor
 from .video_analyzer import VideoAnalyzer
