@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -27,7 +27,7 @@ enum JobStatus {
 }
 
 model User {
-  id            String                   @id @default(auto()) @map("_id") @db.ObjectId
+  id            String                   @id @default(uuid()) @db.Uuid
   email         String                   @unique
   name          String?
   password      String?
@@ -40,50 +40,50 @@ model User {
 }
 
 model Organization {
-  id            String                   @id @default(auto()) @map("_id") @db.ObjectId
-  name          String
-  slug          String                   @unique
-  description   String?
-  collections   Collection[]
-  memberships   OrganizationMembership[]
-  contents      Content[]
+  id             String                   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String                   @unique
+  description    String?
+  collections    Collection[]
+  memberships    OrganizationMembership[]
+  contents       Content[]
   approvedEmails ApprovedEmail[]
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 }
 
 model OrganizationMembership {
-  id             String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String        @db.ObjectId
-  organizationId String        @db.ObjectId
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @db.Uuid
+  organizationId String         @db.Uuid
   role           MembershipRole @default(VIEWER)
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  user         User          @relation(fields: [userId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
 
   @@unique([userId, organizationId])
 }
 
 model Collection {
-  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  id             String   @id @default(uuid()) @db.Uuid
   name           String
   description    String?
-  organizationId String                 @db.ObjectId
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  organizationId String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   organization Organization           @relation(fields: [organizationId], references: [id])
-  contents      Content[]
-  memberships   CollectionMembership[]
+  contents     Content[]
+  memberships  CollectionMembership[]
 }
 
 model CollectionMembership {
-  id           String        @id @default(auto()) @map("_id") @db.ObjectId
-  collectionId String        @db.ObjectId
-  userId       String        @db.ObjectId
+  id           String         @id @default(uuid()) @db.Uuid
+  collectionId String         @db.Uuid
+  userId       String         @db.Uuid
   role         MembershipRole @default(VIEWER)
-  createdAt    DateTime      @default(now())
+  createdAt    DateTime       @default(now())
 
   collection Collection @relation(fields: [collectionId], references: [id])
   user       User       @relation(fields: [userId], references: [id])
@@ -92,19 +92,19 @@ model CollectionMembership {
 }
 
 model Content {
-  id                      String     @id @default(auto()) @map("_id") @db.ObjectId
-  title                   String
-  description             String?
-  videoUrl                String
-  organizationId          String     @db.ObjectId
-  collectionId            String     @db.ObjectId
-  uploadedById            String     @db.ObjectId
-  actionSummaryStatus     JobStatus  @default(QUEUED)
-  chapterAnalysisStatus   JobStatus  @default(QUEUED)
-  analysisRequestedAt     DateTime?
-  processingMetadata      Json?
-  createdAt               DateTime   @default(now())
-  updatedAt               DateTime   @updatedAt
+  id                    String    @id @default(uuid()) @db.Uuid
+  title                 String
+  description           String?
+  videoUrl              String
+  organizationId        String    @db.Uuid
+  collectionId          String    @db.Uuid
+  uploadedById          String    @db.Uuid
+  actionSummaryStatus   JobStatus @default(QUEUED)
+  chapterAnalysisStatus JobStatus @default(QUEUED)
+  analysisRequestedAt   DateTime?
+  processingMetadata    Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   collection   Collection   @relation(fields: [collectionId], references: [id])
@@ -112,10 +112,10 @@ model Content {
 }
 
 model ApprovedEmail {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  id             String   @id @default(uuid()) @db.Uuid
   email          String   @unique
-  organizationId String?  @db.ObjectId
-  collectionIds  String[] @db.ObjectId
+  organizationId String?  @db.Uuid
+  collectionIds  String[]
   role           Role     @default(MEMBER)
   createdAt      DateTime @default(now())
 
