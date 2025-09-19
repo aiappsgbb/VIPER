@@ -1,8 +1,5 @@
-import Image from "next/image";
-import { Player } from "../components/component/player";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-   <Player />
-  );
+  redirect("/dashboard");
 }

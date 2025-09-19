@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id            String                   @id @default(auto()) @map("_id") @db.ObjectId
+  email         String                   @unique
+  name          String?
+  password      String?
+  role          Role                     @default(MEMBER)
+  organizations OrganizationMembership[]
+  collections   CollectionMembership[]
+  contents      Content[]                @relation("UploaderContent")
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+}
+
+model Organization {
+  id            String                   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  slug          String                   @unique
+  description   String?
+  collections   Collection[]
+  memberships   OrganizationMembership[]
+  contents      Content[]
+  approvedEmails ApprovedEmail[]
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+}
+
+model OrganizationMembership {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String        @db.ObjectId
+  organizationId String        @db.ObjectId
+  role           MembershipRole @default(VIEWER)
+  createdAt      DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@unique([userId, organizationId])
+}
+
+model Collection {
+  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  name           String
+  description    String?
+  organizationId String                 @db.ObjectId
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  contents      Content[]
+  memberships   CollectionMembership[]
+}
+
+model CollectionMembership {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  collectionId String        @db.ObjectId
+  userId       String        @db.ObjectId
+  role         MembershipRole @default(VIEWER)
+  createdAt    DateTime      @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@unique([collectionId, userId])
+}
+
+model Content {
+  id                      String     @id @default(auto()) @map("_id") @db.ObjectId
+  title                   String
+  description             String?
+  videoUrl                String
+  organizationId          String     @db.ObjectId
+  collectionId            String     @db.ObjectId
+  uploadedById            String     @db.ObjectId
+  actionSummaryStatus     JobStatus  @default(QUEUED)
+  chapterAnalysisStatus   JobStatus  @default(QUEUED)
+  analysisRequestedAt     DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  collection   Collection   @relation(fields: [collectionId], references: [id])
+  uploadedBy   User         @relation("UploaderContent", fields: [uploadedById], references: [id])
+}
+
+model ApprovedEmail {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  email          String   @unique
+  organizationId String?  @db.ObjectId
+  collectionIds  String[] @db.ObjectId
+  role           Role     @default(MEMBER)
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
