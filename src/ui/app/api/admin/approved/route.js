@@ -8,7 +8,11 @@ import { getManageableOrganizationIds, userCanManageOrganization } from "@/lib/a
 
 const approvalSchema = z.object({
   email: z.string().email("Valid email required"),
-  organizationId: z.string().min(1, "Organization is required"),
+  organizationId: z
+    .string()
+    .uuid("Organization is required")
+    .optional()
+    .nullable(),
   collectionIds: z.array(z.string()).default([]),
   role: z
     .enum([
@@ -30,12 +34,17 @@ export async function GET() {
 
   const organizationIds = await getManageableOrganizationIds(session.user);
 
-  if (!organizationIds.length) {
-    return NextResponse.json({ approvals: [] }, { status: 200 });
-  }
+  const approvalsWhere = canViewAllContent(session.user.role)
+    ? {}
+    : {
+        OR: [
+          { organizationId: { in: organizationIds } },
+          { organizationId: null },
+        ],
+      };
 
   const approvals = await prisma.approvedEmail.findMany({
-    where: { organizationId: { in: organizationIds } },
+    where: approvalsWhere,
     include: { organization: true },
     orderBy: { createdAt: "desc" },
   });
@@ -60,51 +69,97 @@ export async function POST(request) {
     );
   }
 
-  const { email, organizationId, collectionIds, role } = parsed.data;
+  const { email, collectionIds, role } = parsed.data;
+  const organizationId = parsed.data.organizationId ?? null;
 
   const organizationIds = await getManageableOrganizationIds(session.user);
 
-  if (!organizationIds.includes(organizationId)) {
+  const normalizedCollections = Array.from(new Set(collectionIds));
+
+  const collectionRecords = normalizedCollections.length
+    ? await prisma.collection.findMany({
+        where: {
+          id: { in: normalizedCollections },
+        },
+        select: { id: true, organizationId: true },
+      })
+    : [];
+
+  if (collectionRecords.length !== normalizedCollections.length) {
     return NextResponse.json(
-      { error: "You do not have permission to manage this organization." },
-      { status: 403 },
+      { error: "One or more collections were not found." },
+      { status: 400 },
     );
   }
 
-  if (!canViewAllContent(session.user.role)) {
-    const canManage = await userCanManageOrganization(session.user, organizationId);
-    if (!canManage) {
+  const collectionOrganizationIds = new Set(
+    collectionRecords.map((collection) => collection.organizationId),
+  );
+
+  if (organizationId) {
+    if (!organizationIds.includes(organizationId)) {
       return NextResponse.json(
         { error: "You do not have permission to manage this organization." },
         { status: 403 },
       );
     }
-  }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: organizationId },
-  });
+    if (!canViewAllContent(session.user.role)) {
+      const canManage = await userCanManageOrganization(session.user, organizationId);
+      if (!canManage) {
+        return NextResponse.json(
+          { error: "You do not have permission to manage this organization." },
+          { status: 403 },
+        );
+      }
+    }
 
-  if (!organization) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-  }
-
-  const normalizedCollections = Array.from(new Set(collectionIds));
-
-  if (normalizedCollections.length) {
-    const collections = await prisma.collection.findMany({
-      where: {
-        id: { in: normalizedCollections },
-        organizationId,
-      },
-      select: { id: true },
-    });
-
-    if (collections.length !== normalizedCollections.length) {
+    if (
+      collectionOrganizationIds.size &&
+      Array.from(collectionOrganizationIds).some((id) => id !== organizationId)
+    ) {
       return NextResponse.json(
         { error: "One or more collections do not belong to the selected organization." },
         { status: 400 },
       );
+    }
+  } else if (collectionOrganizationIds.size > 1) {
+    return NextResponse.json(
+      { error: "Collections from multiple organizations require selecting an organization." },
+      { status: 400 },
+    );
+  }
+
+  if (!canViewAllContent(session.user.role)) {
+    const organizationsToValidate = organizationId
+      ? [organizationId]
+      : Array.from(collectionOrganizationIds);
+
+    for (const orgId of organizationsToValidate) {
+      if (!organizationIds.includes(orgId)) {
+        return NextResponse.json(
+          { error: "You do not have permission to manage this organization." },
+          { status: 403 },
+        );
+      }
+
+      const canManage = await userCanManageOrganization(session.user, orgId);
+      if (!canManage) {
+        return NextResponse.json(
+          { error: "You do not have permission to manage this organization." },
+          { status: 403 },
+        );
+      }
+    }
+  }
+
+  if (organizationId) {
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+
+    if (!organization) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
   }
 

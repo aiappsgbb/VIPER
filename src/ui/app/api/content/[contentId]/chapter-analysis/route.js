@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
+import { buildBackendUrl } from "@/lib/backend";
 
-function ensureChapterAnalysisEndpoint() {
-  const endpoint = process.env.CHAPTER_ANALYSIS_ENDPOINT;
-  if (!endpoint) {
-    throw new Error("CHAPTER_ANALYSIS_ENDPOINT is not configured");
+function getChapterAnalysisEndpoint() {
+  const configured = process.env.CHAPTER_ANALYSIS_ENDPOINT;
+  if (configured && typeof configured === "string" && configured.trim().length) {
+    return configured.trim();
   }
-  return endpoint;
+  return buildBackendUrl("/analysis/chapter-analysis");
 }
 
 function cloneProcessingMetadata(metadata) {
@@ -111,7 +112,7 @@ export async function POST(_request, { params }) {
   let response;
   let data;
   try {
-    response = await fetch(ensureChapterAnalysisEndpoint(), {
+    response = await fetch(getChapterAnalysisEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildRequestPayload({ content, session, cobraMeta })),
