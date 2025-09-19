@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { BlobServiceClient } from "@azure/storage-blob";
+import { DefaultAzureCredential } from "@azure/identity";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -7,30 +8,56 @@ import { canUploadContent } from "@/lib/rbac";
 import { buildCollectionAccessWhere } from "@/lib/access";
 import { randomUUID } from "crypto";
 import { extname } from "path";
+import { buildBackendUrl } from "@/lib/backend";
+
+let cachedBlobServiceClient = null;
+
+function getAccountUrl() {
+  const explicitUrl = process.env.AZURE_STORAGE_ACCOUNT_URL;
+  if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim().length) {
+    return explicitUrl.trim();
+  }
+
+  const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
+  if (accountName && typeof accountName === "string" && accountName.trim().length) {
+    return `https://${accountName.trim()}.blob.core.windows.net`;
+  }
+
+  throw new Error(
+    "Configure AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_ACCOUNT_NAME for managed identity access.",
+  );
+}
+
+function createBlobServiceClient() {
+  const accountUrl = getAccountUrl();
+  const credential = new DefaultAzureCredential({
+    managedIdentityClientId: process.env.AZURE_STORAGE_MANAGED_IDENTITY_CLIENT_ID,
+  });
+  return new BlobServiceClient(accountUrl, credential);
+}
 
 function getBlobServiceClient() {
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  if (!connectionString) {
-    throw new Error("AZURE_STORAGE_CONNECTION_STRING is not configured");
+  if (!cachedBlobServiceClient) {
+    cachedBlobServiceClient = createBlobServiceClient();
   }
-  return BlobServiceClient.fromConnectionString(connectionString);
+  return cachedBlobServiceClient;
+}
+
+function getVideoContainerName() {
+  return (
+    process.env.AZURE_STORAGE_VIDEO_CONTAINER ||
+    process.env.AZURE_STORAGE_OUTPUT_CONTAINER ||
+    "videos"
+  );
 }
 
 function resolveCobraUploadEndpoint() {
-  if (process.env.COBRAPY_UPLOAD_ENDPOINT) {
-    return process.env.COBRAPY_UPLOAD_ENDPOINT;
+  const override = process.env.COBRAPY_UPLOAD_ENDPOINT;
+  if (override && typeof override === "string" && override.trim().length) {
+    return override.trim();
   }
 
-  const baseEndpoint =
-    process.env.ACTION_SUMMARY_ENDPOINT || process.env.CHAPTER_ANALYSIS_ENDPOINT;
-
-  if (!baseEndpoint) {
-    throw new Error(
-      "Configure COBRAPY_UPLOAD_ENDPOINT or ACTION_SUMMARY_ENDPOINT so videos can be uploaded for analysis.",
-    );
-  }
-
-  return new URL("/videos/upload", baseEndpoint).toString();
+  return buildBackendUrl("/videos/upload");
 }
 
 async function uploadToCobra(buffer, fileName, mimeType) {
@@ -66,7 +93,7 @@ async function uploadToCobra(buffer, fileName, mimeType) {
 
 async function uploadToAzureStorage(buffer, fileName, mimeType) {
   const client = getBlobServiceClient();
-  const containerName = process.env.AZURE_STORAGE_CONTAINER || "cobra-upload";
+  const containerName = getVideoContainerName();
   const containerClient = client.getContainerClient(containerName);
   await containerClient.createIfNotExists();
 
@@ -153,7 +180,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "Failed to upload the video to storage. Confirm Azure Storage is configured or enable uploads in CobraPy.",
+            "Failed to upload the video to storage. Confirm Azure Storage managed identity settings are configured or enable uploads in CobraPy.",
         },
         { status: 500 },
       );

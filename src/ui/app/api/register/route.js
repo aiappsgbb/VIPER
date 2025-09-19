@@ -88,15 +88,17 @@ export async function POST(request) {
     });
   }
 
-  if (approval?.collectionIds?.length) {
+  const uniqueCollectionIds = Array.from(new Set(approval?.collectionIds ?? []));
+
+  if (uniqueCollectionIds.length) {
     const collectionRole =
       assignedRole === Roles.ADMIN
         ? "OWNER"
         : assignedRole === Roles.ORGANIZATION_ADMIN || assignedRole === Roles.COLLECTION_ADMIN
-          ? "ADMIN"
-          : "VIEWER";
+            ? "ADMIN"
+            : "VIEWER";
     await Promise.all(
-      approval.collectionIds.map((collectionId) =>
+      uniqueCollectionIds.map((collectionId) =>
         prisma.collectionMembership.create({
           data: {
             collectionId,
