@@ -1319,83 +1319,87 @@ export default function DashboardView({
                             <p className="text-xs text-slate-500">No fields configured.</p>
                           )}
                         </div>
-                        <DialogContent className="max-w-2xl space-y-4">
-                          <DialogHeader>
-                            <DialogTitle>Configure action summary fields</DialogTitle>
-                            <DialogDescription>
-                              Define the JSON fields the analysis should populate for each scene. Field names become the keys in
-                              the output.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-3">
-                            {actionSummaryFields.map((field, index) => (
-                              <div
-                                className="space-y-3 rounded-md border border-slate-200 bg-white p-3"
-                                key={`${field.name || "field"}-${index}`}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-1 space-y-2">
-                                    <label className="text-xs font-medium text-slate-600">
-                                      Field name
-                                      <Input
-                                        className="mt-1"
-                                        onChange={(event) =>
-                                          handleUpdateActionSummaryField(index, "name", event.target.value)
-                                        }
-                                        placeholder="e.g. summary"
-                                        value={field.name}
-                                      />
-                                    </label>
-                                  </div>
-                                  <Button
-                                    className="mt-6"
-                                    onClick={() => handleRemoveActionSummaryField(index)}
-                                    size="icon"
-                                    type="button"
-                                    variant="ghost"
+                        <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-h-[85vh]">
+                          <div className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-hidden p-6 sm:max-h-[85vh]">
+                            <DialogHeader className="shrink-0">
+                              <DialogTitle>Configure action summary fields</DialogTitle>
+                              <DialogDescription>
+                                Define the JSON fields the analysis should populate for each scene. Field names become the keys
+                                in the output.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <ScrollArea className="max-h-[55vh] pr-4">
+                              <div className="space-y-3 pb-2">
+                                {actionSummaryFields.map((field, index) => (
+                                  <div
+                                    className="space-y-3 rounded-md border border-slate-200 bg-white p-3"
+                                    key={`${field.name || "field"}-${index}`}
                                   >
-                                    <Trash2 className="h-4 w-4" />
-                                    <span className="sr-only">Remove field</span>
-                                  </Button>
-                                </div>
-                                <div className="space-y-2">
-                                  <label className="text-xs font-medium text-slate-600">
-                                    Field description
-                                    <Textarea
-                                      className="mt-1"
-                                      onChange={(event) =>
-                                        handleUpdateActionSummaryField(index, "description", event.target.value)
-                                      }
-                                      placeholder="Explain what the model should capture in this field."
-                                      rows={3}
-                                      value={field.description}
-                                    />
-                                  </label>
-                                </div>
+                                    <div className="flex items-start gap-3">
+                                      <div className="flex-1 space-y-2">
+                                        <label className="text-xs font-medium text-slate-600">
+                                          Field name
+                                          <Input
+                                            className="mt-1"
+                                            onChange={(event) =>
+                                              handleUpdateActionSummaryField(index, "name", event.target.value)
+                                            }
+                                            placeholder="e.g. summary"
+                                            value={field.name}
+                                          />
+                                        </label>
+                                      </div>
+                                      <Button
+                                        className="mt-6"
+                                        onClick={() => handleRemoveActionSummaryField(index)}
+                                        size="icon"
+                                        type="button"
+                                        variant="ghost"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                        <span className="sr-only">Remove field</span>
+                                      </Button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label className="text-xs font-medium text-slate-600">
+                                        Field description
+                                        <Textarea
+                                          className="mt-1"
+                                          onChange={(event) =>
+                                            handleUpdateActionSummaryField(index, "description", event.target.value)
+                                          }
+                                          placeholder="Explain what the model should capture in this field."
+                                          rows={3}
+                                          value={field.description}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            </ScrollArea>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <Button
+                                onClick={handleResetActionSummaryFields}
+                                type="button"
+                                variant="ghost"
+                              >
+                                Reset to default
+                              </Button>
+                              <Button
+                                onClick={handleAddActionSummaryField}
+                                type="button"
+                                variant="secondary"
+                              >
+                                <Plus className="mr-2 h-4 w-4" /> Add field
+                              </Button>
+                            </div>
+                            <DialogFooter className="shrink-0">
+                              <Button onClick={handleSaveActionSummaryFields} type="button">
+                                Save fields
+                              </Button>
+                            </DialogFooter>
                           </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Button
-                              onClick={handleResetActionSummaryFields}
-                              type="button"
-                              variant="ghost"
-                            >
-                              Reset to default
-                            </Button>
-                            <Button
-                              onClick={handleAddActionSummaryField}
-                              type="button"
-                              variant="secondary"
-                            >
-                              <Plus className="mr-2 h-4 w-4" /> Add field
-                            </Button>
-                          </div>
-                          <DialogFooter>
-                            <Button onClick={handleSaveActionSummaryFields} type="button">
-                              Save fields
-                            </Button>
-                          </DialogFooter>
                         </DialogContent>
                       </Dialog>
                       {actionSummaryMessage ? (
