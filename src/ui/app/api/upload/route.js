@@ -10,6 +10,15 @@ import { randomUUID } from "crypto";
 import { extname } from "path";
 import { buildBackendUrl } from "@/lib/backend";
 
+
+const NETWORK_RETRY_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+]);
+
 function sanitizeUploadMetadata(metadata) {
   if (!metadata || typeof metadata !== "object") {
     return null;
@@ -163,80 +172,261 @@ function resolveCobraUploadEndpoint() {
   return buildBackendUrl("/videos/upload");
 }
 
-async function uploadToCobra(buffer, fileName, mimeType, options = {}) {
-  const endpoint = resolveCobraUploadEndpoint();
-  const formData = new FormData();
-  const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
-  formData.append("file", blob, fileName);
-  const shouldUploadToAzure =
-    typeof options.uploadToAzure === "boolean" ? options.uploadToAzure : true;
-  formData.append("upload_to_azure", shouldUploadToAzure ? "true" : "false");
 
-  const metadataPayload = sanitizeUploadMetadata(options.metadata);
-  if (metadataPayload) {
-    formData.append("metadata", JSON.stringify(metadataPayload));
-  }
+function getUploadEndpointCandidates() {
+  const primary = resolveCobraUploadEndpoint();
+  const candidates = [primary];
 
-  let response;
+
   try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      body: formData,
-      duplex: "half",
-    });
+
+    const url = new URL(primary);
+    const fallbackHosts = new Set();
+
+    if (url.hostname === "localhost") {
+      fallbackHosts.add("127.0.0.1");
+    }
+
+    const configuredFallbacks = process.env.COBRAPY_UPLOAD_FALLBACK_HOSTS;
+    if (configuredFallbacks && typeof configuredFallbacks === "string") {
+      configuredFallbacks
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .forEach((entry) => fallbackHosts.add(entry));
+    }
+
+    for (const host of fallbackHosts) {
+      if (!host) {
+        continue;
+      }
+
+      if (host.includes("://")) {
+        candidates.push(host);
+        continue;
+      }
+
+      const fallbackUrl = new URL(url.toString());
+      fallbackUrl.host = host;
+      candidates.push(fallbackUrl.toString());
+    }
+
   } catch (error) {
-    const cause = error instanceof Error ? error : new Error(String(error));
-    throw new CobraUploadError("Failed to reach CobraPy upload endpoint.", {
-      endpoint,
-      cause,
-      details: { message: cause.message },
-    });
+    // Ignore invalid URL formatting and fall back to the primary endpoint only.
   }
 
-  let rawBody = null;
-  try {
-    rawBody = await response.text();
-  } catch (error) {
-    rawBody = null;
+  return Array.from(new Set(candidates));
+}
+
+function extractNetworkErrorDetails(error) {
+  const details = {};
+  if (!error || typeof error !== "object") {
+    return details;
   }
 
-  let data = null;
-  if (rawBody && rawBody.length) {
-    try {
-      data = JSON.parse(rawBody);
-    } catch (error) {
-      data = null;
+  const stack = [error];
+  if (error.cause && typeof error.cause === "object") {
+    stack.push(error.cause);
+    if (error.cause.cause && typeof error.cause.cause === "object") {
+      stack.push(error.cause.cause);
     }
   }
 
-  if (!response.ok) {
-    const message =
-      data?.detail ||
-      data?.error ||
-      data?.message ||
-      (typeof rawBody === "string" && rawBody.length ? rawBody : null) ||
-      "Video upload service returned an unexpected error.";
-    throw new CobraUploadError(message, {
-      endpoint,
-      status: response.status,
-      statusText: response.statusText,
-      responseBody: data ?? rawBody,
-    });
+  for (const current of stack) {
+    if (!current || typeof current !== "object") {
+      continue;
+    }
+
+    if (typeof current.code === "string" && !details.code) {
+      details.code = current.code;
+    }
+
+    if (typeof current.errno === "string" && !details.errno) {
+      details.errno = current.errno;
+    }
+
+    if (typeof current.address === "string" && !details.address) {
+      details.address = current.address;
+    }
+
+    if (typeof current.port === "number" && !details.port) {
+      details.port = current.port;
+    }
+
+    if (typeof current.message === "string" && !details.message) {
+      details.message = current.message;
+    }
   }
 
-  if (!data) {
-    throw new CobraUploadError(
-      "Video upload service returned an unexpected response body.",
-      {
+  return details;
+}
+
+function isRetriableNetworkError(details) {
+  const code = typeof details.code === "string" ? details.code.toUpperCase() : null;
+  if (code && NETWORK_RETRY_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  if (typeof details.message === "string") {
+    const normalized = details.message.toLowerCase();
+    if (normalized.includes("connect") && normalized.includes("refused")) {
+      return true;
+    }
+    if (normalized.includes("timed") && normalized.includes("out")) {
+      return true;
+    }
+    if (normalized.includes("not found")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function createUploadFormDataFactory({
+  blob,
+  fileName,
+  shouldUploadToAzure,
+  metadataJson,
+}) {
+  return () => {
+    const formData = new FormData();
+    formData.append("file", blob, fileName);
+    formData.append("upload_to_azure", shouldUploadToAzure ? "true" : "false");
+
+    if (metadataJson) {
+      formData.append("metadata_json", metadataJson);
+    }
+
+    return formData;
+  };
+}
+
+async function uploadToCobra(buffer, fileName, mimeType, options = {}) {
+  const endpoints = getUploadEndpointCandidates();
+  const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
+  const shouldUploadToAzure =
+    typeof options.uploadToAzure === "boolean" ? options.uploadToAzure : true;
+  const metadataPayload = sanitizeUploadMetadata(options.metadata);
+  const metadataJson = metadataPayload ? JSON.stringify(metadataPayload) : null;
+  const createFormData = createUploadFormDataFactory({
+    blob,
+    fileName,
+    shouldUploadToAzure,
+    metadataJson,
+  });
+
+  let lastNetworkError = null;
+
+  for (let index = 0; index < endpoints.length; index += 1) {
+    const endpoint = endpoints[index];
+
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        body: createFormData(),
+        duplex: "half",
+      });
+    } catch (error) {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      const networkDetails = extractNetworkErrorDetails(cause);
+      const detailPayload = {};
+      if (networkDetails.message) {
+        detailPayload.message = networkDetails.message;
+      } else {
+        detailPayload.message = cause.message;
+      }
+      if (networkDetails.code) {
+        detailPayload.code = networkDetails.code;
+      }
+      if (networkDetails.errno) {
+        detailPayload.errno = networkDetails.errno;
+      }
+      if (networkDetails.address) {
+        detailPayload.address = networkDetails.address;
+      }
+      if (typeof networkDetails.port === "number") {
+        detailPayload.port = networkDetails.port;
+      }
+
+      const cobraError = new CobraUploadError(
+        "Failed to reach CobraPy upload endpoint.",
+        {
+          endpoint,
+          cause,
+          details: detailPayload,
+        },
+      );
+
+      lastNetworkError = { error: cobraError, details: networkDetails };
+
+      const hasFallback = index < endpoints.length - 1;
+      if (hasFallback && isRetriableNetworkError(networkDetails)) {
+        const message =
+          networkDetails.message ||
+          cause.message ||
+          "Unknown network failure contacting CobraPy.";
+        console.warn(
+          `[upload] Cobra upload attempt to ${endpoint} failed: ${message}. Trying fallback endpoint.`,
+        );
+        continue;
+      }
+
+      throw cobraError;
+    }
+
+    let rawBody = null;
+    try {
+      rawBody = await response.text();
+    } catch (error) {
+      rawBody = null;
+    }
+
+    let data = null;
+    if (rawBody && rawBody.length) {
+      try {
+        data = JSON.parse(rawBody);
+      } catch (error) {
+        data = null;
+      }
+    }
+
+    if (!response.ok) {
+      const message =
+        data?.detail ||
+        data?.error ||
+        data?.message ||
+        (typeof rawBody === "string" && rawBody.length ? rawBody : null) ||
+        "Video upload service returned an unexpected error.";
+      throw new CobraUploadError(message, {
         endpoint,
         status: response.status,
         statusText: response.statusText,
-        responseBody: rawBody,
-      },
-    );
+        responseBody: data ?? rawBody,
+      });
+    }
+
+    if (!data) {
+      throw new CobraUploadError(
+        "Video upload service returned an unexpected response body.",
+        {
+          endpoint,
+          status: response.status,
+          statusText: response.statusText,
+          responseBody: rawBody,
+        },
+      );
+    }
+
+    return data;
   }
 
-  return data;
+  if (lastNetworkError?.error) {
+    throw lastNetworkError.error;
+  }
+
+  throw new CobraUploadError("Failed to reach CobraPy upload endpoint.");
 }
 
 async function uploadToAzureStorage(buffer, fileName, mimeType) {
