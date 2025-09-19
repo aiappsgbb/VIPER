@@ -173,9 +173,15 @@ export async function POST(_request, { params }) {
   cobraMeta.manifestPath = data?.manifest_path ?? cobraMeta.manifestPath ?? null;
   cobraMeta.actionSummary = {
     lastRunAt: new Date().toISOString(),
+    analysis: data?.analysis ?? null,
     analysisOutputPath: data?.analysis_output_path ?? null,
     storageArtifacts: data?.storage_artifacts ?? null,
     searchUploads: data?.search_uploads ?? [],
+    filters: {
+      organizationId: content.organizationId,
+      collectionId: content.collectionId,
+      contentId: content.id,
+    },
   };
   processingMetadata.cobra = cobraMeta;
 
@@ -192,6 +198,13 @@ export async function POST(_request, { params }) {
       analysis: data?.analysis ?? "ActionSummary",
       manifestPath: data?.manifest_path ?? null,
       searchUploads: data?.search_uploads ?? [],
+      analysisOutputPath: data?.analysis_output_path ?? null,
+      storageArtifacts: data?.storage_artifacts ?? null,
+      filters: {
+        organizationId: content.organizationId,
+        collectionId: content.collectionId,
+        contentId: content.id,
+      },
     },
     { status: 200 },
   );
