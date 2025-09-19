@@ -37,6 +37,31 @@ LOADED_ENV_PATHS = _load_env_files()
 ENV_FILES_FOR_SETTINGS = tuple(str(path) for path in LOADED_ENV_PATHS)
 
 
+def _format_missing_env_error(*, exc: ValidationError, env_prefix: str) -> str:
+    missing_fields: list[str] = []
+
+    for error in exc.errors():
+        if error.get("type") != "missing":
+            continue
+
+        loc = error.get("loc") or ()
+        if not loc:
+            continue
+
+        field = str(loc[0])
+        missing_fields.append(field)
+
+    if not missing_fields:
+        return str(exc)
+
+    formatted = [f"{env_prefix}{field.upper()}" for field in missing_fields]
+    return (
+        "Missing environment variables: "
+        + ", ".join(formatted)
+        + ". Please set these environment variables before proceeding."
+    )
+
+
 class GPTVision(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AZURE_OPENAI_GPT_VISION_",
@@ -47,19 +72,6 @@ class GPTVision(BaseSettings):
     api_key: SecretStr
     api_version: str
     deployment: str
-
-    @model_validator(mode="before")
-    def check_missing_fields(cls, values):
-        missing_fields = [field for field in cls.model_fields if field not in values]
-        if missing_fields:
-            missing_with_prefix = [
-                f"{cls.model_config['env_prefix']}{field.upper()}"
-                for field in missing_fields
-            ]
-            raise ValueError(
-                f"Missing environment variables: {', '.join(missing_with_prefix)}. Please set these environment variables before proceeding."
-            )
-        return values
 
 
 class AzureSpeech(BaseSettings):
@@ -161,9 +173,9 @@ class CobraEnvironment(BaseSettings):
             "environment variables were not provided."
         ),
     )
-    speech: AzureSpeech = AzureSpeech()
-    storage: AzureStorage = AzureStorage()
-    search: AzureAISearch = AzureAISearch()
+    speech: AzureSpeech = Field(default_factory=AzureSpeech)
+    storage: AzureStorage = Field(default_factory=AzureStorage)
+    search: AzureAISearch = Field(default_factory=AzureAISearch)
 
     _vision_error: Optional[str] = PrivateAttr(default=None)
 
@@ -182,7 +194,15 @@ class CobraEnvironment(BaseSettings):
 
         try:
             vision = GPTVision()
-        except (ValidationError, ValueError) as exc:  # ValueError raised inside validators
+        except ValidationError as exc:
+            config = getattr(GPTVision, "model_config", {}) or {}
+            prefix = config.get("env_prefix", "") if hasattr(config, "get") else ""
+            self._vision_error = _format_missing_env_error(
+                exc=exc,
+                env_prefix=prefix,
+            )
+            return None
+        except ValueError as exc:  # ValueError raised inside validators
             self._vision_error = str(exc)
             return None
 
