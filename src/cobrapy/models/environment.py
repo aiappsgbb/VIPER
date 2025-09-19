@@ -3,7 +3,9 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr, model_validator, Field, ValidationError
+
+from pydantic import SecretStr, model_validator, Field, ValidationError, PrivateAttr
+
 
 
 def _find_project_root(marker: str = "pyproject.toml") -> Path:
@@ -145,14 +147,15 @@ def _load_optional_vision() -> Optional[GPTVision]:
 class CobraEnvironment(BaseSettings):
     """Environment configuration for the Cobra backend."""
 
-
     model_config = SettingsConfigDict(
         env_file=ENV_FILES_FOR_SETTINGS if ENV_FILES_FOR_SETTINGS else None,
         extra="ignore",
     )
 
     vision: Optional[GPTVision] = Field(
-        default_factory=_load_optional_vision,
+
+        default=None,
+
         description=(
             "Azure OpenAI vision configuration. ``None`` indicates that the required "
             "environment variables were not provided."
@@ -162,15 +165,50 @@ class CobraEnvironment(BaseSettings):
     storage: AzureStorage = AzureStorage()
     search: AzureAISearch = AzureAISearch()
 
+    _vision_error: Optional[str] = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _load_optional_vision(cls, model: "CobraEnvironment") -> "CobraEnvironment":
+        """Populate the optional vision settings when environment variables exist."""
+
+        if model.vision is not None:
+            return model
+
+        model.vision = model._refresh_vision_settings()
+        return model
+
+    def _refresh_vision_settings(self) -> Optional[GPTVision]:
+        """Attempt to create a GPTVision instance and cache any validation errors."""
+
+        try:
+            vision = GPTVision()
+        except (ValidationError, ValueError) as exc:  # ValueError raised inside validators
+            self._vision_error = str(exc)
+            return None
+
+        self._vision_error = None
+        return vision
+
+
     def require_vision(self) -> GPTVision:
         """Return the configured vision settings or raise a helpful error."""
 
-        if self.vision is None:
-            raise RuntimeError(
+
+        vision = self.vision or self._refresh_vision_settings()
+        if vision is None:
+            message = (
+
                 "Azure OpenAI vision environment variables are missing. Set "
                 "AZURE_OPENAI_GPT_VISION_ENDPOINT, AZURE_OPENAI_GPT_VISION_API_KEY, "
                 "AZURE_OPENAI_GPT_VISION_API_VERSION, and "
                 "AZURE_OPENAI_GPT_VISION_DEPLOYMENT before invoking video analysis "
                 "endpoints."
             )
-        return self.vision
+
+            if self._vision_error:
+                message = f"{message}\nValidation details: {self._vision_error}"
+            raise RuntimeError(message)
+
+        self.vision = vision
+        return vision
+
