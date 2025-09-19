@@ -50,6 +50,19 @@ class BaseAnalysisRequest(BaseModel):
     collection: str
     user: str
     video_id: Optional[str] = None
+    organization_name: Optional[str] = Field(
+        default=None, description="Human readable organization name."
+    )
+    collection_name: Optional[str] = Field(
+        default=None, description="Human readable collection name."
+    )
+    user_name: Optional[str] = Field(
+        default=None, description="Display name for the user initiating the run."
+    )
+    video_url: Optional[str] = Field(
+        default=None,
+        description="Optional URL where the processed video can be streamed.",
+    )
 
     @model_validator(mode="after")
     def validate_source(cls, values: "BaseAnalysisRequest") -> "BaseAnalysisRequest":
@@ -88,8 +101,9 @@ def _analysis_response(
     client: VideoClient,
     analysis_name: str,
     result: Any,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
+    response: Dict[str, Any] = {
         "analysis": analysis_name,
         "result": result,
         "manifest_path": client.manifest.video_manifest_path,
@@ -97,6 +111,9 @@ def _analysis_response(
         "storage_artifacts": client.storage_artifacts,
         "search_uploads": client.latest_search_uploads,
     }
+    if metadata is not None:
+        response["metadata"] = metadata
+    return response
 
 
 @app.post("/videos/upload", response_model=UploadResponse)
@@ -138,10 +155,16 @@ def run_action_summary(request: BaseAnalysisRequest):
         _run_preprocess(client, request)
 
         metadata = {
-            "organization": request.organization,
-            "collection": request.collection,
-            "user": request.user,
+            "organization": request.organization_name or request.organization,
+            "organizationId": request.organization,
+            "collection": request.collection_name or request.collection,
+            "collectionId": request.collection,
+            "user": request.user_name or request.user,
+            "userId": request.user,
             "video_id": request.video_id or client.manifest.name,
+            "contentId": request.video_id or client.manifest.name,
+            "videoUrl": request.video_url,
+            "source": "cobrapy",
         }
 
         result = client.analyze_video(
@@ -152,7 +175,13 @@ def run_action_summary(request: BaseAnalysisRequest):
             metadata=metadata,
         )
         return JSONResponse(
-            _analysis_response(client, "ActionSummary", result), status_code=200
+            _analysis_response(
+                client,
+                "ActionSummary",
+                result,
+                metadata=metadata,
+            ),
+            status_code=200,
         )
     except Exception as exc:  # pragma: no cover - runtime guard
         raise HTTPException(status_code=500, detail=str(exc)) from exc

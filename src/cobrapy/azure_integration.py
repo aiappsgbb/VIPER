@@ -187,6 +187,18 @@ class AzureSearchUploader:
         documents: List[Dict[str, Any]] = []
         safe_name = generate_safe_dir_name(manifest.name)
 
+        organization_name = metadata.get("organization") if metadata else None
+        organization_id = metadata.get("organizationId") if metadata else None
+        collection_name = metadata.get("collection") if metadata else None
+        collection_id = metadata.get("collectionId") if metadata else None
+        user_name = metadata.get("user") if metadata else None
+        user_id = metadata.get("userId") if metadata else None
+        content_id = None
+        video_url = None
+        if metadata:
+            content_id = metadata.get("contentId") or metadata.get("video_id")
+            video_url = metadata.get("videoUrl") or metadata.get("video_url")
+
         for index, entry in enumerate(action_summary):
             if not isinstance(entry, dict):
                 continue
@@ -206,11 +218,16 @@ class AzureSearchUploader:
                 "characters": entry.get("characters"),
                 "keyObjects": entry.get("key_objects"),
                 "sentiment": entry.get("sentiment"),
-                "organization": metadata.get("organization"),
-                "collection": metadata.get("collection"),
-                "user": metadata.get("user"),
-                "videoId": metadata.get("video_id", manifest.name),
-                "source": metadata.get("source", "cobrapy"),
+                "organization": organization_name,
+                "organizationId": organization_id,
+                "collection": collection_name,
+                "collectionId": collection_id,
+                "user": user_name,
+                "userId": user_id,
+                "videoId": content_id or manifest.name,
+                "contentId": content_id or manifest.name,
+                "videoUrl": video_url,
+                "source": (metadata or {}).get("source", "cobrapy"),
                 "content": json.dumps(entry, default=str),
             }
             documents.append(document)

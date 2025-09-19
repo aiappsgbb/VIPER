@@ -102,6 +102,7 @@ model Content {
   actionSummaryStatus     JobStatus  @default(QUEUED)
   chapterAnalysisStatus   JobStatus  @default(QUEUED)
   analysisRequestedAt     DateTime?
+  processingMetadata      Json?
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
