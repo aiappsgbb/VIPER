@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from openai.types.audio.transcription import Transcription
+from .transcription import TranscriptionResult
 
 
 class Segment(BaseModel):
@@ -61,5 +61,5 @@ class VideoManifest(BaseModel):
     segment_metadata: SegmentMetadata = Field(default_factory=SegmentMetadata)
     segments: List[Segment] = Field(default_factory=list)
     final_summary: Optional[str] = None
-    audio_transcription: Optional[Transcription] = None
+    audio_transcription: Optional[TranscriptionResult] = None
     source_audio: SourceAudioMetadata = Field(default_factory=SourceAudioMetadata)

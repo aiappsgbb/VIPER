@@ -3,7 +3,7 @@ import json
 import time
 import asyncio
 import nest_asyncio
-from typing import Union, Type
+from typing import Optional, Union, Type
 from openai import AzureOpenAI, AsyncAzureOpenAI
 
 from .models.video import VideoManifest, Segment
@@ -29,6 +29,7 @@ class VideoAnalyzer:
         # get and validate video manifest
         self.manifest = validate_video_manifest(video_manifest)
         self.env = env
+        self.latest_output_path: Optional[str] = None
 
     # Primary method to analyze the video
     def analyze_video(
@@ -41,6 +42,7 @@ class VideoAnalyzer:
     ):
 
         self.reprocess_segments = reprocess_segments
+        self.latest_output_path = None
 
         stopwatch_start_time = time.time()
 
@@ -77,10 +79,28 @@ class VideoAnalyzer:
 
         ## collapse the segment lists into one large list of segments. (Needed for expected ActionSummary format for UI)
         try:
-            final_results = []
-            for item in results_list:
-                for elem in item:
-                    final_results.append(elem)
+            flattened_results = []
+            for index, segment in enumerate(self.manifest.segments):
+                if index >= len(results_list):
+                    break
+
+                segment_result = results_list[index]
+                if isinstance(segment_result, list):
+                    iterable = segment_result
+                else:
+                    iterable = [segment_result]
+
+                for entry_position, elem in enumerate(iterable):
+                    if isinstance(elem, dict):
+                        enriched = dict(elem)
+                        enriched.setdefault("_segment_index", index)
+                        enriched.setdefault("_segment_name", segment.segment_name)
+                        enriched.setdefault("_segment_start", segment.start_time)
+                        enriched.setdefault("_segment_end", segment.end_time)
+                        enriched.setdefault("_segment_entry_index", entry_position)
+                        flattened_results.append(enriched)
+                    else:
+                        flattened_results.append(elem)
 
             final_results_output_path = os.path.join(
                 self.manifest.processing_params.output_directory,
@@ -90,36 +110,41 @@ class VideoAnalyzer:
             # generate the final summary if enabled
             ## check to see if analysis_config has an attribute called run_final_summary
 
-            if hasattr(analysis_config, "run_final_summary"):
-                if analysis_config.run_final_summary is True:
-                    print(
-                        f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
-                    )
-                    summary_prompt = self.generate_summary_prompt(
-                        analysis_config, final_results
-                    )
-                    summary_results = self._call_llm(summary_prompt)
+            results_payload = flattened_results
 
-                    self.manifest.final_summary = summary_results.choices[
-                        0
-                    ].message.content
+            if getattr(analysis_config, "run_final_summary", False):
+                print(
+                    f"Final summary of video analysis: {analysis_config.name} for {self.manifest.name}"
+                )
+                summary_prompt = self.generate_summary_prompt(
+                    analysis_config, flattened_results
+                )
+                summary_results = self._call_llm(summary_prompt)
 
-                    final_results = {
-                        "final_summary": self.manifest.final_summary,
-                        "results": final_results,
-                    }
+                self.manifest.final_summary = summary_results.choices[
+                    0
+                ].message.content
+
+                results_payload = {
+                    "final_summary": self.manifest.final_summary,
+                    "results": flattened_results,
+                }
 
             print(f"Writing results to {final_results_output_path}")
 
-            with open(final_results_output_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(final_results, indent=4))
+            self.latest_output_path = final_results_output_path
 
+            with open(final_results_output_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(results_payload, indent=4))
+
+            final_results = results_payload
         except:
             print(results_list)
             final_results_output_path = os.path.join(
                 self.manifest.processing_params.output_directory,
                 f"_video_analysis_results_{analysis_config.name}_errors.json",
             )
+            self.latest_output_path = final_results_output_path
             with open(final_results_output_path, "w", encoding="utf-8") as f:
                 f.write(json.dumps(results_list, indent=4))
             raise ValueError(
