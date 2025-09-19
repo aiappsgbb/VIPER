@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 import { extname } from "path";
 import { buildBackendUrl } from "@/lib/backend";
 
+
 const NETWORK_RETRY_ERROR_CODES = new Set([
   "ECONNREFUSED",
   "ECONNRESET",
@@ -171,11 +172,14 @@ function resolveCobraUploadEndpoint() {
   return buildBackendUrl("/videos/upload");
 }
 
+
 function getUploadEndpointCandidates() {
   const primary = resolveCobraUploadEndpoint();
   const candidates = [primary];
 
+
   try {
+
     const url = new URL(primary);
     const fallbackHosts = new Set();
 
@@ -206,6 +210,7 @@ function getUploadEndpointCandidates() {
       fallbackUrl.host = host;
       candidates.push(fallbackUrl.toString());
     }
+
   } catch (error) {
     // Ignore invalid URL formatting and fall back to the primary endpoint only.
   }
