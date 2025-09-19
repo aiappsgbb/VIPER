@@ -87,6 +87,123 @@ function extractNumericSeconds(value) {
   return Number.isNaN(numericValue) ? null : numericValue;
 }
 
+function formatSecondsLabel(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+    return null;
+  }
+
+  const clamped = Math.max(0, seconds);
+  const wholeSeconds = Math.floor(clamped);
+  const fractional = clamped - wholeSeconds;
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const secs = wholeSeconds % 60;
+
+  const parts = [];
+  if (hours > 0) {
+    parts.push(hours.toString());
+    parts.push(minutes.toString().padStart(2, "0"));
+  } else {
+    parts.push(minutes.toString());
+  }
+  parts.push(secs.toString().padStart(2, "0"));
+
+  let label = parts.join(":");
+
+  if (fractional > 0) {
+    let decimals = fractional.toFixed(2).slice(1);
+    decimals = decimals.replace(/0+$/, "");
+    if (decimals && decimals !== ".") {
+      label += decimals;
+    }
+  }
+
+  return label;
+}
+
+function extractTranscriptUrl(artifacts) {
+  if (!artifacts) {
+    return null;
+  }
+
+  if (typeof artifacts === "string") {
+    return artifacts;
+  }
+
+  if (Array.isArray(artifacts)) {
+    return null;
+  }
+
+  if (typeof artifacts === "object" && artifacts !== null) {
+    const candidate = artifacts.transcript ?? artifacts.transcription ?? null;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+function normalizeTranscriptData(transcript) {
+  if (!transcript || typeof transcript !== "object") {
+    return {
+      text: "",
+      durationSeconds: null,
+      durationLabel: null,
+      segments: [],
+    };
+  }
+
+  const text = typeof transcript.text === "string" ? transcript.text.trim() : "";
+  const durationSeconds = extractNumericSeconds(transcript.duration);
+  const durationLabel = durationSeconds != null ? formatSecondsLabel(durationSeconds) : null;
+
+  let segments = [];
+  if (Array.isArray(transcript.segments)) {
+    segments = transcript.segments
+      .map((segment, index) => {
+        if (!segment || typeof segment !== "object") {
+          return null;
+        }
+
+        const segmentText = typeof segment.text === "string" ? segment.text.trim() : "";
+        const startSeconds = extractNumericSeconds(segment.start);
+        const endSeconds = extractNumericSeconds(segment.end);
+        const startLabel = startSeconds != null ? formatSecondsLabel(startSeconds) : null;
+        const endLabel = endSeconds != null ? formatSecondsLabel(endSeconds) : null;
+
+        if (!segmentText && startLabel == null && endLabel == null) {
+          return null;
+        }
+
+        return {
+          id: segment.id ?? `segment-${index}`,
+          text: segmentText || "No transcription available for this segment.",
+          startSeconds,
+          endSeconds,
+          startLabel,
+          endLabel,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aStart = a.startSeconds ?? Number.POSITIVE_INFINITY;
+        const bStart = b.startSeconds ?? Number.POSITIVE_INFINITY;
+        if (aStart !== bStart) {
+          return aStart - bStart;
+        }
+        return (a.text || "").localeCompare(b.text || "");
+      });
+  }
+
+  return {
+    text,
+    durationSeconds,
+    durationLabel,
+    segments,
+  };
+}
+
 const DEFAULT_ACTION_SUMMARY_FIELDS = [
   {
     name: "start_timestamp",
@@ -428,6 +545,9 @@ export default function DashboardView({
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
   );
   const [isFieldBuilderOpen, setIsFieldBuilderOpen] = useState(false);
+  const [transcriptData, setTranscriptData] = useState(null);
+  const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
+  const [transcriptError, setTranscriptError] = useState("");
 
   const organizationLookup = useMemo(() => {
     const map = new Map();
@@ -494,6 +614,77 @@ export default function DashboardView({
     [collections, activeCollectionId],
   );
 
+  const transcriptUrl = useMemo(() => {
+    const direct = selectedContent?.processingMetadata?.cobra?.transcriptUrl;
+    if (typeof direct === "string" && direct.trim().length > 0) {
+      return direct.trim();
+    }
+
+    const sources = [
+      actionSummaryData?.storageArtifacts,
+      chapterAnalysisData?.storageArtifacts,
+      selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
+      selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
+    ];
+
+    for (const artifacts of sources) {
+      const candidate = extractTranscriptUrl(artifacts);
+      if (candidate) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }, [
+    actionSummaryData?.storageArtifacts,
+    chapterAnalysisData?.storageArtifacts,
+    selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
+    selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
+    selectedContent?.processingMetadata?.cobra?.transcriptUrl,
+  ]);
+
+  const transcriptSegments = transcriptData?.segments ?? [];
+  const transcriptText = transcriptData?.text ?? "";
+  const transcriptDurationLabel = transcriptData?.durationLabel ?? null;
+  const transcriptSegmentCount = transcriptSegments.length;
+  const transcriptHeaderDescription = useMemo(() => {
+    if (!transcriptUrl) {
+      return "Run an analysis to generate an audio transcript for this video.";
+    }
+
+    if (isTranscriptLoading && !transcriptData) {
+      return "Fetching the audio transcript…";
+    }
+
+    if (transcriptError) {
+      return "We couldn't load the transcript automatically.";
+    }
+
+    if (transcriptSegmentCount > 0) {
+      const segmentsLabel = `${transcriptSegmentCount} segment${
+        transcriptSegmentCount === 1 ? "" : "s"
+      }`;
+      if (transcriptDurationLabel) {
+        return `${segmentsLabel} • Duration ${transcriptDurationLabel}. Click a line to jump to that moment.`;
+      }
+      return `${segmentsLabel}. Click a line to jump to that moment.`;
+    }
+
+    if (transcriptText) {
+      return "Full transcript shown below.";
+    }
+
+    return "Download the transcript file to review the audio.";
+  }, [
+    transcriptUrl,
+    isTranscriptLoading,
+    transcriptData,
+    transcriptError,
+    transcriptSegmentCount,
+    transcriptDurationLabel,
+    transcriptText,
+  ]);
+
   useEffect(() => {
     setActionSummaryMessage("");
     setActionSummaryError("");
@@ -504,6 +695,9 @@ export default function DashboardView({
     setActionSummaryData(selectedContent?.processingMetadata?.cobra?.actionSummary ?? null);
     setChapterAnalysisData(selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null);
     setActiveContentFilterId("");
+    setTranscriptData(null);
+    setTranscriptError("");
+    setIsTranscriptLoading(false);
 
     if (selectedContent?.collection?.id && selectedContent.collection.id !== activeCollectionId) {
       setActiveCollectionId(selectedContent.collection.id);
@@ -531,6 +725,61 @@ export default function DashboardView({
       }
     }
   }, [activeCollectionId, activeOrganizationId, collections]);
+
+  useEffect(() => {
+    if (!transcriptUrl) {
+      setTranscriptData(null);
+      setTranscriptError("");
+      setIsTranscriptLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const loadTranscript = async () => {
+      setIsTranscriptLoading(true);
+      setTranscriptError("");
+
+      try {
+        const response = await fetch(transcriptUrl, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch transcript (${response.status})`);
+        }
+
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+
+        setTranscriptData(normalizeTranscriptData(data));
+      } catch (error) {
+        if (!isMounted || error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to load transcript", error);
+        setTranscriptError(error.message ?? "Failed to load transcript.");
+        setTranscriptData(null);
+      } finally {
+        if (isMounted) {
+          setIsTranscriptLoading(false);
+        }
+      }
+    };
+
+    loadTranscript();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [
+    transcriptUrl,
+    actionSummaryData?.lastRunAt,
+    chapterAnalysisData?.lastRunAt,
+    selectedContent?.id,
+  ]);
 
   useEffect(() => {
     if (!activeCollectionId || activeContentFilterId === "") {
@@ -950,6 +1199,74 @@ export default function DashboardView({
                   url={selectedContent.videoUrl}
                   width="100%"
                 />
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-white/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Transcription</p>
+                    <p className="text-xs text-slate-500">{transcriptHeaderDescription}</p>
+                  </div>
+                  {transcriptUrl ? (
+                    <Button asChild size="sm" variant="outline">
+                      <a href={transcriptUrl} rel="noreferrer" target="_blank">
+                        Download JSON
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
+                {transcriptUrl ? (
+                  isTranscriptLoading && !transcriptData ? (
+                    <p className="text-sm text-slate-500">Loading transcription…</p>
+                  ) : transcriptError ? (
+                    <p className="text-sm text-red-600">
+                      {transcriptError}
+                      {" "}
+                      <a className="underline" href={transcriptUrl} rel="noreferrer" target="_blank">
+                        Open transcript
+                      </a>
+                      .
+                    </p>
+                  ) : transcriptSegmentCount > 0 ? (
+                    <ScrollArea className="max-h-64 rounded-md border border-slate-200 bg-white/50">
+                      <div className="divide-y divide-slate-200">
+                        {transcriptSegments.map((segment, index) => (
+                          <button
+                            className="flex w-full items-start gap-3 p-3 text-left transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={segment.startSeconds == null}
+                            key={segment.id ?? `segment-${index}`}
+                            onClick={() =>
+                              segment.startSeconds != null &&
+                              handleSeekToTimestamp(segment.startSeconds)
+                            }
+                            type="button"
+                          >
+                            <div className="w-20 shrink-0 text-xs font-semibold text-slate-500">
+                              {segment.startLabel ?? "—"}
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm text-slate-700">{segment.text}</p>
+                              {segment.endLabel ? (
+                                <p className="text-xs text-slate-400">Ends at {segment.endLabel}</p>
+                              ) : null}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : transcriptText ? (
+                    <p className="whitespace-pre-line rounded-md bg-slate-100/70 p-3 text-sm text-slate-700">
+                      {transcriptText}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      The transcript file is available to download above.
+                    </p>
+                  )
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Run an action summary or chapter analysis to generate the audio transcript for this video.
+                  </p>
+                )}
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <p className="font-medium text-slate-700">Uploaded by</p>
