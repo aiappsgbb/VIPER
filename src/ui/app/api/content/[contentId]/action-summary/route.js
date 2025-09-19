@@ -36,7 +36,49 @@ function buildDisplayName(session, content) {
   );
 }
 
-function buildRequestPayload({ content, session, cobraMeta }) {
+function normalizeAnalysisTemplate(template) {
+  if (!Array.isArray(template)) {
+    return null;
+  }
+
+  const normalized = template
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const normalizedEntry = {};
+      Object.entries(entry).forEach(([rawKey, rawValue]) => {
+        if (typeof rawKey !== "string") {
+          return;
+        }
+
+        const key = rawKey.trim();
+        if (!key) {
+          return;
+        }
+
+        if (typeof rawValue === "string") {
+          normalizedEntry[key] = rawValue;
+        } else if (rawValue == null) {
+          normalizedEntry[key] = "";
+        } else {
+          try {
+            normalizedEntry[key] = JSON.stringify(rawValue);
+          } catch (error) {
+            normalizedEntry[key] = String(rawValue);
+          }
+        }
+      });
+
+      return Object.keys(normalizedEntry).length ? normalizedEntry : null;
+    })
+    .filter(Boolean);
+
+  return normalized.length ? normalized : null;
+}
+
+function buildRequestPayload({ content, session, cobraMeta, analysisTemplate }) {
   const payload = {
     video_path: cobraMeta.localVideoPath,
     manifest_path: cobraMeta.manifestPath ?? null,
@@ -54,10 +96,14 @@ function buildRequestPayload({ content, session, cobraMeta }) {
     payload.skip_preprocess = true;
   }
 
+  if (Array.isArray(analysisTemplate) && analysisTemplate.length > 0) {
+    payload.analysis_template = analysisTemplate;
+  }
+
   return payload;
 }
 
-export async function POST(_request, { params }) {
+export async function POST(request, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -104,6 +150,41 @@ export async function POST(_request, { params }) {
     );
   }
 
+  const normalizedExistingTemplate = normalizeAnalysisTemplate(
+    cobraMeta.actionSummary?.analysisTemplate,
+  );
+  const existingTemplate =
+    normalizedExistingTemplate ??
+    (Array.isArray(cobraMeta.actionSummary?.analysisTemplate)
+      ? cobraMeta.actionSummary.analysisTemplate
+      : null);
+
+  let requestBody = null;
+  if (request.headers.get("content-type")?.includes("application/json")) {
+    try {
+      requestBody = await request.json();
+    } catch (error) {
+      requestBody = null;
+    }
+  }
+
+  let analysisTemplate = existingTemplate;
+  if (
+    requestBody &&
+    Object.prototype.hasOwnProperty.call(requestBody, "analysisTemplate")
+  ) {
+    if (requestBody.analysisTemplate === null) {
+      analysisTemplate = null;
+    } else {
+      const normalizedRequestedTemplate = normalizeAnalysisTemplate(
+        requestBody.analysisTemplate,
+      );
+      if (normalizedRequestedTemplate) {
+        analysisTemplate = normalizedRequestedTemplate;
+      }
+    }
+  }
+
   const now = new Date();
   cobraMeta.lastActionSummaryRequestedAt = now.toISOString();
   processingMetadata.cobra = cobraMeta;
@@ -123,7 +204,14 @@ export async function POST(_request, { params }) {
     response = await fetch(ensureActionSummaryEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildRequestPayload({ content, session, cobraMeta })),
+      body: JSON.stringify(
+        buildRequestPayload({
+          content,
+          session,
+          cobraMeta,
+          analysisTemplate,
+        }),
+      ),
     });
     data = await response.json().catch(() => null);
   } catch (error) {
@@ -131,6 +219,7 @@ export async function POST(_request, { params }) {
       lastRunAt: new Date().toISOString(),
       status: "FAILED",
       error: error.message,
+      analysisTemplate,
     };
     processingMetadata.cobra = cobraMeta;
 
@@ -156,6 +245,7 @@ export async function POST(_request, { params }) {
       lastRunAt: new Date().toISOString(),
       status: "FAILED",
       error: errorMessage,
+      analysisTemplate,
     };
     processingMetadata.cobra = cobraMeta;
 
@@ -171,12 +261,16 @@ export async function POST(_request, { params }) {
   }
 
   cobraMeta.manifestPath = data?.manifest_path ?? cobraMeta.manifestPath ?? null;
+  const responseTemplate =
+    normalizeAnalysisTemplate(data?.analysis_template) ?? analysisTemplate ?? null;
+  analysisTemplate = responseTemplate;
   cobraMeta.actionSummary = {
     lastRunAt: new Date().toISOString(),
     analysis: data?.analysis ?? null,
     analysisOutputPath: data?.analysis_output_path ?? null,
     storageArtifacts: data?.storage_artifacts ?? null,
     searchUploads: data?.search_uploads ?? [],
+    analysisTemplate: analysisTemplate,
     filters: {
       organizationId: content.organizationId,
       collectionId: content.collectionId,
@@ -200,6 +294,7 @@ export async function POST(_request, { params }) {
       searchUploads: data?.search_uploads ?? [],
       analysisOutputPath: data?.analysis_output_path ?? null,
       storageArtifacts: data?.storage_artifacts ?? null,
+      analysisTemplate,
       filters: {
         organizationId: content.organizationId,
         collectionId: content.collectionId,
