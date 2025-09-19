@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +16,13 @@ const STATUS_TONE_CLASSES = {
   error: "text-red-600",
   info: "text-slate-500",
 };
+
+const MEMBERSHIP_ROLE_OPTIONS = [
+  { value: "VIEWER", label: "Viewer" },
+  { value: "EDITOR", label: "Editor" },
+  { value: "ADMIN", label: "Admin" },
+  { value: "OWNER", label: "Owner" },
+];
 
 function getStatusToneClass(tone) {
   return STATUS_TONE_CLASSES[tone] ?? STATUS_TONE_CLASSES.info;
@@ -89,6 +98,24 @@ export default function AdminPanel({
     [organizations],
   );
 
+  const collectionOptions = useMemo(
+    () =>
+      collectionSummaries.map((collection) => ({
+        id: collection.id,
+        label: `${collection.organizationName} • ${collection.name}`,
+      })),
+    [collectionSummaries],
+  );
+
+  const userOptions = useMemo(
+    () =>
+      users.map((user) => ({
+        id: user.id,
+        label: user.name ? `${user.name} (${user.email})` : user.email,
+      })),
+    [users],
+  );
+
   const [collectionDrafts, setCollectionDrafts] = useState(() =>
     collectionSummaries.map((collection) => ({
       id: collection.id,
@@ -150,18 +177,45 @@ export default function AdminPanel({
   };
 
   const [approvalEmail, setApprovalEmail] = useState("");
-  const [approvalOrgId, setApprovalOrgId] = useState(organizations[0]?.id ?? "");
+  const [approvalOrgId, setApprovalOrgId] = useState("");
   const [approvalCollections, setApprovalCollections] = useState([]);
   const [approvalRole, setApprovalRole] = useState(roleOptions[0]?.value ?? "USER");
   const [approvalError, setApprovalError] = useState("");
   const [approvalSuccess, setApprovalSuccess] = useState("");
   const [isSavingApproval, setIsSavingApproval] = useState(false);
 
+  const [organizationMemberOrgId, setOrganizationMemberOrgId] = useState(
+    organizations[0]?.id ?? "",
+  );
+  const [organizationMemberUserId, setOrganizationMemberUserId] = useState(
+    users[0]?.id ?? "",
+  );
+  const [organizationMemberRole, setOrganizationMemberRole] = useState(
+    MEMBERSHIP_ROLE_OPTIONS[0]?.value ?? "VIEWER",
+  );
+  const [organizationMemberMessage, setOrganizationMemberMessage] = useState("");
+  const [organizationMemberTone, setOrganizationMemberTone] = useState("info");
+  const [isAddingOrganizationMember, setIsAddingOrganizationMember] = useState(false);
+
+  const [collectionMemberCollectionId, setCollectionMemberCollectionId] = useState(
+    collectionSummaries[0]?.id ?? "",
+  );
+  const [collectionMemberUserId, setCollectionMemberUserId] = useState(users[0]?.id ?? "");
+  const [collectionMemberRole, setCollectionMemberRole] = useState(
+    MEMBERSHIP_ROLE_OPTIONS[0]?.value ?? "VIEWER",
+  );
+  const [collectionMemberMessage, setCollectionMemberMessage] = useState("");
+  const [collectionMemberTone, setCollectionMemberTone] = useState("info");
+  const [isAddingCollectionMember, setIsAddingCollectionMember] = useState(false);
+
   useEffect(() => {
     if (!organizations.length) {
       setApprovalOrgId("");
       setApprovalCollections([]);
-    } else if (!organizations.some((organization) => organization.id === approvalOrgId)) {
+    } else if (
+      approvalOrgId &&
+      !organizations.some((organization) => organization.id === approvalOrgId)
+    ) {
       setApprovalOrgId(organizations[0].id);
       setApprovalCollections([]);
     }
@@ -178,6 +232,82 @@ export default function AdminPanel({
       setApprovalRole("USER");
     }
   }, [roleOptions]);
+
+  useEffect(() => {
+    if (!organizations.length) {
+      if (organizationMemberOrgId !== "") {
+        setOrganizationMemberOrgId("");
+      }
+      return;
+    }
+
+    if (!organizationMemberOrgId) {
+      setOrganizationMemberOrgId(organizations[0].id);
+      return;
+    }
+
+    if (!organizations.some((organization) => organization.id === organizationMemberOrgId)) {
+      setOrganizationMemberOrgId(organizations[0].id);
+    }
+  }, [organizations, organizationMemberOrgId]);
+
+  useEffect(() => {
+    if (!users.length) {
+      if (organizationMemberUserId !== "") {
+        setOrganizationMemberUserId("");
+      }
+      return;
+    }
+
+    if (!organizationMemberUserId) {
+      setOrganizationMemberUserId(users[0].id);
+      return;
+    }
+
+    if (!users.some((user) => user.id === organizationMemberUserId)) {
+      setOrganizationMemberUserId(users[0].id);
+    }
+  }, [users, organizationMemberUserId]);
+
+  useEffect(() => {
+    if (!collectionSummaries.length) {
+      if (collectionMemberCollectionId !== "") {
+        setCollectionMemberCollectionId("");
+      }
+      return;
+    }
+
+    if (!collectionMemberCollectionId) {
+      setCollectionMemberCollectionId(collectionSummaries[0].id);
+      return;
+    }
+
+    if (
+      !collectionSummaries.some(
+        (collection) => collection.id === collectionMemberCollectionId,
+      )
+    ) {
+      setCollectionMemberCollectionId(collectionSummaries[0].id);
+    }
+  }, [collectionSummaries, collectionMemberCollectionId]);
+
+  useEffect(() => {
+    if (!users.length) {
+      if (collectionMemberUserId !== "") {
+        setCollectionMemberUserId("");
+      }
+      return;
+    }
+
+    if (!collectionMemberUserId) {
+      setCollectionMemberUserId(users[0].id);
+      return;
+    }
+
+    if (!users.some((user) => user.id === collectionMemberUserId)) {
+      setCollectionMemberUserId(users[0].id);
+    }
+  }, [users, collectionMemberUserId]);
 
   const collectionsByOrganization = useMemo(() => {
     const lookup = new Map();
@@ -382,6 +512,106 @@ export default function AdminPanel({
     }
   };
 
+  const handleAddOrganizationMember = async (event) => {
+    event.preventDefault();
+    setOrganizationMemberMessage("");
+    setOrganizationMemberTone("info");
+
+    if (!organizationMemberOrgId) {
+      setOrganizationMemberMessage("Select an organization to add the user to.");
+      setOrganizationMemberTone("error");
+      return;
+    }
+
+    if (!organizationMemberUserId) {
+      setOrganizationMemberMessage("Select a user to add.");
+      setOrganizationMemberTone("error");
+      return;
+    }
+
+    setIsAddingOrganizationMember(true);
+
+    try {
+      const response = await fetch(
+        `/api/admin/organizations/${organizationMemberOrgId}/members`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: organizationMemberUserId,
+            role: organizationMemberRole,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Unable to add user to the organization");
+      }
+
+      setOrganizationMemberMessage("Membership saved.");
+      setOrganizationMemberTone("success");
+      router.refresh();
+    } catch (memberError) {
+      setOrganizationMemberMessage(
+        memberError.message ?? "Unable to add user to the organization.",
+      );
+      setOrganizationMemberTone("error");
+    } finally {
+      setIsAddingOrganizationMember(false);
+    }
+  };
+
+  const handleAddCollectionMember = async (event) => {
+    event.preventDefault();
+    setCollectionMemberMessage("");
+    setCollectionMemberTone("info");
+
+    if (!collectionMemberCollectionId) {
+      setCollectionMemberMessage("Select a collection to add the user to.");
+      setCollectionMemberTone("error");
+      return;
+    }
+
+    if (!collectionMemberUserId) {
+      setCollectionMemberMessage("Select a user to add.");
+      setCollectionMemberTone("error");
+      return;
+    }
+
+    setIsAddingCollectionMember(true);
+
+    try {
+      const response = await fetch(
+        `/api/admin/collections/${collectionMemberCollectionId}/members`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: collectionMemberUserId,
+            role: collectionMemberRole,
+          }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Unable to add user to the collection");
+      }
+
+      setCollectionMemberMessage("Membership saved.");
+      setCollectionMemberTone("success");
+      router.refresh();
+    } catch (memberError) {
+      setCollectionMemberMessage(
+        memberError.message ?? "Unable to add user to the collection.",
+      );
+      setCollectionMemberTone("error");
+    } finally {
+      setIsAddingCollectionMember(false);
+    }
+  };
+
   const toggleApprovalCollection = (collectionId) => {
     setApprovalCollections((current) =>
       current.includes(collectionId)
@@ -400,8 +630,8 @@ export default function AdminPanel({
       return;
     }
 
-    if (!approvalOrgId) {
-      setApprovalError("Choose an organization.");
+    if (!approvalOrgId && approvalCollections.length) {
+      setApprovalError("Select an organization when assigning collections.");
       return;
     }
 
@@ -413,8 +643,8 @@ export default function AdminPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: approvalEmail.toLowerCase(),
-          organizationId: approvalOrgId,
-          collectionIds: approvalCollections,
+          organizationId: approvalOrgId || null,
+          collectionIds: approvalOrgId ? approvalCollections : [],
           role: approvalRole,
         }),
       });
@@ -457,6 +687,20 @@ export default function AdminPanel({
 
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Administration</h1>
+          <p className="text-sm text-slate-500">
+            Manage organizations, collections, user access, and invitations.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link className="flex items-center gap-2" href="/dashboard">
+            <ArrowLeft className="h-4 w-4" />
+            Back to dashboard
+          </Link>
+        </Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Organizations</CardTitle>
@@ -710,8 +954,194 @@ export default function AdminPanel({
               })
             )}
           </div>
-        </CardContent>
-      </Card>
+      </CardContent>
+    </Card>
+
+      {permissions.canManageOrganizations || permissions.canManageCollections ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Memberships</CardTitle>
+            <CardDescription>
+              Assign existing users to organizations or collections without changing their platform role.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {permissions.canManageOrganizations ? (
+              organizations.length && users.length ? (
+                <form className="space-y-3" onSubmit={handleAddOrganizationMember}>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="organization-member-organization"
+                      >
+                        Organization
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingOrganizationMember}
+                        id="organization-member-organization"
+                        onChange={(event) => setOrganizationMemberOrgId(event.target.value)}
+                        value={organizationMemberOrgId}
+                      >
+                        {organizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>
+                            {organization.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="organization-member-user"
+                      >
+                        User
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingOrganizationMember}
+                        id="organization-member-user"
+                        onChange={(event) => setOrganizationMemberUserId(event.target.value)}
+                        value={organizationMemberUserId}
+                      >
+                        {userOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="organization-member-role"
+                      >
+                        Role
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingOrganizationMember}
+                        id="organization-member-role"
+                        onChange={(event) => setOrganizationMemberRole(event.target.value)}
+                        value={organizationMemberRole}
+                      >
+                        {MEMBERSHIP_ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <SectionMessage
+                    message={organizationMemberMessage}
+                    tone={organizationMemberTone}
+                  />
+                  <Button disabled={isAddingOrganizationMember} type="submit">
+                    {isAddingOrganizationMember ? "Adding…" : "Add to organization"}
+                  </Button>
+                </form>
+              ) : (
+                <EmptyState
+                  message={
+                    !organizations.length
+                      ? "Create an organization before assigning members."
+                      : "Invite users before assigning organization memberships."
+                  }
+                />
+              )
+            ) : null}
+
+            {permissions.canManageCollections ? (
+              collectionSummaries.length && users.length ? (
+                <form className="space-y-3" onSubmit={handleAddCollectionMember}>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="collection-member-collection"
+                      >
+                        Collection
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingCollectionMember}
+                        id="collection-member-collection"
+                        onChange={(event) => setCollectionMemberCollectionId(event.target.value)}
+                        value={collectionMemberCollectionId}
+                      >
+                        {collectionOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="collection-member-user"
+                      >
+                        User
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingCollectionMember}
+                        id="collection-member-user"
+                        onChange={(event) => setCollectionMemberUserId(event.target.value)}
+                        value={collectionMemberUserId}
+                      >
+                        {userOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        className="text-sm font-medium text-slate-600"
+                        htmlFor="collection-member-role"
+                      >
+                        Role
+                      </label>
+                      <select
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        disabled={isAddingCollectionMember}
+                        id="collection-member-role"
+                        onChange={(event) => setCollectionMemberRole(event.target.value)}
+                        value={collectionMemberRole}
+                      >
+                        {MEMBERSHIP_ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <SectionMessage
+                    message={collectionMemberMessage}
+                    tone={collectionMemberTone}
+                  />
+                  <Button disabled={isAddingCollectionMember} type="submit">
+                    {isAddingCollectionMember ? "Adding…" : "Add to collection"}
+                  </Button>
+                </form>
+              ) : (
+                <EmptyState
+                  message={
+                    !collectionSummaries.length
+                      ? "Create a collection before assigning members."
+                      : "Invite users before assigning collection memberships."
+                  }
+                />
+              )
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -855,7 +1285,7 @@ export default function AdminPanel({
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium text-slate-600" htmlFor="approval-organization">
-                    Organization
+                    Organization (optional)
                   </label>
                   <select
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
@@ -866,7 +1296,7 @@ export default function AdminPanel({
                     }}
                     value={approvalOrgId}
                   >
-                    <option value="">Select an organization</option>
+                    <option value="">No organization</option>
                     {organizations.map((organization) => (
                       <option key={organization.id} value={organization.id}>
                         {organization.name}

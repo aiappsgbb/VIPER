@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
+import { buildBackendUrl } from "@/lib/backend";
 
-function ensureActionSummaryEndpoint() {
-  const endpoint = process.env.ACTION_SUMMARY_ENDPOINT;
-  if (!endpoint) {
-    throw new Error("ACTION_SUMMARY_ENDPOINT is not configured");
+function getActionSummaryEndpoint() {
+  const configured = process.env.ACTION_SUMMARY_ENDPOINT;
+  if (configured && typeof configured === "string" && configured.trim().length) {
+    return configured.trim();
   }
-  return endpoint;
+  return buildBackendUrl("/analysis/action-summary");
 }
 
 function cloneProcessingMetadata(metadata) {
@@ -193,7 +194,7 @@ export async function POST(request, { params }) {
   let response;
   let data;
   try {
-    response = await fetch(ensureActionSummaryEndpoint(), {
+    response = await fetch(getActionSummaryEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(

@@ -17,6 +17,23 @@ cd /path/to/local/repo/cobrapy
 
 3. Copy `sample.env` to `.env` at the repository root and populate it with your service credentials. The backend and UI components both consume environment variables from this shared file.
 
+4. Start the FastAPI backend on port 8000:
+
+```bash
+poetry install
+poetry run uvicorn cobrapy.api.app:app --host 0.0.0.0 --port 8000
+```
+
+5. In a separate terminal, install the UI dependencies and start the Next.js frontend on port 3000:
+
+```bash
+cd src/ui
+npm install
+npm run dev
+```
+
+The UI automatically proxies requests to `http://localhost:8000`, so no additional environment variables are required to wire the services together.
+
 ## Contributing
 
 This project welcomes contributions and suggestions. Most contributions require you to agree to a

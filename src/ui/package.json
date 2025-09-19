@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3000",
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/identity": "^3.4.1",
     "@azure/openai": "^1.0.0-beta.6",
     "@azure/search-documents": "^12.0.0-alpha.20231023.1",
     "@azure/storage-blob": "^12.17.0",
