@@ -193,7 +193,6 @@ class CobraEnvironment(BaseSettings):
     def require_vision(self) -> GPTVision:
         """Return the configured vision settings or raise a helpful error."""
 
-
         vision = self.vision or self._refresh_vision_settings()
         if vision is None:
             message = (
