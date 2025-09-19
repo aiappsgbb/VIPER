@@ -4,25 +4,67 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import DashboardSidebar from "@/components/dashboard/sidebar";
 import DashboardHeader from "@/components/dashboard/header";
+import { canAccessAdmin, canViewAllContent } from "@/lib/rbac";
 
-async function getSidebarData(userId) {
-  const organizations = await prisma.organization.findMany({
-    where: {
-      memberships: {
-        some: {
-          userId,
-        },
-      },
-    },
-    include: {
-      collections: {
-        where: {
-          memberships: {
-            some: {
-              userId,
+async function getSidebarData(user) {
+  const canSeeAll = canViewAllContent(user.role);
+
+  const organizationWhere = canSeeAll
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: user.id,
+              },
             },
           },
-        },
+          {
+            collections: {
+              some: {
+                memberships: {
+                  some: {
+                    userId: user.id,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+  const collectionWhere = canSeeAll
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+          {
+            organization: {
+              memberships: {
+                some: {
+                  userId: user.id,
+                  role: {
+                    in: ["ADMIN", "OWNER"],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+  const organizations = await prisma.organization.findMany({
+    where: organizationWhere,
+    include: {
+      collections: {
+        where: collectionWhere,
         orderBy: {
           name: "asc",
         },
@@ -63,13 +105,13 @@ export default async function DashboardLayout({ children }) {
     redirect("/login");
   }
 
-  const sidebarData = await getSidebarData(session.user.id);
+  const sidebarData = await getSidebarData(session.user);
 
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="flex min-h-screen">
         <DashboardSidebar
-          isAdmin={session.user.role === "ADMIN"}
+          isAdmin={canAccessAdmin(session.user.role)}
           organizations={sidebarData}
         />
         <div className="flex flex-1 flex-col">

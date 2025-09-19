@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { canManageApprovals, canViewAllContent } from "@/lib/rbac";
+import { userCanManageOrganization } from "@/lib/access";
 
 export async function DELETE(_request, { params }) {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  if (!session?.user?.id || !canManageApprovals(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -18,18 +20,15 @@ export async function DELETE(_request, { params }) {
     return NextResponse.json({ error: "Approval not found" }, { status: 404 });
   }
 
-  const membership = await prisma.organizationMembership.findFirst({
-    where: {
-      userId: session.user.id,
-      organizationId: approval.organizationId ?? undefined,
-      role: {
-        in: ["ADMIN", "OWNER"],
-      },
-    },
-  });
+  if (approval.organizationId && !canViewAllContent(session.user.role)) {
+    const canManage = await userCanManageOrganization(
+      session.user,
+      approval.organizationId,
+    );
 
-  if (!membership && approval.organizationId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!canManage) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
   }
 
   await prisma.approvedEmail.delete({

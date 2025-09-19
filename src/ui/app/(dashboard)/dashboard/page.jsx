@@ -3,10 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import DashboardView from "@/components/dashboard/dashboard-view";
+import {
+  canCreateCollections,
+  canManageCollections,
+  canViewAllContent,
+} from "@/lib/rbac";
 
 function serializeCollections(collections) {
   return collections.map((collection) => ({
     ...collection,
+    description: collection.description ?? null,
     createdAt: collection.createdAt.toISOString(),
     updatedAt: collection.updatedAt.toISOString(),
     organization: collection.organization,
@@ -35,14 +41,36 @@ export default async function DashboardPage({ searchParams }) {
     redirect("/login");
   }
 
+  const canSeeAllContent = canViewAllContent(session.user.role);
+
+  const collectionWhere = canSeeAllContent
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+          {
+            organization: {
+              memberships: {
+                some: {
+                  userId: session.user.id,
+                  role: {
+                    in: ["ADMIN", "OWNER"],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
   const collections = await prisma.collection.findMany({
-    where: {
-      memberships: {
-        some: {
-          userId: session.user.id,
-        },
-      },
-    },
+    where: collectionWhere,
     include: {
       organization: true,
       contents: {
@@ -58,6 +86,53 @@ export default async function DashboardPage({ searchParams }) {
       name: "asc",
     },
   });
+
+  const managementOrganizationsWhere = canSeeAllContent
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+          {
+            collections: {
+              some: {
+                memberships: {
+                  some: {
+                    userId: session.user.id,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+  const managementOrganizations = await prisma.organization.findMany({
+    where: managementOrganizationsWhere,
+    include: {
+      collections: {
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+        },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const safeManagementOrganizations = managementOrganizations.map((organization) => ({
+    id: organization.id,
+    name: organization.name,
+    description: organization.description ?? null,
+    collections: organization.collections,
+  }));
 
   const safeCollections = serializeCollections(collections);
   const allContents = safeCollections.flatMap((collection) =>
@@ -78,6 +153,9 @@ export default async function DashboardPage({ searchParams }) {
     <DashboardView
       collections={safeCollections}
       selectedContent={selectedContent}
+      managementOrganizations={safeManagementOrganizations}
+      canManageCollections={canManageCollections(session.user.role)}
+      canCreateCollections={canCreateCollections(session.user.role)}
     />
   );
 }

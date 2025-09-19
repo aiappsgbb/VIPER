@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { buildContentAccessWhere } from "@/lib/access";
 
 function ensureActionSummaryEndpoint() {
   const endpoint = process.env.ACTION_SUMMARY_ENDPOINT;
@@ -115,16 +116,7 @@ export async function POST(request, { params }) {
   }
 
   const content = await prisma.content.findFirst({
-    where: {
-      id: contentId,
-      collection: {
-        memberships: {
-          some: {
-            userId: session.user.id,
-          },
-        },
-      },
-    },
+    where: buildContentAccessWhere(session.user, contentId),
     include: {
       organization: true,
       collection: true,
