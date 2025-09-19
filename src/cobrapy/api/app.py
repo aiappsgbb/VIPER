@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ..analysis import ActionSummary, ChapterAnalysis
 from ..azure_integration import AzureStorageManager
@@ -17,6 +18,56 @@ from ..video_client import VideoClient
 
 
 app = FastAPI(title="CobraPy Video Analysis API")
+
+
+logger = logging.getLogger(__name__)
+
+
+_ENV_PREFIX_MAP: Dict[str, str] = {
+    "vision": "AZURE_OPENAI_GPT_VISION_",
+    "speech": "AZURE_SPEECH_",
+    "storage": "AZURE_STORAGE_",
+    "search": "AZURE_SEARCH_",
+}
+
+
+def _format_environment_validation_error(exc: ValidationError) -> str:
+    """Create a friendly error message for missing environment variables."""
+
+    missing: List[str] = []
+    other_errors: List[str] = []
+
+    for error in exc.errors():
+        error_type = error.get("type")
+        loc: Sequence[Any] = error.get("loc") or ()
+        if error_type == "missing" and loc:
+            prefix = ""
+            if len(loc) > 1 and isinstance(loc[0], str):
+                prefix = _ENV_PREFIX_MAP.get(loc[0], "")
+            field_name = str(loc[-1]).upper()
+            missing.append(f"{prefix}{field_name}")
+        else:
+            msg = error.get("msg") or str(error)
+            if loc:
+                location = ".".join(str(part) for part in loc)
+                other_errors.append(f"{location}: {msg}")
+            else:
+                other_errors.append(msg)
+
+    parts: List[str] = []
+    if missing:
+        parts.append(
+            "Missing environment variables required for CobraPy: "
+            + ", ".join(sorted(set(missing)))
+            + "."
+        )
+    if other_errors:
+        parts.append("Additional validation errors: " + "; ".join(other_errors))
+
+    if parts:
+        return " ".join(parts)
+
+    return f"CobraPy environment validation failed: {exc}"  # pragma: no cover - fallback
 
 
 class UploadResponse(BaseModel):
@@ -136,21 +187,43 @@ async def upload_video(
 
     storage_url: Optional[str] = None
     if upload_to_azure:
+        manifest = VideoManifest()
+        manifest.name = file.filename or os.path.basename(local_path)
+        manifest.source_video.path = local_path
+
         try:
-            manifest = VideoManifest()
-            manifest.name = file.filename or os.path.basename(local_path)
-            manifest.source_video.path = local_path
             env = CobraEnvironment()
-            storage_manager = None
-            if env.storage.is_configured():
-                storage_manager = AzureStorageManager(env)
-            if storage_manager is not None:
-                storage_url = storage_manager.upload_source_video(manifest)
-        except Exception as exc:  # pragma: no cover - best effort upload
+        except ValidationError as exc:  # pragma: no cover - configuration guard
+            message = _format_environment_validation_error(exc)
+            logger.error("Cobra environment validation failed during upload: %s", message)
+            raise HTTPException(status_code=500, detail=message) from exc
+        except Exception as exc:  # pragma: no cover - unexpected initialization error
+            logger.exception("Unexpected error while loading Cobra environment")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to upload video to Azure Storage: {exc}",
+                detail=f"Failed to load Cobra environment: {exc}",
             ) from exc
+
+        storage_manager: Optional[AzureStorageManager] = None
+        if env.storage.is_configured():
+            try:
+                storage_manager = AzureStorageManager(env)
+            except Exception as exc:  # pragma: no cover - initialization guard
+                logger.exception("Failed to initialize Azure Storage manager")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to initialize Azure Storage manager: {exc}",
+                ) from exc
+
+        if storage_manager is not None:
+            try:
+                storage_url = storage_manager.upload_source_video(manifest)
+            except Exception as exc:  # pragma: no cover - best effort upload
+                logger.exception("Failed to upload source video to Azure Storage")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to upload video to Azure Storage: {exc}",
+                ) from exc
 
     return UploadResponse(local_path=local_path, storage_url=storage_url)
 
