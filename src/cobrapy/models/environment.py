@@ -1,7 +1,22 @@
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr, model_validator, Field
+
+
+def _find_project_root(marker: str = "pyproject.toml") -> Path:
+    current_path = Path(__file__).resolve()
+    for parent in current_path.parents:
+        if (parent / marker).exists():
+            return parent
+    return current_path.parent
+
+
+PROJECT_ROOT = _find_project_root()
+DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
+load_dotenv(DEFAULT_ENV_PATH, override=False)
 
 
 class GPTVision(BaseSettings):

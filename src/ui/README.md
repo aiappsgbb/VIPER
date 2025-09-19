@@ -9,7 +9,7 @@
     - put your video in the public folder and name it "video.mp4"
     - navigate into app/data to see the ActionSummary and Chapter Analysis
     - Take the ActionSummary and ChapterAnalysis generated in cobrapy and put them into the data folder
-    - go the the .env file, and populate the parameters with the appropriate values, most importantly, put in the name of the search index created out of the ActionSummary
+    - Copy the repository-level `sample.env` to `.env`, populate the values, and ensure the ActionSummary search index name is provided. The UI automatically loads variables from this shared `.env` file.
     - Go to the compnents/player file and change the Topic Analysis to any value you want
     - proceed to deployment
 
