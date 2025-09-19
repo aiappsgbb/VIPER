@@ -15,8 +15,24 @@ def _find_project_root(marker: str = "pyproject.toml") -> Path:
 
 
 PROJECT_ROOT = _find_project_root()
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
-load_dotenv(DEFAULT_ENV_PATH, override=False)
+PACKAGE_ENV_PATH = PACKAGE_ROOT / ".env"
+
+
+def _load_env_files() -> list[Path]:
+    """Load default environment files and return the ones that were found."""
+
+    loaded: list[Path] = []
+    for candidate in (DEFAULT_ENV_PATH, PACKAGE_ENV_PATH):
+        if candidate.is_file() and candidate not in loaded:
+            load_dotenv(candidate, override=False)
+            loaded.append(candidate)
+    return loaded
+
+
+LOADED_ENV_PATHS = _load_env_files()
+ENV_FILES_FOR_SETTINGS = tuple(str(path) for path in LOADED_ENV_PATHS)
 
 
 class GPTVision(BaseSettings):
@@ -128,6 +144,12 @@ def _load_optional_vision() -> Optional[GPTVision]:
 
 class CobraEnvironment(BaseSettings):
     """Environment configuration for the Cobra backend."""
+
+
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILES_FOR_SETTINGS if ENV_FILES_FOR_SETTINGS else None,
+        extra="ignore",
+    )
 
     vision: Optional[GPTVision] = Field(
         default_factory=_load_optional_vision,
