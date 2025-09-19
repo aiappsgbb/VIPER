@@ -9,11 +9,13 @@ Navigate to the repository directory and install dependencies:
 
 ```bash
 cd /path/to/local/repo/cobrapy
-pip install -e . #"." means install at the current location
+ pip install -e . #"." means install at the current location
 ```
 
 2. Follow the official instructions to download and install FFmpeg:
 [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+
+3. Copy `sample.env` to `.env` at the repository root and populate it with your service credentials. The backend and UI components both consume environment variables from this shared file.
 
 ## Contributing
 

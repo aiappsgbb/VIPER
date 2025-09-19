@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Dict, List, Optional, Type, Union
 from ast import literal_eval
 from dotenv import load_dotenv
@@ -7,7 +8,7 @@ from cobra_utils import get_file_info
 from .video_preprocessor import VideoPreProcessor
 from .video_analyzer import VideoAnalyzer
 from .models.video import VideoManifest, SourceVideoMetadata
-from .models.environment import CobraEnvironment
+from .models.environment import CobraEnvironment, DEFAULT_ENV_PATH
 from .analysis import AnalysisConfig
 from .cobra_utils import (
     validate_video_manifest,
@@ -51,10 +52,20 @@ class VideoClient:
         self.manifest = manifest
 
         # If the environment file path is set, attempt to load the environment variables from the file
-        self.env_file_path = env_file_path
+        self.env_file_path = None
 
-        if self.env_file_path is not None:
-            load_dotenv(dotenv_path=self.env_file_path, override=True)
+        if env_file_path is not None:
+            candidate_path = Path(env_file_path)
+            if not candidate_path.is_file():
+                candidate_path = DEFAULT_ENV_PATH.parent / env_file_path
+
+            if candidate_path.is_file():
+                load_dotenv(dotenv_path=candidate_path, override=True)
+                self.env_file_path = str(candidate_path)
+            else:
+                raise FileNotFoundError(
+                    f"Environment file not found at '{env_file_path}'."
+                )
 
         # Load the environment variables in the pydantic model
         self.env = CobraEnvironment()
