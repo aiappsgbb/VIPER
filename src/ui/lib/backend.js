@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_BASE_URL = "http://localhost:8000";
+const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
 export function getBackendBaseUrl() {
   const configured = process.env.COBRAPY_BASE_URL;
