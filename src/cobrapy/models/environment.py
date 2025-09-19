@@ -145,6 +145,7 @@ def _load_optional_vision() -> Optional[GPTVision]:
 class CobraEnvironment(BaseSettings):
     """Environment configuration for the Cobra backend."""
 
+
     model_config = SettingsConfigDict(
         env_file=ENV_FILES_FOR_SETTINGS if ENV_FILES_FOR_SETTINGS else None,
         extra="ignore",
