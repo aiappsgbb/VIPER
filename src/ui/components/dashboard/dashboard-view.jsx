@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,12 @@ export default function DashboardView({ collections, selectedContent }) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState("");
+  const [isRunningActionSummary, setIsRunningActionSummary] = useState(false);
+  const [isRunningChapterAnalysis, setIsRunningChapterAnalysis] = useState(false);
+  const [actionSummaryMessage, setActionSummaryMessage] = useState("");
+  const [actionSummaryError, setActionSummaryError] = useState("");
+  const [chapterAnalysisMessage, setChapterAnalysisMessage] = useState("");
+  const [chapterAnalysisError, setChapterAnalysisError] = useState("");
 
   const activeCollection = useMemo(
     () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
@@ -123,6 +129,71 @@ export default function DashboardView({ collections, selectedContent }) {
     router.push(`/dashboard?contentId=${contentId}`);
   };
 
+  useEffect(() => {
+    setActionSummaryMessage("");
+    setActionSummaryError("");
+    setChapterAnalysisMessage("");
+    setChapterAnalysisError("");
+    setIsRunningActionSummary(false);
+    setIsRunningChapterAnalysis(false);
+  }, [selectedContent?.id]);
+
+  const handleRunActionSummary = async () => {
+    if (!selectedContent?.id) {
+      return;
+    }
+
+    setActionSummaryError("");
+    setActionSummaryMessage("");
+    setIsRunningActionSummary(true);
+
+    try {
+      const response = await fetch(`/api/content/${selectedContent.id}/action-summary`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Action summary failed");
+      }
+
+      setActionSummaryMessage("Action summary completed and search index updated.");
+      router.refresh();
+    } catch (error) {
+      setActionSummaryError(error.message ?? "Action summary failed");
+    } finally {
+      setIsRunningActionSummary(false);
+    }
+  };
+
+  const handleRunChapterAnalysis = async () => {
+    if (!selectedContent?.id) {
+      return;
+    }
+
+    setChapterAnalysisError("");
+    setChapterAnalysisMessage("");
+    setIsRunningChapterAnalysis(true);
+
+    try {
+      const response = await fetch(`/api/content/${selectedContent.id}/chapter-analysis`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Chapter analysis failed");
+      }
+
+      setChapterAnalysisMessage("Chapter analysis completed successfully.");
+      router.refresh();
+    } catch (error) {
+      setChapterAnalysisError(error.message ?? "Chapter analysis failed");
+    } finally {
+      setIsRunningChapterAnalysis(false);
+    }
+  };
+
   if (!selectedContent) {
     return (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-12">
@@ -190,6 +261,54 @@ export default function DashboardView({ collections, selectedContent }) {
                 <p className="text-xs text-slate-400">
                   Created {new Date(selectedContent.createdAt).toLocaleString()}
                 </p>
+              </div>
+              <div className="space-y-4 rounded-lg border border-slate-200 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Run analyses</p>
+                  <p className="text-xs text-slate-500">
+                    Generate fresh insights on demand. Action summaries also populate the AI search index.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-slate-700">Action summary</p>
+                      <p className="text-xs text-slate-500">
+                        Creates scene-level recaps and uploads them to AI search for semantic discovery.
+                      </p>
+                      {actionSummaryMessage ? (
+                        <p className="text-xs text-emerald-600">{actionSummaryMessage}</p>
+                      ) : null}
+                      {actionSummaryError ? (
+                        <p className="text-xs text-red-600">{actionSummaryError}</p>
+                      ) : null}
+                    </div>
+                    <Button disabled={isRunningActionSummary} onClick={handleRunActionSummary}>
+                      {isRunningActionSummary ? "Running…" : "Run action summary"}
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-slate-700">Chapter analysis</p>
+                      <p className="text-xs text-slate-500">
+                        Breaks the video into chapters so teams can quickly navigate long sessions.
+                      </p>
+                      {chapterAnalysisMessage ? (
+                        <p className="text-xs text-emerald-600">{chapterAnalysisMessage}</p>
+                      ) : null}
+                      {chapterAnalysisError ? (
+                        <p className="text-xs text-red-600">{chapterAnalysisError}</p>
+                      ) : null}
+                    </div>
+                    <Button
+                      disabled={isRunningChapterAnalysis}
+                      onClick={handleRunChapterAnalysis}
+                      variant="outline"
+                    >
+                      {isRunningChapterAnalysis ? "Running…" : "Run chapter analysis"}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

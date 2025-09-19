@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { randomUUID } from "crypto";
+import { extname } from "path";
 
 function getBlobServiceClient() {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
@@ -11,6 +12,83 @@ function getBlobServiceClient() {
     throw new Error("AZURE_STORAGE_CONNECTION_STRING is not configured");
   }
   return BlobServiceClient.fromConnectionString(connectionString);
+}
+
+function resolveCobraUploadEndpoint() {
+  if (process.env.COBRAPY_UPLOAD_ENDPOINT) {
+    return process.env.COBRAPY_UPLOAD_ENDPOINT;
+  }
+
+  const baseEndpoint =
+    process.env.ACTION_SUMMARY_ENDPOINT || process.env.CHAPTER_ANALYSIS_ENDPOINT;
+
+  if (!baseEndpoint) {
+    throw new Error(
+      "Configure COBRAPY_UPLOAD_ENDPOINT or ACTION_SUMMARY_ENDPOINT so videos can be uploaded for analysis.",
+    );
+  }
+
+  return new URL("/videos/upload", baseEndpoint).toString();
+}
+
+async function uploadToCobra(buffer, fileName, mimeType) {
+  const endpoint = resolveCobraUploadEndpoint();
+  const formData = new FormData();
+  const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
+  formData.append("file", blob, fileName);
+  formData.append("upload_to_azure", "true");
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    body: formData,
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (error) {
+    // ignore body parsing errors so we can surface a generic message below
+  }
+
+  if (!response.ok) {
+    const message =
+      data?.detail ||
+      data?.error ||
+      data?.message ||
+      "Video upload service returned an unexpected error.";
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function uploadToAzureStorage(buffer, fileName, mimeType) {
+  const client = getBlobServiceClient();
+  const containerName = process.env.AZURE_STORAGE_CONTAINER || "cobra-upload";
+  const containerClient = client.getContainerClient(containerName);
+  await containerClient.createIfNotExists();
+
+  const extension = extname(fileName) || ".mp4";
+  const blobName = `${randomUUID()}${extension}`;
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+  await blockBlobClient.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mimeType || "video/mp4" },
+  });
+
+  return `${containerClient.url}/${blobName}`;
+}
+
+function buildProcessingMetadata({ localPath, storageUrl }) {
+  const metadata = {
+    cobra: {
+      localVideoPath: localPath,
+      storageUrl: storageUrl ?? null,
+      uploadedAt: new Date().toISOString(),
+    },
+  };
+
+  return metadata;
 }
 
 export async function POST(request) {
@@ -52,28 +130,55 @@ export async function POST(request) {
     return NextResponse.json({ error: "Collection not found" }, { status: 404 });
   }
 
+  const originalFilename = file.name || "video.mp4";
+  const mimeType = file.type || "video/mp4";
   const buffer = Buffer.from(await file.arrayBuffer());
-  const blobServiceClient = getBlobServiceClient();
-  const containerName = process.env.AZURE_STORAGE_CONTAINER || "cobra-upload";
-  const containerClient = blobServiceClient.getContainerClient(containerName);
-  await containerClient.createIfNotExists();
 
-  const blobName = `${randomUUID()}.mp4`;
-  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+  let cobraUpload;
+  try {
+    cobraUpload = await uploadToCobra(buffer, originalFilename, mimeType);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 502 });
+  }
 
-  await blockBlobClient.uploadData(buffer, {
-    blobHTTPHeaders: { blobContentType: file.type || "video/mp4" },
+  const localVideoPath = cobraUpload?.local_path;
+  let storageUrl = cobraUpload?.storage_url ?? null;
+
+  if (!localVideoPath) {
+    return NextResponse.json(
+      { error: "Video upload service did not return a local file path." },
+      { status: 502 },
+    );
+  }
+
+  if (!storageUrl) {
+    try {
+      storageUrl = await uploadToAzureStorage(buffer, originalFilename, mimeType);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            "Failed to upload the video to storage. Confirm Azure Storage is configured or enable uploads in CobraPy.",
+        },
+        { status: 500 },
+      );
+    }
+  }
+
+  const processingMetadata = buildProcessingMetadata({
+    localPath: localVideoPath,
+    storageUrl,
   });
 
   const content = await prisma.content.create({
     data: {
-      title: title || file.name,
+      title: title || originalFilename,
       description: description || null,
-      videoUrl: `${containerClient.url}/${blobName}`,
+      videoUrl: storageUrl,
       collectionId: collection.id,
       organizationId: collection.organizationId,
       uploadedById: session.user.id,
-      analysisRequestedAt: new Date(),
+      processingMetadata,
     },
     include: {
       organization: true,
@@ -81,30 +186,6 @@ export async function POST(request) {
       uploadedBy: true,
     },
   });
-
-  const payload = {
-    contentId: content.id,
-    videoUrl: content.videoUrl,
-    organizationId: collection.organizationId,
-    collectionId: collection.id,
-  };
-
-  const tasks = [
-    process.env.ACTION_SUMMARY_ENDPOINT,
-    process.env.CHAPTER_ANALYSIS_ENDPOINT,
-  ]
-    .filter(Boolean)
-    .map((endpoint) =>
-      fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch((error) => ({ error })),
-    );
-
-  if (tasks.length) {
-    await Promise.allSettled(tasks);
-  }
 
   return NextResponse.json({ content }, { status: 201 });
 }

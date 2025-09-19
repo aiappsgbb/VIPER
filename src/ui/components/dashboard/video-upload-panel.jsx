@@ -63,8 +63,8 @@ export default function VideoUploadPanel({ collections, defaultCollectionId }) {
         throw new Error(data?.error ?? "Upload failed");
       }
 
-      setSuccess("Upload complete. Analyses will start automatically.");
       resetForm();
+      setSuccess("Upload complete. Use the analysis controls to start processing when you're ready.");
       router.refresh();
     } catch (uploadError) {
       setError(uploadError.message ?? "Upload failed");
@@ -78,7 +78,8 @@ export default function VideoUploadPanel({ collections, defaultCollectionId }) {
       <CardHeader>
         <CardTitle className="text-lg">Upload a video</CardTitle>
         <CardDescription>
-          Files are securely stored and queued for AI-driven chapter analysis and action summaries.
+          Files are securely stored for your organization. Use the buttons on each video to run action summaries and chapter
+          analysis when you're ready.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
