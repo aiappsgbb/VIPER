@@ -3,7 +3,9 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from pydantic import SecretStr, model_validator, Field, ValidationError, PrivateAttr
+
 
 
 def _find_project_root(marker: str = "pyproject.toml") -> Path:
@@ -128,6 +130,20 @@ class AzureAISearch(BaseSettings):
         return bool(self.endpoint and self.index_name)
 
 
+def _load_optional_vision() -> Optional[GPTVision]:
+    """Attempt to load the GPT vision configuration.
+
+    Missing environment variables are expected in many local development scenarios
+    where the vision pipeline is not configured.  Returning ``None`` keeps backend
+    startup seamless while deferring validation until the feature is used.
+    """
+
+    try:
+        return GPTVision()
+    except ValidationError:
+        return None
+
+
 class CobraEnvironment(BaseSettings):
     """Environment configuration for the Cobra backend."""
 
@@ -137,7 +153,9 @@ class CobraEnvironment(BaseSettings):
     )
 
     vision: Optional[GPTVision] = Field(
+
         default=None,
+
         description=(
             "Azure OpenAI vision configuration. ``None`` indicates that the required "
             "environment variables were not provided."
@@ -146,6 +164,7 @@ class CobraEnvironment(BaseSettings):
     speech: AzureSpeech = AzureSpeech()
     storage: AzureStorage = AzureStorage()
     search: AzureAISearch = AzureAISearch()
+
     _vision_error: Optional[str] = PrivateAttr(default=None)
 
     @model_validator(mode="after")
@@ -170,21 +189,25 @@ class CobraEnvironment(BaseSettings):
         self._vision_error = None
         return vision
 
+
     def require_vision(self) -> GPTVision:
         """Return the configured vision settings or raise a helpful error."""
 
         vision = self.vision or self._refresh_vision_settings()
         if vision is None:
             message = (
+
                 "Azure OpenAI vision environment variables are missing. Set "
                 "AZURE_OPENAI_GPT_VISION_ENDPOINT, AZURE_OPENAI_GPT_VISION_API_KEY, "
                 "AZURE_OPENAI_GPT_VISION_API_VERSION, and "
                 "AZURE_OPENAI_GPT_VISION_DEPLOYMENT before invoking video analysis "
                 "endpoints."
             )
+
             if self._vision_error:
                 message = f"{message}\nValidation details: {self._vision_error}"
             raise RuntimeError(message)
 
         self.vision = vision
         return vision
+
