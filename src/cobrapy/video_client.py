@@ -1,5 +1,5 @@
 import os
-from typing import Union, Type
+from typing import Dict, List, Optional, Type, Union
 from ast import literal_eval
 from dotenv import load_dotenv
 from cobra_utils import get_file_info
@@ -13,6 +13,7 @@ from .cobra_utils import (
     validate_video_manifest,
     write_video_manifest,
 )
+from .azure_integration import AzureStorageManager, AzureSearchUploader
 
 
 class VideoClient:
@@ -23,6 +24,8 @@ class VideoClient:
     preprocessor: VideoPreProcessor
     analyzer: VideoAnalyzer
     upload_to_azure: bool
+    storage_manager: Optional[AzureStorageManager]
+    search_uploader: Optional[AzureSearchUploader]
 
     def __init__(
         self,
@@ -62,6 +65,23 @@ class VideoClient:
         )
         self.analyzer = VideoAnalyzer(
             video_manifest=self.manifest, env=self.env)
+        self.upload_to_azure = upload_to_azure
+        self.storage_manager = None
+        self.search_uploader = None
+        self.storage_artifacts: Dict[str, Union[str, Dict[str, str]]] = {}
+        self.latest_search_uploads: List[Dict[str, Union[str, None]]] = []
+
+        if self.upload_to_azure and self.env.storage.is_configured():
+            try:
+                self.storage_manager = AzureStorageManager(self.env)
+            except ValueError as exc:
+                print(f"Azure storage configuration is incomplete: {exc}")
+
+        if self.env.search.is_configured():
+            try:
+                self.search_uploader = AzureSearchUploader(self.env)
+            except ValueError as exc:
+                print(f"Azure search configuration is incomplete: {exc}")
 
     def preprocess_video(
         self,
@@ -85,6 +105,29 @@ class VideoClient:
             overwrite_output=overwrite_output,
         )
         write_video_manifest(self.manifest)
+
+        if self.storage_manager is not None:
+            try:
+                video_url = self.storage_manager.upload_source_video(self.manifest)
+                if video_url:
+                    self.storage_artifacts["video"] = video_url
+            except Exception as exc:
+                print(f"Failed to upload source video to Azure Storage: {exc}")
+
+            try:
+                manifest_url = self.storage_manager.upload_manifest(self.manifest)
+                if manifest_url:
+                    self.storage_artifacts["manifest"] = manifest_url
+            except Exception as exc:
+                print(f"Failed to upload manifest to Azure Storage: {exc}")
+
+            try:
+                transcript_url = self.storage_manager.upload_transcription(self.manifest)
+                if transcript_url:
+                    self.storage_artifacts["transcript"] = transcript_url
+            except Exception as exc:
+                print(f"Failed to upload transcript to Azure Storage: {exc}")
+
         return video_manifest_path
 
     def analyze_video(
@@ -93,6 +136,7 @@ class VideoClient:
         run_async=False,
         max_concurrent_tasks=None,
         reprocess_segments=False,
+        metadata: Optional[Dict[str, str]] = None,
     ):
 
         analysis_result = self.analyzer.analyze_video(
@@ -101,6 +145,42 @@ class VideoClient:
             max_concurrent_tasks=max_concurrent_tasks,
             reprocess_segments=reprocess_segments,
         )
+
+        if self.storage_manager is not None:
+            try:
+                uploaded = self.storage_manager.upload_analysis_result(
+                    manifest=self.manifest,
+                    analysis_name=analysis_config.name,
+                    analysis_result=analysis_result,
+                    output_path=self.analyzer.latest_output_path,
+                )
+                if uploaded:
+                    analyses = self.storage_artifacts.setdefault("analysis", {})
+                    analyses[analysis_config.name] = uploaded
+            except Exception as exc:
+                print(f"Failed to upload analysis outputs to Azure Storage: {exc}")
+
+        analysis_name = getattr(analysis_config, "name", "")
+        self.latest_search_uploads = []
+        if (
+            metadata
+            and self.search_uploader is not None
+            and analysis_name.lower() == "actionsummary"
+        ):
+            action_items = []
+            if isinstance(analysis_result, dict) and "results" in analysis_result:
+                action_items = analysis_result.get("results", []) or []
+            elif isinstance(analysis_result, list):
+                action_items = analysis_result
+
+            try:
+                self.latest_search_uploads = self.search_uploader.upload_action_summary_documents(
+                    manifest=self.manifest,
+                    action_summary=action_items,
+                    metadata=metadata,
+                )
+            except Exception as exc:
+                print(f"Failed to upload action summary to Azure AI Search: {exc}")
 
         return analysis_result
 

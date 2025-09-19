@@ -18,6 +18,12 @@ numpy = "^2.0.1"
 nest-asyncio = "^1.6.0"
 opencv-python = "^4.10.0.84"
 pydantic-settings = "^2.5.2"
+azure-identity = "^1.17.1"
+azure-storage-blob = "^12.19.0"
+azure-search-documents = "^11.4.0"
+azure-cognitiveservices-speech = "^1.37.0"
+fastapi = "^0.112.0"
+python-multipart = "^0.0.9"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
