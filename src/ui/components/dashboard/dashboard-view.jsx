@@ -25,12 +25,269 @@ function formatStatus(status) {
   }
 }
 
+function safeParseJson(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return value;
+  }
+}
+
+function extractArrayFromAnalysis(analysis, candidateKeys = []) {
+  if (!analysis) {
+    return [];
+  }
+
+  if (Array.isArray(analysis)) {
+    return analysis;
+  }
+
+  if (typeof analysis === "object") {
+    for (const key of candidateKeys) {
+      const value = analysis[key];
+      if (Array.isArray(value)) {
+        return value;
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractNumericSeconds(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return null;
+  }
+
+  const match = value.toString().match(/\d+(?:\.\d+)?/);
+  if (!match) {
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(match[0]);
+  return Number.isNaN(numericValue) ? null : numericValue;
+}
+
+function normalizeActionSummaryEntry(entry, index) {
+  if (!entry || typeof entry !== "object") {
+    const textValue = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
+    return {
+      id: `action-${index}`,
+      summary: textValue,
+      start: null,
+      end: null,
+      actions: null,
+      sentiment: null,
+      theme: null,
+      characters: null,
+      keyObjects: null,
+      startSeconds: null,
+      raw: entry,
+    };
+  }
+
+  const startValue =
+    entry.start_timestamp ??
+    entry.start ??
+    entry.start_time ??
+    entry.Start_Timestamp ??
+    entry.Start ??
+    null;
+  const endValue =
+    entry.end_timestamp ??
+    entry.end ??
+    entry.end_time ??
+    entry.End_Timestamp ??
+    entry.End ??
+    null;
+
+  return {
+    id: entry.id ?? entry.segment_id ?? entry.Start_Timestamp ?? `action-${index}`,
+    summary:
+      entry.summary ??
+      entry.text ??
+      entry.description ??
+      entry.overview ??
+      entry.Summary ??
+      null,
+    actions: entry.actions ?? entry.key_actions ?? entry.Actions ?? null,
+    sentiment: entry.sentiment ?? entry.Sentiment ?? null,
+    theme: entry.scene_theme ?? entry.theme ?? entry.Scene_Theme ?? null,
+    characters: entry.characters ?? entry.Characters ?? null,
+    keyObjects: entry.key_objects ?? entry.Key_Objects ?? null,
+    start: startValue,
+    end: endValue,
+    startSeconds: extractNumericSeconds(startValue),
+    raw: entry,
+  };
+}
+
+function normalizeActionSummaryEntries(analysis) {
+  const entries = extractArrayFromAnalysis(analysis, [
+    "entries",
+    "results",
+    "segments",
+    "summary",
+    "scenes",
+    "items",
+  ]);
+
+  return entries.map((entry, index) => normalizeActionSummaryEntry(entry, index));
+}
+
+function normalizeChapterAnalysisEntry(entry, index) {
+  if (!entry || typeof entry !== "object") {
+    const textValue = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
+    return {
+      id: `chapter-${index}`,
+      title: `Chapter ${index + 1}`,
+      summary: textValue,
+      start: null,
+      end: null,
+      startSeconds: null,
+      raw: entry,
+    };
+  }
+
+  const startValue =
+    entry.start ??
+    entry.start_time ??
+    entry.start_timestamp ??
+    entry.Start ??
+    entry.Start_Timestamp ??
+    null;
+  const endValue =
+    entry.end ??
+    entry.end_time ??
+    entry.end_timestamp ??
+    entry.End ??
+    entry.End_Timestamp ??
+    null;
+
+  return {
+    id: entry.id ?? entry.chapter_id ?? entry.title ?? `chapter-${index}`,
+    title:
+      entry.title ??
+      entry.chapter_title ??
+      entry.chapter ??
+      entry.name ??
+      entry.heading ??
+      `Chapter ${index + 1}`,
+    summary: entry.summary ?? entry.description ?? entry.overview ?? null,
+    start: startValue,
+    end: endValue,
+    startSeconds: extractNumericSeconds(startValue),
+    raw: entry,
+  };
+}
+
+function normalizeChapterAnalysisEntries(analysis) {
+  const entries = extractArrayFromAnalysis(analysis, [
+    "chapters",
+    "entries",
+    "results",
+    "segments",
+    "items",
+  ]);
+
+  return entries.map((entry, index) => normalizeChapterAnalysisEntry(entry, index));
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Not run yet";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function buildFilterLabel(filters, organizationLookup, collectionLookup, contentLookup) {
+  if (!filters) {
+    return "—";
+  }
+
+  const parts = [];
+  const organizationId = filters.organizationId ?? null;
+  const collectionId = filters.collectionId ?? null;
+  const contentId = filters.contentId ?? null;
+
+  if (organizationId) {
+    parts.push(organizationLookup.get(organizationId) ?? organizationId);
+  }
+
+  if (collectionId) {
+    const collectionInfo = collectionLookup.get(collectionId);
+    if (collectionInfo) {
+      parts.push(collectionInfo.name);
+    } else {
+      parts.push(collectionId);
+    }
+  }
+
+  if (contentId) {
+    const contentInfo = contentLookup.get(contentId);
+    if (contentInfo) {
+      if (!collectionId && contentInfo.collectionName) {
+        parts.push(contentInfo.collectionName);
+      }
+      if (!organizationId && contentInfo.organizationName) {
+        parts.push(contentInfo.organizationName);
+      }
+      parts.push(contentInfo.title ?? contentId);
+    } else {
+      parts.push(contentId);
+    }
+  }
+
+  return parts.length ? Array.from(new Set(parts)).join(" • ") : "—";
+}
+
+function summarizeArtifacts(artifacts) {
+  if (!artifacts) {
+    return null;
+  }
+
+  if (Array.isArray(artifacts)) {
+    if (artifacts.length === 0) {
+      return null;
+    }
+    return `${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}`;
+  }
+
+  if (typeof artifacts === "object") {
+    const keys = Object.keys(artifacts);
+    if (keys.length === 0) {
+      return null;
+    }
+    return `${keys.length} artifact${keys.length === 1 ? "" : "s"}`;
+  }
+
+  return String(artifacts);
+}
+
 export default function DashboardView({ collections, selectedContent }) {
   const router = useRouter();
   const playerRef = useRef(null);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
   );
+  const [activeOrganizationId, setActiveOrganizationId] = useState(
+    selectedContent?.organization?.id ?? collections[0]?.organization?.id ?? null,
+  );
+  const [activeContentFilterId, setActiveContentFilterId] = useState(selectedContent?.id ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -41,34 +298,221 @@ export default function DashboardView({ collections, selectedContent }) {
   const [actionSummaryError, setActionSummaryError] = useState("");
   const [chapterAnalysisMessage, setChapterAnalysisMessage] = useState("");
   const [chapterAnalysisError, setChapterAnalysisError] = useState("");
+  const [actionSummaryData, setActionSummaryData] = useState(
+    selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
+  );
+  const [chapterAnalysisData, setChapterAnalysisData] = useState(
+    selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
+  );
+
+  const organizationLookup = useMemo(() => {
+    const map = new Map();
+    collections.forEach((collection) => {
+      map.set(collection.organization.id, collection.organization.name);
+    });
+    return map;
+  }, [collections]);
+
+  const collectionLookup = useMemo(() => {
+    const map = new Map();
+    collections.forEach((collection) => {
+      map.set(collection.id, {
+        name: collection.name,
+        organizationId: collection.organization.id,
+        organizationName: collection.organization.name,
+      });
+    });
+    return map;
+  }, [collections]);
+
+  const contentLookup = useMemo(() => {
+    const map = new Map();
+    collections.forEach((collection) => {
+      collection.contents.forEach((content) => {
+        map.set(content.id, {
+          title: content.title,
+          collectionId: collection.id,
+          collectionName: collection.name,
+          organizationId: collection.organization.id,
+          organizationName: collection.organization.name,
+        });
+      });
+    });
+    return map;
+  }, [collections]);
+
+  const actionSummaryAnalysis = useMemo(
+    () => safeParseJson(actionSummaryData?.analysis),
+    [actionSummaryData],
+  );
+  const chapterAnalysisAnalysis = useMemo(
+    () => safeParseJson(chapterAnalysisData?.analysis),
+    [chapterAnalysisData],
+  );
+
+  const actionSummaryEntries = useMemo(
+    () => normalizeActionSummaryEntries(actionSummaryAnalysis),
+    [actionSummaryAnalysis],
+  );
+  const chapterAnalysisEntries = useMemo(
+    () => normalizeChapterAnalysisEntries(chapterAnalysisAnalysis),
+    [chapterAnalysisAnalysis],
+  );
 
   const activeCollection = useMemo(
     () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
     [collections, activeCollectionId],
   );
 
-  const activeOrganizationId = activeCollection?.organization?.id ?? selectedContent?.organization?.id ?? null;
+  useEffect(() => {
+    setActionSummaryMessage("");
+    setActionSummaryError("");
+    setChapterAnalysisMessage("");
+    setChapterAnalysisError("");
+    setIsRunningActionSummary(false);
+    setIsRunningChapterAnalysis(false);
+    setActionSummaryData(selectedContent?.processingMetadata?.cobra?.actionSummary ?? null);
+    setChapterAnalysisData(selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null);
+    setActiveContentFilterId(selectedContent?.id ?? "");
 
-  const organizationOptions = useMemo(() => {
-    const map = new Map();
-    collections.forEach((collection) => {
-      map.set(collection.organization.id, collection.organization.name);
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [collections]);
+    if (selectedContent?.collection?.id && selectedContent.collection.id !== activeCollectionId) {
+      setActiveCollectionId(selectedContent.collection.id);
+    }
+
+    if (selectedContent?.organization?.id && selectedContent.organization.id !== activeOrganizationId) {
+      setActiveOrganizationId(selectedContent.organization.id);
+    }
+  }, [
+    selectedContent?.id,
+    selectedContent?.updatedAt,
+    selectedContent?.collection?.id,
+    selectedContent?.organization?.id,
+    selectedContent?.processingMetadata?.cobra?.actionSummary,
+    selectedContent?.processingMetadata?.cobra?.chapterAnalysis,
+    activeCollectionId,
+    activeOrganizationId,
+  ]);
+
+  useEffect(() => {
+    if (activeCollectionId) {
+      const collection = collections.find((item) => item.id === activeCollectionId);
+      if (collection?.organization?.id && collection.organization.id !== activeOrganizationId) {
+        setActiveOrganizationId(collection.organization.id);
+      }
+    }
+  }, [activeCollectionId, activeOrganizationId, collections]);
+
+  useEffect(() => {
+    if (!activeCollectionId || activeContentFilterId === "") {
+      return;
+    }
+
+    const collection = collections.find((item) => item.id === activeCollectionId);
+    if (!collection) {
+      return;
+    }
+
+    const hasVideo = collection.contents.some((content) => content.id === activeContentFilterId);
+    if (!hasVideo) {
+      setActiveContentFilterId(collection.contents[0]?.id ?? "");
+    }
+  }, [activeCollectionId, activeContentFilterId, collections]);
+
+  const organizationOptions = useMemo(
+    () =>
+      Array.from(organizationLookup.entries()).map(([id, name]) => ({
+        id,
+        name,
+      })),
+    [organizationLookup],
+  );
 
   const collectionOptions = useMemo(() => {
-    if (!activeOrganizationId) {
-      return collections.map((collection) => ({
-        id: collection.id,
-        name: collection.name,
+    const relevantCollections = activeOrganizationId
+      ? collections.filter((collection) => collection.organization.id === activeOrganizationId)
+      : collections;
+
+    return relevantCollections.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+    }));
+  }, [collections, activeOrganizationId]);
+
+  const videoOptions = useMemo(() => {
+    if (activeCollectionId) {
+      const collection = collections.find((item) => item.id === activeCollectionId);
+      if (!collection) {
+        return [];
+      }
+
+      return collection.contents.map((content) => ({
+        id: content.id,
+        label: content.title,
       }));
     }
 
-    return collections
-      .filter((collection) => collection.organization.id === activeOrganizationId)
-      .map((collection) => ({ id: collection.id, name: collection.name }));
-  }, [collections, activeOrganizationId]);
+    if (activeOrganizationId) {
+      return collections
+        .filter((collection) => collection.organization.id === activeOrganizationId)
+        .flatMap((collection) =>
+          collection.contents.map((content) => ({
+            id: content.id,
+            label: `${collection.name} • ${content.title}`,
+          })),
+        );
+    }
+
+    return collections.flatMap((collection) =>
+      collection.contents.map((content) => ({
+        id: content.id,
+        label: `${collection.organization.name} • ${collection.name} • ${content.title}`,
+      })),
+    );
+  }, [collections, activeCollectionId, activeOrganizationId]);
+
+  const searchFilterLabel = useMemo(
+    () =>
+      buildFilterLabel(
+        {
+          organizationId: activeOrganizationId,
+          collectionId: activeCollectionId,
+          contentId: activeContentFilterId || null,
+        },
+        organizationLookup,
+        collectionLookup,
+        contentLookup,
+      ),
+    [
+      activeOrganizationId,
+      activeCollectionId,
+      activeContentFilterId,
+      organizationLookup,
+      collectionLookup,
+      contentLookup,
+    ],
+  );
+
+  const actionSummaryFiltersLabel = useMemo(
+    () =>
+      buildFilterLabel(
+        actionSummaryData?.filters ?? null,
+        organizationLookup,
+        collectionLookup,
+        contentLookup,
+      ),
+    [actionSummaryData?.filters, organizationLookup, collectionLookup, contentLookup],
+  );
+
+  const chapterAnalysisFiltersLabel = useMemo(
+    () =>
+      buildFilterLabel(
+        chapterAnalysisData?.filters ?? null,
+        organizationLookup,
+        collectionLookup,
+        contentLookup,
+      ),
+    [chapterAnalysisData?.filters, organizationLookup, collectionLookup, contentLookup],
+  );
 
   const handleSearch = async (event) => {
     event.preventDefault();
@@ -85,9 +529,9 @@ export default function DashboardView({ collections, selectedContent }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: searchQuery,
-          organizationId: activeOrganizationId,
-          collectionId: activeCollectionId,
-          contentId: selectedContent?.id ?? null,
+          organizationId: activeOrganizationId || null,
+          collectionId: activeCollectionId || null,
+          contentId: activeContentFilterId || null,
         }),
       });
 
@@ -110,17 +554,41 @@ export default function DashboardView({ collections, selectedContent }) {
     }
   };
 
+  const handleOrganizationChange = (event) => {
+    const orgId = event.target.value || null;
+    setActiveOrganizationId(orgId);
+
+    if (orgId) {
+      const collection = collections.find((item) => item.organization.id === orgId) ?? null;
+      const firstContent = collection?.contents?.[0] ?? null;
+
+      setActiveCollectionId(collection?.id ?? null);
+      setActiveContentFilterId(firstContent?.id ?? "");
+
+      if (firstContent && firstContent.id !== selectedContent?.id) {
+        router.push(`/dashboard?contentId=${firstContent.id}`);
+      }
+    } else {
+      setActiveCollectionId(null);
+      setActiveContentFilterId("");
+    }
+  };
+
   const handleCollectionChange = (event) => {
     const collectionId = event.target.value || null;
     setActiveCollectionId(collectionId);
 
     if (collectionId) {
       const collection = collections.find((item) => item.id === collectionId);
-      const firstContent = collection?.contents?.[0];
+      const firstContent = collection?.contents?.[0] ?? null;
+
+      setActiveContentFilterId(firstContent?.id ?? "");
 
       if (firstContent && firstContent.id !== selectedContent?.id) {
         router.push(`/dashboard?contentId=${firstContent.id}`);
       }
+    } else {
+      setActiveContentFilterId("");
     }
   };
 
@@ -128,15 +596,6 @@ export default function DashboardView({ collections, selectedContent }) {
     if (!contentId) return;
     router.push(`/dashboard?contentId=${contentId}`);
   };
-
-  useEffect(() => {
-    setActionSummaryMessage("");
-    setActionSummaryError("");
-    setChapterAnalysisMessage("");
-    setChapterAnalysisError("");
-    setIsRunningActionSummary(false);
-    setIsRunningChapterAnalysis(false);
-  }, [selectedContent?.id]);
 
   const handleRunActionSummary = async () => {
     if (!selectedContent?.id) {
@@ -158,6 +617,21 @@ export default function DashboardView({ collections, selectedContent }) {
       }
 
       setActionSummaryMessage("Action summary completed and search index updated.");
+      setActionSummaryData((previous) => ({
+        ...(previous ?? {}),
+        lastRunAt: new Date().toISOString(),
+        analysis: data?.analysis ?? previous?.analysis ?? null,
+        analysisOutputPath: data?.analysisOutputPath ?? previous?.analysisOutputPath ?? null,
+        storageArtifacts: data?.storageArtifacts ?? previous?.storageArtifacts ?? null,
+        searchUploads: data?.searchUploads ?? previous?.searchUploads ?? [],
+        filters:
+          data?.filters ??
+          previous?.filters ?? {
+            organizationId: selectedContent.organization?.id ?? null,
+            collectionId: selectedContent.collection?.id ?? null,
+            contentId: selectedContent.id,
+          },
+      }));
       router.refresh();
     } catch (error) {
       setActionSummaryError(error.message ?? "Action summary failed");
@@ -186,6 +660,20 @@ export default function DashboardView({ collections, selectedContent }) {
       }
 
       setChapterAnalysisMessage("Chapter analysis completed successfully.");
+      setChapterAnalysisData((previous) => ({
+        ...(previous ?? {}),
+        lastRunAt: new Date().toISOString(),
+        analysis: data?.analysis ?? previous?.analysis ?? null,
+        analysisOutputPath: data?.analysisOutputPath ?? previous?.analysisOutputPath ?? null,
+        storageArtifacts: data?.storageArtifacts ?? previous?.storageArtifacts ?? null,
+        filters:
+          data?.filters ??
+          previous?.filters ?? {
+            organizationId: selectedContent.organization?.id ?? null,
+            collectionId: selectedContent.collection?.id ?? null,
+            contentId: selectedContent.id,
+          },
+      }));
       router.refresh();
     } catch (error) {
       setChapterAnalysisError(error.message ?? "Chapter analysis failed");
@@ -205,15 +693,15 @@ export default function DashboardView({ collections, selectedContent }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <VideoUploadPanel
-              collections={collections}
-              defaultCollectionId={activeCollectionId}
-            />
+            <VideoUploadPanel collections={collections} defaultCollectionId={activeCollectionId} />
           </CardContent>
         </Card>
       </div>
     );
   }
+
+  const actionSummaryArtifactsLabel = summarizeArtifacts(actionSummaryData?.storageArtifacts);
+  const chapterAnalysisArtifactsLabel = summarizeArtifacts(chapterAnalysisData?.storageArtifacts);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-6 py-8">
@@ -234,10 +722,14 @@ export default function DashboardView({ collections, selectedContent }) {
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}
+                  >
                     Action summary: {(selectedContent.actionSummaryStatus ?? "UNKNOWN").toLowerCase()}
                   </span>
-                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}
+                  >
                     Chapter analysis: {(selectedContent.chapterAnalysisStatus ?? "UNKNOWN").toLowerCase()}
                   </span>
                 </div>
@@ -322,20 +814,12 @@ export default function DashboardView({ collections, selectedContent }) {
             </CardHeader>
             <CardContent className="space-y-4">
               <form className="space-y-3" onSubmit={handleSearch}>
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-3">
                   <label className="text-sm font-medium text-slate-600">
                     Organization
                     <select
                       className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      onChange={(event) => {
-                        const orgId = event.target.value || null;
-                        if (orgId && orgId !== activeOrganizationId) {
-                          const collectionForOrg = collections.find(
-                            (collection) => collection.organization.id === orgId,
-                          );
-                          setActiveCollectionId(collectionForOrg?.id ?? null);
-                        }
-                      }}
+                      onChange={handleOrganizationChange}
                       value={activeOrganizationId ?? ""}
                     >
                       <option value="">All organizations</option>
@@ -361,6 +845,21 @@ export default function DashboardView({ collections, selectedContent }) {
                       ))}
                     </select>
                   </label>
+                  <label className="text-sm font-medium text-slate-600">
+                    Video
+                    <select
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      onChange={(event) => setActiveContentFilterId(event.target.value)}
+                      value={activeContentFilterId}
+                    >
+                      <option value="">All videos in selection</option>
+                      {videoOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-600" htmlFor="search-query">
@@ -373,7 +872,11 @@ export default function DashboardView({ collections, selectedContent }) {
                     value={searchQuery}
                   />
                 </div>
-                <div className="flex items-center justify-end gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    <p className="font-medium text-slate-600">Filters applied</p>
+                    <p className="mt-1 leading-relaxed">{searchFilterLabel}</p>
+                  </div>
                   <Button disabled={isSearching || !searchQuery} type="submit">
                     {isSearching ? "Searching…" : "Search"}
                   </Button>
@@ -386,18 +889,26 @@ export default function DashboardView({ collections, selectedContent }) {
                     <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
                   ) : (
                     searchResults.map((result, index) => {
-                      const timestamp = parseFloat((result.start_timestamp ?? result.start_frame)?.toString().replace("s", ""));
+                      const timestamp = extractNumericSeconds(
+                        result.start_timestamp ?? result.start_frame ?? result.start,
+                      );
                       return (
                         <div className="flex items-center justify-between gap-3 p-4" key={`${result.id ?? index}`}>
                           <div className="space-y-1 text-sm">
-                            <p className="font-medium text-slate-800">{result.summary ?? result.text ?? "Relevant moment"}</p>
-                            {result.start_timestamp ? (
-                              <p className="text-xs text-slate-500">Starts at {result.start_timestamp}</p>
+                            <p className="font-medium text-slate-800">
+                              {result.summary ?? result.text ?? "Relevant moment"}
+                            </p>
+                            {result.start_timestamp || result.start ? (
+                              <p className="text-xs text-slate-500">
+                                Starts at {result.start_timestamp ?? result.start}
+                              </p>
                             ) : null}
                           </div>
-                          <Button onClick={() => handleSeekToTimestamp(timestamp)} size="sm" variant="outline">
-                            Jump
-                          </Button>
+                          {timestamp != null ? (
+                            <Button onClick={() => handleSeekToTimestamp(timestamp)} size="sm" variant="outline">
+                              Jump
+                            </Button>
+                          ) : null}
                         </div>
                       );
                     })
@@ -406,13 +917,179 @@ export default function DashboardView({ collections, selectedContent }) {
               </ScrollArea>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Action summary results</CardTitle>
+              <CardDescription>
+                Review the scene-level recaps generated for this video.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
+                <div>
+                  <p className="font-medium text-slate-700">Last run</p>
+                  <p>{formatDateTime(actionSummaryData?.lastRunAt)}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700">Filters</p>
+                  <p>{actionSummaryFiltersLabel}</p>
+                </div>
+                {actionSummaryData?.analysisOutputPath ? (
+                  <div className="sm:col-span-2">
+                    <p className="font-medium text-slate-700">Analysis output</p>
+                    <p className="break-words text-slate-600">{actionSummaryData.analysisOutputPath}</p>
+                  </div>
+                ) : null}
+                {actionSummaryData?.searchUploads?.length ? (
+                  <div>
+                    <p className="font-medium text-slate-700">Search uploads</p>
+                    <p>
+                      {actionSummaryData.searchUploads.length} document
+                      {actionSummaryData.searchUploads.length === 1 ? "" : "s"} indexed
+                    </p>
+                  </div>
+                ) : null}
+                {actionSummaryArtifactsLabel ? (
+                  <div>
+                    <p className="font-medium text-slate-700">Storage artifacts</p>
+                    <p>{actionSummaryArtifactsLabel}</p>
+                  </div>
+                ) : null}
+              </div>
+              {actionSummaryEntries.length ? (
+                <ScrollArea className="max-h-80 rounded-lg border border-slate-200">
+                  <div className="divide-y divide-slate-200">
+                    {actionSummaryEntries.map((entry, index) => (
+                      <div className="space-y-2 p-4" key={entry.id ?? `action-${index}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-slate-800">
+                              {entry.summary ?? "Summary unavailable"}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                              {entry.start ? <span>Start: {entry.start}</span> : null}
+                              {entry.end ? <span>End: {entry.end}</span> : null}
+                              {entry.sentiment ? <span>Sentiment: {entry.sentiment}</span> : null}
+                              {entry.theme ? <span>Theme: {entry.theme}</span> : null}
+                            </div>
+                            {entry.actions ? (
+                              <p className="text-xs text-slate-500">
+                                <span className="font-medium text-slate-600">Actions:</span> {entry.actions}
+                              </p>
+                            ) : null}
+                            {entry.characters ? (
+                              <p className="text-xs text-slate-500">
+                                <span className="font-medium text-slate-600">Characters:</span> {entry.characters}
+                              </p>
+                            ) : null}
+                            {entry.keyObjects ? (
+                              <p className="text-xs text-slate-500">
+                                <span className="font-medium text-slate-600">Key objects:</span> {entry.keyObjects}
+                              </p>
+                            ) : null}
+                          </div>
+                          {entry.startSeconds != null ? (
+                            <Button
+                              onClick={() => handleSeekToTimestamp(entry.startSeconds)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Jump
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : actionSummaryAnalysis ? (
+                <pre className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  {JSON.stringify(actionSummaryAnalysis, null, 2)}
+                </pre>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Run the action summary to generate scene recaps for this video.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Chapter analysis results</CardTitle>
+              <CardDescription>
+                Explore the automatically generated chapters to navigate the video.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
+                <div>
+                  <p className="font-medium text-slate-700">Last run</p>
+                  <p>{formatDateTime(chapterAnalysisData?.lastRunAt)}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700">Filters</p>
+                  <p>{chapterAnalysisFiltersLabel}</p>
+                </div>
+                {chapterAnalysisData?.analysisOutputPath ? (
+                  <div className="sm:col-span-2">
+                    <p className="font-medium text-slate-700">Analysis output</p>
+                    <p className="break-words text-slate-600">{chapterAnalysisData.analysisOutputPath}</p>
+                  </div>
+                ) : null}
+                {chapterAnalysisArtifactsLabel ? (
+                  <div>
+                    <p className="font-medium text-slate-700">Storage artifacts</p>
+                    <p>{chapterAnalysisArtifactsLabel}</p>
+                  </div>
+                ) : null}
+              </div>
+              {chapterAnalysisEntries.length ? (
+                <ScrollArea className="max-h-80 rounded-lg border border-slate-200">
+                  <div className="divide-y divide-slate-200">
+                    {chapterAnalysisEntries.map((entry, index) => (
+                      <div className="space-y-2 p-4" key={entry.id ?? `chapter-${index}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-slate-800">{entry.title}</p>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                              {entry.start ? <span>Start: {entry.start}</span> : null}
+                              {entry.end ? <span>End: {entry.end}</span> : null}
+                            </div>
+                            {entry.summary ? (
+                              <p className="text-xs text-slate-500">{entry.summary}</p>
+                            ) : null}
+                          </div>
+                          {entry.startSeconds != null ? (
+                            <Button
+                              onClick={() => handleSeekToTimestamp(entry.startSeconds)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Jump
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : chapterAnalysisAnalysis ? (
+                <pre className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  {JSON.stringify(chapterAnalysisAnalysis, null, 2)}
+                </pre>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Run the chapter analysis to generate navigation points for this video.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
-          <VideoUploadPanel
-            collections={collections}
-            defaultCollectionId={activeCollectionId}
-          />
+          <VideoUploadPanel collections={collections} defaultCollectionId={activeCollectionId} />
           <Card>
             <CardHeader>
               <CardTitle>Collection videos</CardTitle>
@@ -425,13 +1102,19 @@ export default function DashboardView({ collections, selectedContent }) {
                 {activeCollection?.contents?.length ? (
                   activeCollection.contents.map((content) => (
                     <button
-                      className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition hover:border-slate-400 ${content.id === selectedContent.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200"}`}
+                      className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition hover:border-slate-400 ${
+                        content.id === selectedContent.id
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200"
+                      }`}
                       key={content.id}
                       onClick={() => handleVideoSelect(content.id)}
                       type="button"
                     >
                       <span>{content.title}</span>
-                      <span className="text-xs opacity-70">{new Date(content.createdAt).toLocaleDateString()}</span>
+                      <span className="text-xs opacity-70">
+                        {new Date(content.createdAt).toLocaleDateString()}
+                      </span>
                     </button>
                   ))
                 ) : (
