@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -174,10 +175,66 @@ def _analysis_response(
     return response
 
 
+def _coerce_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return False
+        if value == 1:
+            return True
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    return None
+
+
+def _apply_upload_metadata_to_manifest(
+    manifest: VideoManifest, metadata: Dict[str, Any]
+) -> None:
+    params = manifest.processing_params
+
+    output_directory = metadata.get("output_directory")
+    if isinstance(output_directory, str):
+        cleaned = output_directory.strip()
+        if cleaned:
+            params.output_directory = cleaned
+
+    segment_length = metadata.get("segment_length")
+    if isinstance(segment_length, (int, float)):
+        try:
+            params.segment_length = int(segment_length)
+        except (TypeError, ValueError):
+            pass
+
+    fps = metadata.get("fps")
+    if isinstance(fps, (int, float)):
+        try:
+            params.fps = float(fps)
+        except (TypeError, ValueError):
+            pass
+
+    generate_transcripts = _coerce_bool(metadata.get("generate_transcripts"))
+    if generate_transcripts is not None:
+        params.generate_transcript_flag = generate_transcripts
+
+    trim_to_nearest_second = _coerce_bool(metadata.get("trim_to_nearest_second"))
+    if trim_to_nearest_second is not None:
+        params.trim_to_nearest_second = trim_to_nearest_second
+
+    allow_partial_segments = _coerce_bool(metadata.get("allow_partial_segments"))
+    if allow_partial_segments is not None:
+        params.allow_partial_segments = allow_partial_segments
+
+
 @app.post("/videos/upload", response_model=UploadResponse)
 async def upload_video(
     file: UploadFile = File(...),
     upload_to_azure: bool = Form(True),
+    metadata_json: Optional[str] = Form(None),
 ) -> UploadResponse:
     suffix = Path(file.filename or "uploaded").suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -185,11 +242,27 @@ async def upload_video(
         tmp.write(contents)
         local_path = tmp.name
 
+    metadata: Optional[Dict[str, Any]] = None
+    if metadata_json:
+        try:
+            parsed = json.loads(metadata_json)
+            if isinstance(parsed, dict):
+                metadata = parsed
+            else:  # pragma: no cover - guard against unexpected payloads
+                logger.warning(
+                    "Upload metadata must be a JSON object when provided."
+                )
+        except json.JSONDecodeError:  # pragma: no cover - guard against invalid JSON
+            logger.warning("Failed to parse metadata JSON during upload", exc_info=False)
+
     storage_url: Optional[str] = None
     if upload_to_azure:
         manifest = VideoManifest()
         manifest.name = file.filename or os.path.basename(local_path)
         manifest.source_video.path = local_path
+
+        if metadata:
+            _apply_upload_metadata_to_manifest(manifest, metadata)
 
         try:
             env = CobraEnvironment()
