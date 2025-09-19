@@ -3,7 +3,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr, model_validator, Field
+from pydantic import SecretStr, model_validator, Field, ValidationError
 
 
 def _find_project_root(marker: str = "pyproject.toml") -> Path:
@@ -15,8 +15,24 @@ def _find_project_root(marker: str = "pyproject.toml") -> Path:
 
 
 PROJECT_ROOT = _find_project_root()
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
-load_dotenv(DEFAULT_ENV_PATH, override=False)
+PACKAGE_ENV_PATH = PACKAGE_ROOT / ".env"
+
+
+def _load_env_files() -> list[Path]:
+    """Load default environment files and return the ones that were found."""
+
+    loaded: list[Path] = []
+    for candidate in (DEFAULT_ENV_PATH, PACKAGE_ENV_PATH):
+        if candidate.is_file() and candidate not in loaded:
+            load_dotenv(candidate, override=False)
+            loaded.append(candidate)
+    return loaded
+
+
+LOADED_ENV_PATHS = _load_env_files()
+ENV_FILES_FOR_SETTINGS = tuple(str(path) for path in LOADED_ENV_PATHS)
 
 
 class GPTVision(BaseSettings):
@@ -112,10 +128,48 @@ class AzureAISearch(BaseSettings):
         return bool(self.endpoint and self.index_name)
 
 
+def _load_optional_vision() -> Optional[GPTVision]:
+    """Attempt to load the GPT vision configuration.
+
+    Missing environment variables are expected in many local development scenarios
+    where the vision pipeline is not configured.  Returning ``None`` keeps backend
+    startup seamless while deferring validation until the feature is used.
+    """
+
+    try:
+        return GPTVision()
+    except ValidationError:
+        return None
+
+
 class CobraEnvironment(BaseSettings):
     """Environment configuration for the Cobra backend."""
 
-    vision: GPTVision = GPTVision()
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILES_FOR_SETTINGS if ENV_FILES_FOR_SETTINGS else None,
+        extra="ignore",
+    )
+
+    vision: Optional[GPTVision] = Field(
+        default_factory=_load_optional_vision,
+        description=(
+            "Azure OpenAI vision configuration. ``None`` indicates that the required "
+            "environment variables were not provided."
+        ),
+    )
     speech: AzureSpeech = AzureSpeech()
     storage: AzureStorage = AzureStorage()
     search: AzureAISearch = AzureAISearch()
+
+    def require_vision(self) -> GPTVision:
+        """Return the configured vision settings or raise a helpful error."""
+
+        if self.vision is None:
+            raise RuntimeError(
+                "Azure OpenAI vision environment variables are missing. Set "
+                "AZURE_OPENAI_GPT_VISION_ENDPOINT, AZURE_OPENAI_GPT_VISION_API_KEY, "
+                "AZURE_OPENAI_GPT_VISION_API_VERSION, and "
+                "AZURE_OPENAI_GPT_VISION_DEPLOYMENT before invoking video analysis "
+                "endpoints."
+            )
+        return self.vision
