@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { BlobServiceClient } from "@azure/storage-blob";
-import { DefaultAzureCredential } from "@azure/identity";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -9,6 +7,7 @@ import { buildCollectionAccessWhere } from "@/lib/access";
 import { randomUUID } from "crypto";
 import { extname } from "path";
 import { buildBackendUrl } from "@/lib/backend";
+import { getBlobServiceClient, getVideoContainerName } from "@/lib/azure-storage";
 
 
 const NETWORK_RETRY_ERROR_CODES = new Set([
@@ -120,47 +119,6 @@ class CobraUploadError extends Error {
       this.cause = options.cause;
     }
   }
-}
-
-let cachedBlobServiceClient = null;
-
-function getAccountUrl() {
-  const explicitUrl = process.env.AZURE_STORAGE_ACCOUNT_URL;
-  if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim().length) {
-    return explicitUrl.trim();
-  }
-
-  const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
-  if (accountName && typeof accountName === "string" && accountName.trim().length) {
-    return `https://${accountName.trim()}.blob.core.windows.net`;
-  }
-
-  throw new Error(
-    "Configure AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_ACCOUNT_NAME for managed identity access.",
-  );
-}
-
-function createBlobServiceClient() {
-  const accountUrl = getAccountUrl();
-  const credential = new DefaultAzureCredential({
-    managedIdentityClientId: process.env.AZURE_STORAGE_MANAGED_IDENTITY_CLIENT_ID,
-  });
-  return new BlobServiceClient(accountUrl, credential);
-}
-
-function getBlobServiceClient() {
-  if (!cachedBlobServiceClient) {
-    cachedBlobServiceClient = createBlobServiceClient();
-  }
-  return cachedBlobServiceClient;
-}
-
-function getVideoContainerName() {
-  return (
-    process.env.AZURE_STORAGE_VIDEO_CONTAINER ||
-    process.env.AZURE_STORAGE_OUTPUT_CONTAINER ||
-    "videos"
-  );
 }
 
 function resolveCobraUploadEndpoint() {
@@ -446,11 +404,12 @@ async function uploadToAzureStorage(buffer, fileName, mimeType) {
   return `${containerClient.url}/${blobName}`;
 }
 
-function buildProcessingMetadata({ localPath, storageUrl, uploadMetadata }) {
+function buildProcessingMetadata({ storageUrl, uploadMetadata }) {
   const metadata = {
     cobra: {
-      localVideoPath: localPath,
+      localVideoPath: null,
       storageUrl: storageUrl ?? null,
+      videoUrl: storageUrl ?? null,
       uploadedAt: new Date().toISOString(),
     },
   };
@@ -549,15 +508,7 @@ export async function POST(request) {
     );
   }
 
-  const localVideoPath = cobraUpload?.local_path;
   let storageUrl = cobraUpload?.storage_url ?? null;
-
-  if (!localVideoPath) {
-    return NextResponse.json(
-      { error: "Video upload service did not return a local file path." },
-      { status: 502 },
-    );
-  }
 
   if (!storageUrl && shouldUploadToAzure) {
     try {
@@ -573,8 +524,17 @@ export async function POST(request) {
     }
   }
 
+  if (!storageUrl) {
+    return NextResponse.json(
+      {
+        error:
+          "Video upload service did not return an Azure Storage URL. Confirm CobraPy uploads are enabled or configure managed identity access.",
+      },
+      { status: 502 },
+    );
+  }
+
   const processingMetadata = buildProcessingMetadata({
-    localPath: localVideoPath,
     storageUrl,
     uploadMetadata: sanitizeUploadMetadata({
       ...(cobraUploadMetadata || {}),

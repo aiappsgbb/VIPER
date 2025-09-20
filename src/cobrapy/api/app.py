@@ -135,7 +135,10 @@ def _format_environment_validation_error(exc: ValidationError) -> str:
 
 
 class UploadResponse(BaseModel):
-    local_path: str = Field(..., description="Temporary path to the uploaded file.")
+    local_path: Optional[str] = Field(
+        default=None,
+        description="Temporary path to the uploaded file when retained on disk.",
+    )
     storage_url: Optional[str] = Field(
         default=None, description="Blob storage URL if the video was uploaded."
     )
@@ -461,6 +464,15 @@ async def upload_video(
                     status_code=500,
                     detail=f"Failed to upload video to Azure Storage: {exc}",
                 ) from exc
+
+    should_cleanup_local = bool(storage_url and upload_to_azure)
+
+    if should_cleanup_local:
+        try:
+            os.remove(local_path)
+        except OSError:
+            logger.debug("Failed to remove temporary upload %s", local_path, exc_info=True)
+        local_path = None
 
     return UploadResponse(local_path=local_path, storage_url=storage_url)
 

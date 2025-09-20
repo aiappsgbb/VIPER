@@ -1,6 +1,9 @@
 import os
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Set, Type, Union
+from urllib.parse import urlparse
 from ast import literal_eval
 from fractions import Fraction
 from dotenv import load_dotenv
@@ -103,16 +106,6 @@ def _coerce_integer(value: Union[str, int, float, None]) -> Optional[int]:
 
 
 class VideoClient:
-    manifest: VideoManifest
-    video_path: str
-    env_file_path: str
-    env: CobraEnvironment
-    preprocessor: VideoPreProcessor
-    analyzer: VideoAnalyzer
-    upload_to_azure: bool
-    storage_manager: Optional[AzureStorageManager]
-    search_uploader: Optional[AzureSearchUploader]
-
     def __init__(
         self,
         video_path: Union[str, None] = None,
@@ -126,15 +119,6 @@ class VideoClient:
             raise ValueError(
                 "You must either provide a video_path to an input video or the manifest parameter. The manifest parameter can be a string path to a manifest json file or a VideoManifest object."
             )
-
-        # If the manifest is not provided, create a new one
-        # If manifest is provided, validate it is the correct type
-        if manifest is None:
-            manifest = self._prepare_video_manifest(video_path)
-        else:
-            manifest = validate_video_manifest(manifest)
-
-        self.manifest = manifest
 
         # If the environment file path is set, attempt to load the environment variables from the file
         self.env_file_path = None
@@ -155,29 +139,80 @@ class VideoClient:
         # Load the environment variables in the pydantic model
         self.env = CobraEnvironment()
 
+        self.upload_to_azure = upload_to_azure
+        self.storage_manager: Optional[AzureStorageManager] = None
+        if self.env.storage.is_configured():
+            try:
+                self.storage_manager = AzureStorageManager(self.env)
+            except ValueError as exc:
+                print(f"Azure storage configuration is incomplete: {exc}")
+
+        self.search_uploader: Optional[AzureSearchUploader] = None
+        if self.env.search.is_configured():
+            try:
+                self.search_uploader = AzureSearchUploader(self.env)
+            except ValueError as exc:
+                print(f"Azure search configuration is incomplete: {exc}")
+
+        self._temporary_files: Set[str] = set()
+        self._temporary_dirs: Set[str] = set()
+        self._local_source_path: Optional[str] = None
+
+        resolved_manifest = manifest
+        if isinstance(resolved_manifest, str) and self._is_remote_path(resolved_manifest):
+            if self.storage_manager is None:
+                raise ValueError(
+                    "Azure Storage configuration is required to download manifest files."
+                )
+            resolved_manifest = self.storage_manager.download_blob_to_tempfile(
+                resolved_manifest, suffix=".json"
+            )
+            self._mark_temporary_file(resolved_manifest)
+
+        resolved_video_path: Optional[str] = None
+        if video_path is not None:
+            resolved_video_path = self._ensure_local_video(video_path)
+
+        if resolved_manifest is None:
+            if resolved_video_path is None:
+                raise ValueError(
+                    "Unable to initialize VideoClient without a video source."
+                )
+            manifest_obj = self._prepare_video_manifest(resolved_video_path)
+        else:
+            manifest_obj = validate_video_manifest(resolved_manifest)
+            if resolved_video_path is not None:
+                manifest_obj.source_video.path = resolved_video_path
+            else:
+                source_path = manifest_obj.source_video.path
+                if self._is_remote_path(source_path):
+                    if self.storage_manager is None:
+                        raise ValueError(
+                            "Azure Storage configuration is required to download source video assets."
+                        )
+                    local_path = self.storage_manager.download_blob_to_tempfile(source_path)
+                    self._mark_temporary_file(local_path)
+                    manifest_obj.source_video.path = local_path
+                elif not os.path.isfile(source_path):
+                    raise FileNotFoundError(
+                        f"File not found: {manifest_obj.source_video.path}"
+                    )
+
+        self.manifest = manifest_obj
+        if os.path.isfile(self.manifest.source_video.path):
+            resolved = os.path.abspath(self.manifest.source_video.path)
+            self._local_source_path = resolved
+            if self._is_probably_temp_file(resolved):
+                self._mark_temporary_file(resolved)
+
         # Initialize the preprocessor and analyzer
         self.preprocessor = VideoPreProcessor(
             video_manifest=self.manifest, env=self.env
         )
         self.analyzer = VideoAnalyzer(
             video_manifest=self.manifest, env=self.env)
-        self.upload_to_azure = upload_to_azure
-        self.storage_manager = None
-        self.search_uploader = None
         self.storage_artifacts: Dict[str, Union[str, Dict[str, str]]] = {}
         self.latest_search_uploads: List[Dict[str, Union[str, None]]] = []
-
-        if self.upload_to_azure and self.env.storage.is_configured():
-            try:
-                self.storage_manager = AzureStorageManager(self.env)
-            except ValueError as exc:
-                print(f"Azure storage configuration is incomplete: {exc}")
-
-        if self.env.search.is_configured():
-            try:
-                self.search_uploader = AzureSearchUploader(self.env)
-            except ValueError as exc:
-                print(f"Azure search configuration is incomplete: {exc}")
 
     def preprocess_video(
         self,
@@ -211,9 +246,12 @@ class VideoClient:
                 print(f"Failed to upload source video to Azure Storage: {exc}")
 
             try:
+                local_manifest_path = self.manifest.video_manifest_path
                 manifest_url = self.storage_manager.upload_manifest(self.manifest)
                 if manifest_url:
                     self.storage_artifacts["manifest"] = manifest_url
+                if local_manifest_path and os.path.isfile(local_manifest_path):
+                    self._mark_temporary_file(local_manifest_path)
             except Exception as exc:
                 print(f"Failed to upload manifest to Azure Storage: {exc}")
 
@@ -223,6 +261,10 @@ class VideoClient:
                     self.storage_artifacts["transcript"] = transcript_url
             except Exception as exc:
                 print(f"Failed to upload transcript to Azure Storage: {exc}")
+
+        output_dir = self.manifest.processing_params.output_directory
+        if output_dir:
+            self._mark_temporary_directory(output_dir)
 
         return video_manifest_path
 
@@ -253,8 +295,20 @@ class VideoClient:
                 if uploaded:
                     analyses = self.storage_artifacts.setdefault("analysis", {})
                     analyses[analysis_config.name] = uploaded
+                    if "json" in uploaded:
+                        self.analyzer.latest_output_path = uploaded["json"]
             except Exception as exc:
                 print(f"Failed to upload analysis outputs to Azure Storage: {exc}")
+
+            try:
+                local_manifest_path = self.manifest.video_manifest_path
+                manifest_url = self.storage_manager.upload_manifest(self.manifest)
+                if manifest_url:
+                    self.storage_artifacts["manifest"] = manifest_url
+                if local_manifest_path and os.path.isfile(local_manifest_path):
+                    self._mark_temporary_file(local_manifest_path)
+            except Exception as exc:
+                print(f"Failed to upload manifest to Azure Storage: {exc}")
 
         analysis_name = getattr(analysis_config, "name", "")
         self.latest_search_uploads = []
@@ -278,7 +332,90 @@ class VideoClient:
             except Exception as exc:
                 print(f"Failed to upload action summary to Azure AI Search: {exc}")
 
+        self._cleanup_local_resources()
         return analysis_result
+
+    @staticmethod
+    def _is_remote_path(path: Optional[str]) -> bool:
+        if not path:
+            return False
+        parsed = urlparse(str(path))
+        return parsed.scheme in {"http", "https"}
+
+    @staticmethod
+    def _is_probably_temp_file(path: str) -> bool:
+        try:
+            temp_root = Path(tempfile.gettempdir()).resolve()
+            resolved_path = Path(path).resolve()
+        except Exception:
+            return False
+
+        return temp_root == resolved_path.parent or temp_root in resolved_path.parents
+
+    def _mark_temporary_file(self, path: Optional[str]) -> None:
+        if not path:
+            return
+        self._temporary_files.add(os.path.abspath(path))
+
+    def _mark_temporary_directory(self, path: Optional[str]) -> None:
+        if not path:
+            return
+        self._temporary_dirs.add(os.path.abspath(path))
+
+    def _ensure_local_video(self, video_path: str) -> str:
+        if os.path.isfile(video_path):
+            resolved = os.path.abspath(video_path)
+            if self._is_probably_temp_file(resolved):
+                self._mark_temporary_file(resolved)
+            self._local_source_path = resolved
+            return resolved
+
+        if self._is_remote_path(video_path):
+            if self.storage_manager is None:
+                raise ValueError(
+                    "Azure Storage configuration is required to download source videos."
+                )
+            local_path = self.storage_manager.download_blob_to_tempfile(video_path)
+            self._mark_temporary_file(local_path)
+            self._local_source_path = os.path.abspath(local_path)
+            return self._local_source_path
+
+        raise FileNotFoundError(f"File not found: {video_path}")
+
+    def _cleanup_local_resources(self) -> None:
+        for path in list(self._temporary_files):
+            if path and os.path.isfile(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            self._temporary_files.discard(path)
+
+        if not (self.upload_to_azure and self.storage_manager is not None):
+            return
+
+        output_directory = self.manifest.processing_params.output_directory
+        if output_directory and os.path.isdir(output_directory):
+            try:
+                shutil.rmtree(output_directory)
+            except OSError:
+                pass
+        self.manifest.processing_params.output_directory = None
+
+        manifest_path = self.manifest.video_manifest_path
+        if manifest_path and os.path.isfile(manifest_path):
+            try:
+                os.remove(manifest_path)
+            except OSError:
+                pass
+
+        for directory in list(self._temporary_dirs):
+            if directory and os.path.isdir(directory):
+                try:
+                    shutil.rmtree(directory)
+                except OSError:
+                    pass
+            self._temporary_dirs.discard(directory)
 
     def _prepare_video_manifest(self, video_path: str, **kwargs) -> VideoManifest:
 

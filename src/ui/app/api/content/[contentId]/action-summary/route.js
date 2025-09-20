@@ -38,6 +38,61 @@ function buildDisplayName(session, content) {
   );
 }
 
+function isHttpUrl(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (error) {
+    return false;
+  }
+}
+
+function resolveVideoSource(cobraMeta, content) {
+  const candidates = [
+    cobraMeta?.videoUrl,
+    cobraMeta?.storageUrl,
+    content?.videoUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+function resolveManifestReference(cobraMeta) {
+  if (!cobraMeta || typeof cobraMeta !== "object") {
+    return null;
+  }
+
+  const candidates = [
+    cobraMeta.manifestUrl,
+    cobraMeta.manifestPath,
+    cobraMeta?.actionSummary?.storageArtifacts?.manifest,
+    cobraMeta?.chapterAnalysis?.storageArtifacts?.manifest,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 function coercePositiveInteger(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     const intValue = Math.floor(value);
@@ -233,11 +288,13 @@ function sanitizeActionSummaryConfigOverride(config) {
 }
 
 function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
+  const manifestReference = resolveManifestReference(cobraMeta);
   const base = {
     ...DEFAULT_ACTION_SUMMARY_CONFIG,
-    skip_preprocess: cobraMeta?.manifestPath
-      ? true
-      : DEFAULT_ACTION_SUMMARY_CONFIG.skip_preprocess,
+    skip_preprocess:
+      manifestReference && !isHttpUrl(manifestReference)
+        ? true
+        : DEFAULT_ACTION_SUMMARY_CONFIG.skip_preprocess,
   };
 
   const sources = [
@@ -366,9 +423,12 @@ function buildRequestPayload({
     configOverride,
   });
 
+  const videoSource = resolveVideoSource(cobraMeta, content);
+  const manifestReference = resolveManifestReference(cobraMeta);
+
   const payload = {
-    video_path: cobraMeta.localVideoPath,
-    manifest_path: cobraMeta.manifestPath ?? null,
+    video_path: videoSource,
+    manifest_path: manifestReference ?? null,
     organization: content.organizationId,
     organization_name: content.organization?.name ?? undefined,
     collection: content.collectionId,
@@ -376,7 +436,7 @@ function buildRequestPayload({
     user: session.user.id,
     user_name: buildDisplayName(session, content),
     video_id: content.id,
-    video_url: content.videoUrl,
+    video_url: videoSource,
     segment_length: normalizedConfig.segment_length,
     fps: normalizedConfig.fps,
     run_async: normalizedConfig.run_async,
@@ -395,6 +455,10 @@ function buildRequestPayload({
 
   if (typeof normalizedConfig.output_directory === "string") {
     payload.output_directory = normalizedConfig.output_directory;
+  }
+
+  if (manifestReference && !isHttpUrl(manifestReference)) {
+    payload.skip_preprocess = true;
   }
 
   if (
@@ -456,7 +520,8 @@ export async function POST(request, { params }) {
 
   const { session, content, processingMetadata, cobraMeta } = context;
 
-  if (!cobraMeta.localVideoPath) {
+  const videoSource = resolveVideoSource(cobraMeta, content);
+  if (!videoSource) {
     return NextResponse.json(
       {
         error:
@@ -506,13 +571,14 @@ export async function POST(request, { params }) {
     requestedConfig = sanitizeActionSummaryConfigOverride(requestBody.config);
   }
 
-  const { payload: requestPayload, config: normalizedConfig } = buildRequestPayload({
-    content,
-    session,
-    cobraMeta,
-    analysisTemplate,
-    configOverride: requestedConfig,
-  });
+  const { payload: requestPayload, config: normalizedConfig } =
+    buildRequestPayload({
+      content,
+      session,
+      cobraMeta,
+      analysisTemplate,
+      configOverride: requestedConfig,
+    });
 
   const now = new Date();
   cobraMeta.lastActionSummaryRequestedAt = now.toISOString();
@@ -588,7 +654,24 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: errorMessage }, { status: response.status || 500 });
   }
 
-  cobraMeta.manifestPath = data?.manifest_path ?? cobraMeta.manifestPath ?? null;
+  const manifestUrlFromResponse =
+    (data?.storage_artifacts && data.storage_artifacts.manifest) ||
+    (typeof data?.manifest_path === "string" && isHttpUrl(data.manifest_path)
+      ? data.manifest_path
+      : null);
+
+  if (manifestUrlFromResponse) {
+    cobraMeta.manifestUrl = manifestUrlFromResponse;
+    cobraMeta.manifestPath = manifestUrlFromResponse;
+  } else if (cobraMeta.manifestUrl) {
+    cobraMeta.manifestPath = cobraMeta.manifestUrl;
+  } else if (cobraMeta.manifestPath && isHttpUrl(cobraMeta.manifestPath)) {
+    cobraMeta.manifestUrl = cobraMeta.manifestPath;
+  } else {
+    cobraMeta.manifestUrl = null;
+    cobraMeta.manifestPath = null;
+  }
+
   const responseTemplate =
     normalizeAnalysisTemplate(data?.analysis_template) ?? analysisTemplate ?? null;
   analysisTemplate = responseTemplate;
@@ -619,7 +702,7 @@ export async function POST(request, { params }) {
   return NextResponse.json(
     {
       analysis: data?.analysis ?? "ActionSummary",
-      manifestPath: data?.manifest_path ?? null,
+      manifestPath: manifestUrlFromResponse ?? cobraMeta.manifestUrl ?? null,
       searchUploads: data?.search_uploads ?? [],
       analysisOutputPath: data?.analysis_output_path ?? null,
       storageArtifacts: data?.storage_artifacts ?? null,
