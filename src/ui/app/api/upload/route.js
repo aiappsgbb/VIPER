@@ -95,7 +95,7 @@ function buildCobraUploadMetadata({
     fps: 1,
     max_workers: null,
     run_async: true,
-    overwrite_output: false,
+    overwrite_output: true,
     reprocess_segments: false,
     generate_transcripts: true,
     trim_to_nearest_second: false,

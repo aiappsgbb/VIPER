@@ -147,7 +147,7 @@ class BaseAnalysisRequest(BaseModel):
     fps: float = 1
     max_workers: Optional[int] = None
     run_async: bool = True
-    overwrite_output: bool = False
+    overwrite_output: bool = True
     reprocess_segments: bool = False
     generate_transcripts: bool = True
     trim_to_nearest_second: bool = False

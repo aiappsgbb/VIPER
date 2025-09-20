@@ -188,7 +188,7 @@ class VideoClient:
         max_workers: int = None,
         trim_to_nearest_second=False,
         allow_partial_segments=True,
-        overwrite_output=False,
+        overwrite_output=True,
     ):
         video_manifest_path = self.preprocessor.preprocess_video(
             output_directory=output_directory,

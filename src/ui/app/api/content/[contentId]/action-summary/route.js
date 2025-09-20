@@ -135,7 +135,9 @@ const DEFAULT_ACTION_SUMMARY_CONFIG = {
   fps: 1,
   max_workers: null,
   run_async: true,
-  overwrite_output: false,
+
+  overwrite_output: true,
+
   reprocess_segments: false,
   generate_transcripts: true,
   trim_to_nearest_second: false,
@@ -162,6 +164,7 @@ function sanitizeActionSummaryConfigOverride(config) {
   const fps = coercePositiveNumber(config.fps);
   if (fps != null) {
     sanitized.fps = fps;
+
   }
 
   if (
@@ -224,44 +227,53 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
   };
 
   const sources = [
-    cobraMeta?.uploadMetadata,
-    cobraMeta?.actionSummary?.config,
-    configOverride,
+    { data: cobraMeta?.uploadMetadata, allowFps: false },
+    { data: cobraMeta?.actionSummary?.config, allowFps: true },
+    { data: configOverride, allowFps: true },
   ];
 
-  sources.forEach((source) => {
-    if (!source || typeof source !== "object") {
+  sources.forEach(({ data, allowFps }) => {
+    if (!data || typeof data !== "object") {
+
       return;
     }
 
     const segmentLength = coercePositiveInteger(
-      source.segment_length ?? source.segmentLength,
+
+      data.segment_length ?? data.segmentLength,
+
     );
     if (segmentLength != null) {
       base.segment_length = segmentLength;
     }
 
-    const fps = coercePositiveNumber(source.fps);
-    if (fps != null) {
+
+    const fps = coercePositiveNumber(data.fps);
+    if (allowFps && fps != null) {
+
       base.fps = fps;
     }
 
     if (
-      Object.prototype.hasOwnProperty.call(source, "max_workers") ||
-      Object.prototype.hasOwnProperty.call(source, "maxWorkers")
+
+      Object.prototype.hasOwnProperty.call(data, "max_workers") ||
+      Object.prototype.hasOwnProperty.call(data, "maxWorkers")
     ) {
       const maxWorkers = coercePositiveInteger(
-        source.max_workers ?? source.maxWorkers,
+        data.max_workers ?? data.maxWorkers,
+
       );
       base.max_workers = maxWorkers != null ? maxWorkers : null;
     }
 
     if (
-      Object.prototype.hasOwnProperty.call(source, "output_directory") ||
-      Object.prototype.hasOwnProperty.call(source, "outputDirectory")
+
+      Object.prototype.hasOwnProperty.call(data, "output_directory") ||
+      Object.prototype.hasOwnProperty.call(data, "outputDirectory")
     ) {
       const outputDirectory =
-        source.output_directory ?? source.outputDirectory ?? null;
+        data.output_directory ?? data.outputDirectory ?? null;
+
       if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
         base.output_directory = outputDirectory.trim();
       } else {
@@ -270,26 +282,28 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
     }
 
     const booleanFields = [
-      ["run_async", source.run_async ?? source.runAsync],
-      ["overwrite_output", source.overwrite_output ?? source.overwriteOutput],
+
+      ["run_async", data.run_async ?? data.runAsync],
+      ["overwrite_output", data.overwrite_output ?? data.overwriteOutput],
       [
         "reprocess_segments",
-        source.reprocess_segments ?? source.reprocessSegments,
+        data.reprocess_segments ?? data.reprocessSegments,
       ],
       [
         "generate_transcripts",
-        source.generate_transcripts ?? source.generateTranscripts,
+        data.generate_transcripts ?? data.generateTranscripts,
       ],
       [
         "trim_to_nearest_second",
-        source.trim_to_nearest_second ?? source.trimToNearestSecond,
+        data.trim_to_nearest_second ?? data.trimToNearestSecond,
       ],
       [
         "allow_partial_segments",
-        source.allow_partial_segments ?? source.allowPartialSegments,
+        data.allow_partial_segments ?? data.allowPartialSegments,
       ],
-      ["upload_to_azure", source.upload_to_azure ?? source.uploadToAzure],
-      ["skip_preprocess", source.skip_preprocess ?? source.skipPreprocess],
+      ["upload_to_azure", data.upload_to_azure ?? data.uploadToAzure],
+      ["skip_preprocess", data.skip_preprocess ?? data.skipPreprocess],
+
     ];
 
     booleanFields.forEach(([key, value]) => {
@@ -357,15 +371,19 @@ function buildRequestPayload({
   return { payload, config: normalizedConfig };
 }
 
-export async function POST(request, { params }) {
+async function loadActionSummaryContext(params) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return {
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 
   const contentId = params?.contentId;
   if (!contentId) {
-    return NextResponse.json({ error: "Content id is required" }, { status: 400 });
+    return {
+      response: NextResponse.json({ error: "Content id is required" }, { status: 400 }),
+    };
   }
 
   const content = await prisma.content.findFirst({
@@ -378,12 +396,25 @@ export async function POST(request, { params }) {
   });
 
   if (!content) {
-    return NextResponse.json({ error: "Content not found" }, { status: 404 });
+    return {
+      response: NextResponse.json({ error: "Content not found" }, { status: 404 }),
+    };
   }
 
   const { clone: processingMetadata, cobra: cobraMeta } = getCobraMetadata(
     content.processingMetadata,
   );
+
+  return { session, content, processingMetadata, cobraMeta };
+}
+
+export async function POST(request, { params }) {
+  const context = await loadActionSummaryContext(params);
+  if (context?.response) {
+    return context.response;
+  }
+
+  const { session, content, processingMetadata, cobraMeta } = context;
 
   if (!cobraMeta.localVideoPath) {
     return NextResponse.json(
@@ -562,4 +593,58 @@ export async function POST(request, { params }) {
     },
     { status: 200 },
   );
+}
+
+export async function PATCH(request, { params }) {
+  const context = await loadActionSummaryContext(params);
+  if (context?.response) {
+    return context.response;
+  }
+
+  const { content, processingMetadata, cobraMeta } = context;
+
+  let requestBody = null;
+  if (request.headers.get("content-type")?.includes("application/json")) {
+    try {
+      requestBody = await request.json();
+    } catch (error) {
+      requestBody = null;
+    }
+  }
+
+  if (!requestBody || !Object.prototype.hasOwnProperty.call(requestBody, "config")) {
+    return NextResponse.json({ error: "Config payload is required" }, { status: 400 });
+  }
+
+  let requestedConfig = null;
+  if (requestBody.config != null) {
+    requestedConfig = sanitizeActionSummaryConfigOverride(requestBody.config);
+  }
+
+  if (!requestedConfig) {
+    return NextResponse.json(
+      { error: "Provide at least one valid processing setting to update." },
+      { status: 400 },
+    );
+  }
+
+  const normalizedConfig = buildNormalizedActionSummaryConfig({
+    cobraMeta,
+    configOverride: requestedConfig,
+  });
+
+  cobraMeta.actionSummary = {
+    ...(cobraMeta.actionSummary ?? {}),
+    config: normalizedConfig,
+  };
+  processingMetadata.cobra = cobraMeta;
+
+  await prisma.content.update({
+    where: { id: content.id },
+    data: {
+      processingMetadata,
+    },
+  });
+
+  return NextResponse.json({ config: normalizedConfig }, { status: 200 });
 }

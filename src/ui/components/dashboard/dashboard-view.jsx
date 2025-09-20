@@ -312,7 +312,9 @@ function buildDefaultActionSummaryConfigState() {
     fps: DEFAULT_ACTION_SUMMARY_FPS.toString(),
     max_workers: "",
     run_async: true,
-    overwrite_output: false,
+
+    overwrite_output: true,
+
     reprocess_segments: false,
     generate_transcripts: true,
     trim_to_nearest_second: false,
@@ -383,45 +385,57 @@ function parseBooleanInput(value) {
 
 function buildInitialActionSummaryConfigState(config, uploadMetadata) {
   const state = buildDefaultActionSummaryConfigState();
+
+  const uploadSource =
+    uploadMetadata && typeof uploadMetadata === "object" ? uploadMetadata : null;
+  const configSource = config && typeof config === "object" ? config : null;
+
   const sources = [];
 
-  if (uploadMetadata && typeof uploadMetadata === "object") {
-    sources.push(uploadMetadata);
+  if (uploadSource) {
+    sources.push({ data: uploadSource, allowFps: false });
   }
 
-  if (config && typeof config === "object") {
-    sources.push(config);
+  if (configSource) {
+    sources.push({ data: configSource, allowFps: true });
   }
 
-  sources.forEach((source) => {
+  sources.forEach(({ data, allowFps }) => {
     const segmentLength = parsePositiveInteger(
-      source.segment_length ?? source.segmentLength,
+      data.segment_length ?? data.segmentLength,
+
     );
     if (segmentLength != null) {
       state.segment_length = segmentLength.toString();
     }
 
-    const fps = parsePositiveNumber(source.fps);
-    if (fps != null) {
+
+    const fps = parsePositiveNumber(data.fps);
+    if (allowFps && fps != null) {
+
       state.fps = fps.toString();
     }
 
     if (
-      Object.prototype.hasOwnProperty.call(source, "max_workers") ||
-      Object.prototype.hasOwnProperty.call(source, "maxWorkers")
+
+      Object.prototype.hasOwnProperty.call(data, "max_workers") ||
+      Object.prototype.hasOwnProperty.call(data, "maxWorkers")
     ) {
       const maxWorkers = parsePositiveInteger(
-        source.max_workers ?? source.maxWorkers,
+        data.max_workers ?? data.maxWorkers,
+
       );
       state.max_workers = maxWorkers != null ? maxWorkers.toString() : "";
     }
 
     if (
-      Object.prototype.hasOwnProperty.call(source, "output_directory") ||
-      Object.prototype.hasOwnProperty.call(source, "outputDirectory")
+
+      Object.prototype.hasOwnProperty.call(data, "output_directory") ||
+      Object.prototype.hasOwnProperty.call(data, "outputDirectory")
     ) {
       const outputDirectory =
-        source.output_directory ?? source.outputDirectory ?? "";
+        data.output_directory ?? data.outputDirectory ?? "";
+
       if (typeof outputDirectory === "string") {
         state.output_directory = outputDirectory.trim();
       }
@@ -441,7 +455,9 @@ function buildInitialActionSummaryConfigState(config, uploadMetadata) {
     booleanFields.forEach((key) => {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       const candidate =
-        parseBooleanInput(source[key]) ?? parseBooleanInput(source[camelKey]);
+
+        parseBooleanInput(data[key]) ?? parseBooleanInput(data[camelKey]);
+
       if (candidate != null) {
         state[key] = candidate;
       }
@@ -1327,11 +1343,64 @@ export default function DashboardView({
     setDraftActionSummaryConfig(buildDefaultActionSummaryConfigState());
   };
 
-  const handleSaveActionSummarySettings = () => {
+
+  const handleSaveActionSummarySettings = async () => {
     const sanitized = sanitizeActionSummaryConfigState(draftActionSummaryConfig);
+    const previousConfig = actionSummaryConfig;
+
+    setActionSummaryError("");
+    setActionSummaryMessage("");
     setActionSummaryConfig(sanitized);
     setDraftActionSummaryConfig(sanitized);
-    setIsActionSummarySettingsOpen(false);
+
+    if (!selectedContent?.id) {
+      setIsActionSummarySettingsOpen(false);
+      return;
+    }
+
+    const configPayload = buildActionSummaryConfigPayload(sanitized);
+
+    try {
+      const response = await fetch(
+        `/api/content/${selectedContent.id}/action-summary`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config: configPayload }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to save action summary settings.");
+      }
+
+      const responseConfig = buildInitialActionSummaryConfigState(
+        data?.config ?? configPayload ?? null,
+        null,
+      );
+      setActionSummaryConfig(responseConfig);
+      setDraftActionSummaryConfig(responseConfig);
+      setActionSummaryData((previous) => {
+        const nextConfig = data?.config ?? configPayload ?? null;
+        if (!previous) {
+          return nextConfig ? { config: nextConfig } : null;
+        }
+        return { ...previous, config: nextConfig };
+      });
+      setActionSummaryMessage("Action summary processing settings saved.");
+      router.refresh();
+      setIsActionSummarySettingsOpen(false);
+    } catch (error) {
+      setActionSummaryConfig(previousConfig);
+      setDraftActionSummaryConfig(previousConfig);
+      setActionSummaryError(
+        error instanceof Error
+          ? error.message || "Failed to save action summary settings."
+          : "Failed to save action summary settings.",
+      );
+    }
+
   };
 
   const handleRunActionSummary = async () => {
