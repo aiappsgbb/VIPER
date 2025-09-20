@@ -72,9 +72,12 @@ class VideoPreProcessor:
         if self.manifest.source_video.audio_found is False:
             self.manifest.processing_params.generate_transcript_flag = False
         else:
-            self.manifest.processing_params.generate_transcript_flag = (
-                generate_transcripts_flag
-            )
+            if not generate_transcripts_flag:
+                print(
+                    "Audio detected in source video. Overriding request to skip "
+                    "transcription so that speech is always processed."
+                )
+            self.manifest.processing_params.generate_transcript_flag = True
         self.manifest.processing_params.trim_to_nearest_second = trim_to_nearest_second
         self.manifest.processing_params.allow_partial_segments = allow_partial_segments
 
