@@ -303,6 +303,243 @@ function buildTemplateFromFields(fields) {
   return [entry, { ...entry }];
 }
 
+const DEFAULT_SEGMENT_LENGTH = 10;
+const DEFAULT_ACTION_SUMMARY_FPS = 1;
+
+function buildDefaultActionSummaryConfigState() {
+  return {
+    segment_length: DEFAULT_SEGMENT_LENGTH.toString(),
+    fps: DEFAULT_ACTION_SUMMARY_FPS.toString(),
+    max_workers: "",
+    run_async: true,
+    overwrite_output: false,
+    reprocess_segments: false,
+    generate_transcripts: true,
+    trim_to_nearest_second: false,
+    allow_partial_segments: true,
+    upload_to_azure: true,
+    skip_preprocess: false,
+    output_directory: "",
+  };
+}
+
+function parsePositiveInteger(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const intValue = Math.floor(value);
+    return intValue > 0 ? intValue : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isNaN(parsed) || parsed <= 0 ? null : parsed;
+  }
+
+  return null;
+}
+
+function parsePositiveNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isNaN(parsed) || parsed <= 0 ? null : parsed;
+  }
+
+  return null;
+}
+
+function parseBooleanInput(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return null;
+}
+
+function buildInitialActionSummaryConfigState(config, uploadMetadata) {
+  const state = buildDefaultActionSummaryConfigState();
+  const sources = [];
+
+  if (uploadMetadata && typeof uploadMetadata === "object") {
+    sources.push(uploadMetadata);
+  }
+
+  if (config && typeof config === "object") {
+    sources.push(config);
+  }
+
+  sources.forEach((source) => {
+    const segmentLength = parsePositiveInteger(
+      source.segment_length ?? source.segmentLength,
+    );
+    if (segmentLength != null) {
+      state.segment_length = segmentLength.toString();
+    }
+
+    const fps = parsePositiveNumber(source.fps);
+    if (fps != null) {
+      state.fps = fps.toString();
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(source, "max_workers") ||
+      Object.prototype.hasOwnProperty.call(source, "maxWorkers")
+    ) {
+      const maxWorkers = parsePositiveInteger(
+        source.max_workers ?? source.maxWorkers,
+      );
+      state.max_workers = maxWorkers != null ? maxWorkers.toString() : "";
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(source, "output_directory") ||
+      Object.prototype.hasOwnProperty.call(source, "outputDirectory")
+    ) {
+      const outputDirectory =
+        source.output_directory ?? source.outputDirectory ?? "";
+      if (typeof outputDirectory === "string") {
+        state.output_directory = outputDirectory.trim();
+      }
+    }
+
+    const booleanFields = [
+      "run_async",
+      "overwrite_output",
+      "reprocess_segments",
+      "generate_transcripts",
+      "trim_to_nearest_second",
+      "allow_partial_segments",
+      "upload_to_azure",
+      "skip_preprocess",
+    ];
+
+    booleanFields.forEach((key) => {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      const candidate =
+        parseBooleanInput(source[key]) ?? parseBooleanInput(source[camelKey]);
+      if (candidate != null) {
+        state[key] = candidate;
+      }
+    });
+  });
+
+  return state;
+}
+
+function buildActionSummaryConfigPayload(state) {
+  const sanitized = {
+    segment_length:
+      parsePositiveInteger(state.segment_length) ?? DEFAULT_SEGMENT_LENGTH,
+    fps: parsePositiveNumber(state.fps) ?? DEFAULT_ACTION_SUMMARY_FPS,
+    run_async: Boolean(state.run_async),
+    overwrite_output: Boolean(state.overwrite_output),
+    reprocess_segments: Boolean(state.reprocess_segments),
+    generate_transcripts: Boolean(state.generate_transcripts),
+    trim_to_nearest_second: Boolean(state.trim_to_nearest_second),
+    allow_partial_segments: Boolean(state.allow_partial_segments),
+    upload_to_azure: Boolean(state.upload_to_azure),
+    skip_preprocess: Boolean(state.skip_preprocess),
+  };
+
+  if (state.max_workers !== undefined) {
+    const maxWorkers = parsePositiveInteger(state.max_workers);
+    sanitized.max_workers = maxWorkers != null ? maxWorkers : null;
+  }
+
+  if (state.output_directory !== undefined) {
+    const directory =
+      typeof state.output_directory === "string"
+        ? state.output_directory.trim()
+        : "";
+    sanitized.output_directory = directory.length ? directory : null;
+  }
+
+  return sanitized;
+}
+
+function sanitizeActionSummaryConfigState(state) {
+  return buildInitialActionSummaryConfigState(
+    buildActionSummaryConfigPayload(state),
+    null,
+  );
+}
+
+function summarizeActionSummaryConfig(state) {
+  const config = buildActionSummaryConfigPayload(state);
+  const summary = [];
+
+  summary.push(
+    `Segment length: ${config.segment_length} second${
+      config.segment_length === 1 ? "" : "s"
+    }`,
+  );
+  summary.push(`Frames per second: ${config.fps}`);
+  summary.push(
+    `Max workers: ${
+      config.max_workers == null ? "Auto" : config.max_workers.toString()
+    }`,
+  );
+  summary.push(
+    `Generate transcripts: ${config.generate_transcripts ? "Yes" : "No"}`,
+  );
+  summary.push(
+    `Trim to nearest second: ${config.trim_to_nearest_second ? "Yes" : "No"}`,
+  );
+  summary.push(
+    `Allow partial segments: ${config.allow_partial_segments ? "Yes" : "No"}`,
+  );
+  summary.push(`Overwrite output: ${config.overwrite_output ? "Yes" : "No"}`);
+  summary.push(
+    `Reprocess segments: ${config.reprocess_segments ? "Yes" : "No"}`,
+  );
+  summary.push(`Run asynchronously: ${config.run_async ? "Yes" : "No"}`);
+  summary.push(`Skip preprocessing: ${config.skip_preprocess ? "Yes" : "No"}`);
+  summary.push(`Upload to Azure: ${config.upload_to_azure ? "Yes" : "No"}`);
+  summary.push(
+    `Output directory: ${
+      config.output_directory ? config.output_directory : "Auto"
+    }`,
+  );
+
+  return summary;
+}
+
+const ACTION_SUMMARY_TOGGLE_FIELDS = [
+  { key: "run_async", label: "Run asynchronously" },
+  { key: "skip_preprocess", label: "Skip preprocessing" },
+  { key: "overwrite_output", label: "Overwrite existing output" },
+  { key: "reprocess_segments", label: "Reprocess segments" },
+  { key: "generate_transcripts", label: "Generate transcripts" },
+  { key: "trim_to_nearest_second", label: "Trim to nearest second" },
+  { key: "allow_partial_segments", label: "Allow partial segments" },
+  { key: "upload_to_azure", label: "Upload results to Azure" },
+];
+
 function normalizeActionSummaryEntry(entry, index) {
   if (!entry || typeof entry !== "object") {
     const textValue = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
@@ -535,6 +772,18 @@ export default function DashboardView({
   const [actionSummaryData, setActionSummaryData] = useState(
     selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
   );
+  const [actionSummaryConfig, setActionSummaryConfig] = useState(() =>
+    buildInitialActionSummaryConfigState(
+      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null,
+      selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null,
+    ),
+  );
+  const [draftActionSummaryConfig, setDraftActionSummaryConfig] = useState(() =>
+    buildInitialActionSummaryConfigState(
+      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null,
+      selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null,
+    ),
+  );
   const [actionSummaryFields, setActionSummaryFields] = useState(() =>
     mapTemplateToFields(
       selectedContent?.processingMetadata?.cobra?.actionSummary?.analysisTemplate ??
@@ -545,6 +794,8 @@ export default function DashboardView({
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
   );
   const [isFieldBuilderOpen, setIsFieldBuilderOpen] = useState(false);
+  const [isActionSummarySettingsOpen, setIsActionSummarySettingsOpen] =
+    useState(false);
   const [transcriptData, setTranscriptData] = useState(null);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState("");
@@ -592,6 +843,10 @@ export default function DashboardView({
   const chapterAnalysisAnalysis = useMemo(
     () => safeParseJson(chapterAnalysisData?.analysis),
     [chapterAnalysisData],
+  );
+  const actionSummarySettingsSummary = useMemo(
+    () => summarizeActionSummaryConfig(actionSummaryConfig),
+    [actionSummaryConfig],
   );
 
   useEffect(() => {
@@ -699,6 +954,19 @@ export default function DashboardView({
     setTranscriptError("");
     setIsTranscriptLoading(false);
 
+    const uploadMetadata =
+      selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null;
+    const savedConfig =
+      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null;
+    const nextConfigState = buildInitialActionSummaryConfigState(
+      savedConfig,
+      uploadMetadata,
+    );
+    setActionSummaryConfig(nextConfigState);
+    if (!isActionSummarySettingsOpen) {
+      setDraftActionSummaryConfig(nextConfigState);
+    }
+
     if (selectedContent?.collection?.id && selectedContent.collection.id !== activeCollectionId) {
       setActiveCollectionId(selectedContent.collection.id);
     }
@@ -713,9 +981,17 @@ export default function DashboardView({
     selectedContent?.organization?.id,
     selectedContent?.processingMetadata?.cobra?.actionSummary,
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis,
+    selectedContent?.processingMetadata?.cobra?.uploadMetadata,
     activeCollectionId,
     activeOrganizationId,
+    isActionSummarySettingsOpen,
   ]);
+
+  useEffect(() => {
+    if (!isActionSummarySettingsOpen) {
+      setDraftActionSummaryConfig(actionSummaryConfig);
+    }
+  }, [actionSummaryConfig, isActionSummarySettingsOpen]);
 
   useEffect(() => {
     if (activeCollectionId) {
@@ -1038,6 +1314,26 @@ export default function DashboardView({
     handleFieldBuilderOpenChange(false);
   };
 
+  const handleSettingsOpenChange = (nextOpen) => {
+    setIsActionSummarySettingsOpen(nextOpen);
+    if (nextOpen) {
+      setDraftActionSummaryConfig(actionSummaryConfig);
+    } else {
+      setDraftActionSummaryConfig(actionSummaryConfig);
+    }
+  };
+
+  const handleResetActionSummarySettings = () => {
+    setDraftActionSummaryConfig(buildDefaultActionSummaryConfigState());
+  };
+
+  const handleSaveActionSummarySettings = () => {
+    const sanitized = sanitizeActionSummaryConfigState(draftActionSummaryConfig);
+    setActionSummaryConfig(sanitized);
+    setDraftActionSummaryConfig(sanitized);
+    setIsActionSummarySettingsOpen(false);
+  };
+
   const handleRunActionSummary = async () => {
     if (!selectedContent?.id) {
       return;
@@ -1055,15 +1351,33 @@ export default function DashboardView({
         throw new Error("Add at least one field before running the action summary.");
       }
 
+      const sanitizedConfigState = sanitizeActionSummaryConfigState(
+        actionSummaryConfig,
+      );
+      setActionSummaryConfig(sanitizedConfigState);
+      if (!isActionSummarySettingsOpen) {
+        setDraftActionSummaryConfig(sanitizedConfigState);
+      }
+      const configPayload = buildActionSummaryConfigPayload(sanitizedConfigState);
+
       const response = await fetch(`/api/content/${selectedContent.id}/action-summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisTemplate: template }),
+        body: JSON.stringify({ analysisTemplate: template, config: configPayload }),
       });
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data?.error ?? "Action summary failed");
+      }
+
+      const responseConfig = buildInitialActionSummaryConfigState(
+        data?.config ?? configPayload ?? null,
+        null,
+      );
+      setActionSummaryConfig(responseConfig);
+      if (!isActionSummarySettingsOpen) {
+        setDraftActionSummaryConfig(responseConfig);
       }
 
       setActionSummaryMessage("Action summary completed and search index updated.");
@@ -1076,6 +1390,7 @@ export default function DashboardView({
         searchUploads: data?.searchUploads ?? previous?.searchUploads ?? [],
         analysisTemplate:
           data?.analysisTemplate ?? template ?? previous?.analysisTemplate ?? null,
+        config: data?.config ?? configPayload ?? previous?.config ?? null,
         filters:
           data?.filters ??
           previous?.filters ?? {
@@ -1397,6 +1712,141 @@ export default function DashboardView({
                             <DialogFooter className="shrink-0">
                               <Button onClick={handleSaveActionSummaryFields} type="button">
                                 Save fields
+                              </Button>
+                            </DialogFooter>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Dialog
+                        onOpenChange={handleSettingsOpenChange}
+                        open={isActionSummarySettingsOpen}
+                      >
+                        <div className="space-y-2 rounded-md border border-slate-200 bg-white/60 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-600">Processing settings</p>
+                            <DialogTrigger asChild>
+                              <Button size="sm" type="button" variant="outline">
+                                Configure settings
+                              </Button>
+                            </DialogTrigger>
+                          </div>
+                          {actionSummarySettingsSummary.length ? (
+                            <ul className="space-y-1 text-xs leading-snug text-slate-500">
+                              {actionSummarySettingsSummary.map((line) => (
+                                <li key={line}>{line}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-slate-500">Using default settings.</p>
+                          )}
+                        </div>
+                        <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-h-[85vh]">
+                          <div className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-hidden p-6 sm:max-h-[85vh]">
+                            <DialogHeader className="shrink-0">
+                              <DialogTitle>Configure processing settings</DialogTitle>
+                              <DialogDescription>
+                                Control preprocessing, segmentation, and upload behavior before generating the action summary.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <ScrollArea className="max-h-[55vh] pr-4">
+                              <div className="space-y-4 pb-2">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Segment length (seconds)
+                                    <Input
+                                      className="mt-1"
+                                      min="1"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          segment_length: event.target.value,
+                                        }))
+                                      }
+                                      type="number"
+                                      value={draftActionSummaryConfig.segment_length}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Frames per second
+                                    <Input
+                                      className="mt-1"
+                                      min="0"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          fps: event.target.value,
+                                        }))
+                                      }
+                                      step="any"
+                                      type="number"
+                                      value={draftActionSummaryConfig.fps}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Max workers
+                                    <Input
+                                      className="mt-1"
+                                      min="1"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          max_workers: event.target.value,
+                                        }))
+                                      }
+                                      placeholder="Auto"
+                                      type="number"
+                                      value={draftActionSummaryConfig.max_workers}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Output directory
+                                    <Input
+                                      className="mt-1"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          output_directory: event.target.value,
+                                        }))
+                                      }
+                                      placeholder="Auto"
+                                      type="text"
+                                      value={draftActionSummaryConfig.output_directory}
+                                    />
+                                  </label>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  {ACTION_SUMMARY_TOGGLE_FIELDS.map(({ key, label }) => (
+                                    <label
+                                      className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white p-3 text-xs font-medium text-slate-600"
+                                      key={key}
+                                    >
+                                      <span>{label}</span>
+                                      <input
+                                        checked={Boolean(draftActionSummaryConfig[key])}
+                                        className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                                        onChange={(event) =>
+                                          setDraftActionSummaryConfig((current) => ({
+                                            ...current,
+                                            [key]: event.target.checked,
+                                          }))
+                                        }
+                                        type="checkbox"
+                                      />
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </ScrollArea>
+                            <DialogFooter className="shrink-0">
+                              <Button
+                                onClick={handleResetActionSummarySettings}
+                                type="button"
+                                variant="ghost"
+                              >
+                                Reset to defaults
+                              </Button>
+                              <Button onClick={handleSaveActionSummarySettings} type="button">
+                                Save settings
                               </Button>
                             </DialogFooter>
                           </div>

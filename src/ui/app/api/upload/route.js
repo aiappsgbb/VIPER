@@ -92,7 +92,7 @@ function buildCobraUploadMetadata({
     video_url: null,
     output_directory: null,
     segment_length: 10,
-    fps: 0.33,
+    fps: 1,
     max_workers: null,
     run_async: true,
     overwrite_output: false,
