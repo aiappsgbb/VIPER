@@ -1,4 +1,4 @@
-# Dockerfile for running the CobraPy FastAPI backend
+# Dockerfile for running the Viper FastAPI backend
 FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -27,6 +27,11 @@ RUN poetry config virtualenvs.create false \
 COPY src ./src
 COPY samples ./samples
 COPY sample.env ./sample.env
+
+WORKDIR /app/src/cobrapy
+RUN python -m pip install --no-cache-dir -e .
+
+WORKDIR /app
 
 ENV PYTHONPATH="/app/src"
 
