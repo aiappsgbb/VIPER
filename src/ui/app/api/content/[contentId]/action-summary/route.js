@@ -135,7 +135,9 @@ const DEFAULT_ACTION_SUMMARY_CONFIG = {
   fps: 1,
   max_workers: null,
   run_async: true,
+
   overwrite_output: true,
+
   reprocess_segments: false,
   generate_transcripts: true,
   trim_to_nearest_second: false,
@@ -162,6 +164,7 @@ function sanitizeActionSummaryConfigOverride(config) {
   const fps = coercePositiveNumber(config.fps);
   if (fps != null) {
     sanitized.fps = fps;
+
   }
 
   if (
@@ -231,37 +234,46 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
 
   sources.forEach(({ data, allowFps }) => {
     if (!data || typeof data !== "object") {
+
       return;
     }
 
     const segmentLength = coercePositiveInteger(
+
       data.segment_length ?? data.segmentLength,
+
     );
     if (segmentLength != null) {
       base.segment_length = segmentLength;
     }
 
+
     const fps = coercePositiveNumber(data.fps);
     if (allowFps && fps != null) {
+
       base.fps = fps;
     }
 
     if (
+
       Object.prototype.hasOwnProperty.call(data, "max_workers") ||
       Object.prototype.hasOwnProperty.call(data, "maxWorkers")
     ) {
       const maxWorkers = coercePositiveInteger(
         data.max_workers ?? data.maxWorkers,
+
       );
       base.max_workers = maxWorkers != null ? maxWorkers : null;
     }
 
     if (
+
       Object.prototype.hasOwnProperty.call(data, "output_directory") ||
       Object.prototype.hasOwnProperty.call(data, "outputDirectory")
     ) {
       const outputDirectory =
         data.output_directory ?? data.outputDirectory ?? null;
+
       if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
         base.output_directory = outputDirectory.trim();
       } else {
@@ -270,6 +282,7 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
     }
 
     const booleanFields = [
+
       ["run_async", data.run_async ?? data.runAsync],
       ["overwrite_output", data.overwrite_output ?? data.overwriteOutput],
       [
@@ -290,6 +303,7 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
       ],
       ["upload_to_azure", data.upload_to_azure ?? data.uploadToAzure],
       ["skip_preprocess", data.skip_preprocess ?? data.skipPreprocess],
+
     ];
 
     booleanFields.forEach(([key, value]) => {

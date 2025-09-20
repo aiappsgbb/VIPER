@@ -312,7 +312,9 @@ function buildDefaultActionSummaryConfigState() {
     fps: DEFAULT_ACTION_SUMMARY_FPS.toString(),
     max_workers: "",
     run_async: true,
+
     overwrite_output: true,
+
     reprocess_segments: false,
     generate_transcripts: true,
     trim_to_nearest_second: false,
@@ -383,6 +385,7 @@ function parseBooleanInput(value) {
 
 function buildInitialActionSummaryConfigState(config, uploadMetadata) {
   const state = buildDefaultActionSummaryConfigState();
+
   const uploadSource =
     uploadMetadata && typeof uploadMetadata === "object" ? uploadMetadata : null;
   const configSource = config && typeof config === "object" ? config : null;
@@ -400,32 +403,39 @@ function buildInitialActionSummaryConfigState(config, uploadMetadata) {
   sources.forEach(({ data, allowFps }) => {
     const segmentLength = parsePositiveInteger(
       data.segment_length ?? data.segmentLength,
+
     );
     if (segmentLength != null) {
       state.segment_length = segmentLength.toString();
     }
 
+
     const fps = parsePositiveNumber(data.fps);
     if (allowFps && fps != null) {
+
       state.fps = fps.toString();
     }
 
     if (
+
       Object.prototype.hasOwnProperty.call(data, "max_workers") ||
       Object.prototype.hasOwnProperty.call(data, "maxWorkers")
     ) {
       const maxWorkers = parsePositiveInteger(
         data.max_workers ?? data.maxWorkers,
+
       );
       state.max_workers = maxWorkers != null ? maxWorkers.toString() : "";
     }
 
     if (
+
       Object.prototype.hasOwnProperty.call(data, "output_directory") ||
       Object.prototype.hasOwnProperty.call(data, "outputDirectory")
     ) {
       const outputDirectory =
         data.output_directory ?? data.outputDirectory ?? "";
+
       if (typeof outputDirectory === "string") {
         state.output_directory = outputDirectory.trim();
       }
@@ -445,7 +455,9 @@ function buildInitialActionSummaryConfigState(config, uploadMetadata) {
     booleanFields.forEach((key) => {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       const candidate =
+
         parseBooleanInput(data[key]) ?? parseBooleanInput(data[camelKey]);
+
       if (candidate != null) {
         state[key] = candidate;
       }
@@ -1331,6 +1343,7 @@ export default function DashboardView({
     setDraftActionSummaryConfig(buildDefaultActionSummaryConfigState());
   };
 
+
   const handleSaveActionSummarySettings = async () => {
     const sanitized = sanitizeActionSummaryConfigState(draftActionSummaryConfig);
     const previousConfig = actionSummaryConfig;
@@ -1387,6 +1400,7 @@ export default function DashboardView({
           : "Failed to save action summary settings.",
       );
     }
+
   };
 
   const handleRunActionSummary = async () => {
