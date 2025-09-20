@@ -14,7 +14,11 @@ param(
     [string]$FrontendImageTag = "latest",
     [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/.." ).Path,
     [string]$EnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) ".env"),
-    [switch]$SkipEnvFile
+
+    [switch]$SkipEnvFile,
+    [string]$AzureEnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "azure/.env"),
+    [switch]$SkipAzureEnvFile
+
 )
 
 Set-StrictMode -Version Latest
@@ -180,6 +184,17 @@ if (-not $SkipEnvFile.IsPresent -and (Test-Path $EnvFilePath)) {
     Write-Warning "Environment file '$EnvFilePath' was not found. Deployment will continue without injecting application settings."
 }
 
+
+$azureParameterValues = @{}
+if (-not $SkipAzureEnvFile.IsPresent -and (Test-Path $AzureEnvFilePath)) {
+    foreach ($entry in Parse-EnvFile -Path $AzureEnvFilePath) {
+        $azureParameterValues[$entry.name] = $entry.value
+    }
+} elseif (-not $SkipAzureEnvFile.IsPresent) {
+    Write-Warning "Azure environment file '$AzureEnvFilePath' was not found. Role assignments will be skipped unless parameters are provided manually."
+}
+
+
 $tempFiles = @()
 function New-TempParameterFile {
     param([Parameter(Mandatory)][object]$Content)
@@ -223,6 +238,35 @@ if ($frontendEnvFile) {
 if ($frontendBaseUrlOverride) {
     $parameterValues += "frontendBaseUrl=$frontendBaseUrlOverride"
 }
+
+
+$storageAccountNameParam = $azureParameterValues['VIPER_AZURE_STORAGE_ACCOUNT_NAME']
+if ($storageAccountNameParam) {
+    $parameterValues += "storageAccountName=$storageAccountNameParam"
+    $storageAccountRgParam = $azureParameterValues['VIPER_AZURE_STORAGE_RESOURCE_GROUP']
+    if ($storageAccountRgParam) {
+        $parameterValues += "storageAccountResourceGroup=$storageAccountRgParam"
+    }
+}
+
+$searchServiceNameParam = $azureParameterValues['VIPER_AZURE_SEARCH_SERVICE_NAME']
+if ($searchServiceNameParam) {
+    $parameterValues += "searchServiceName=$searchServiceNameParam"
+    $searchServiceRgParam = $azureParameterValues['VIPER_AZURE_SEARCH_RESOURCE_GROUP']
+    if ($searchServiceRgParam) {
+        $parameterValues += "searchServiceResourceGroup=$searchServiceRgParam"
+    }
+}
+
+$speechAccountNameParam = $azureParameterValues['VIPER_AZURE_SPEECH_ACCOUNT_NAME']
+if ($speechAccountNameParam) {
+    $parameterValues += "speechAccountName=$speechAccountNameParam"
+    $speechAccountRgParam = $azureParameterValues['VIPER_AZURE_SPEECH_RESOURCE_GROUP']
+    if ($speechAccountRgParam) {
+        $parameterValues += "speechAccountResourceGroup=$speechAccountRgParam"
+    }
+}
+
 
 $deploymentArgs = @(
     "deployment", "group", "create",
