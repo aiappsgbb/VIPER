@@ -58,7 +58,7 @@ export async function DELETE(_request, { params }) {
   const searchDocumentIds = collectSearchDocumentIds(cobraMeta);
 
   await deleteBlobUrls(Array.from(blobUrls));
-  await deleteSearchDocuments(searchDocumentIds);
+  await deleteSearchDocuments(searchDocumentIds, { contentId: content.id });
 
   await prisma.content.delete({ where: { id: content.id } });
 
