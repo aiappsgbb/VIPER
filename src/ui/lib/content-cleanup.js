@@ -31,14 +31,17 @@ export function collectSearchDocumentIds(metadata) {
   const uploads = metadata?.actionSummary?.searchUploads;
   if (Array.isArray(uploads)) {
     uploads.forEach((upload) => {
-      const identifier = upload?.id ?? upload?.documentId;
+      const identifier = upload?.id ?? upload?.documentId ?? upload?.document_id;
       const status = upload?.uploadStatus ?? upload?.status;
+      if (typeof identifier !== "string") {
+        return;
+      }
+      const trimmedIdentifier = identifier.trim();
       if (
-        typeof identifier === "string" &&
-        identifier.trim().length &&
+        trimmedIdentifier.length &&
         (status == null || String(status).toLowerCase() !== "failed")
       ) {
-        ids.add(identifier.trim());
+        ids.add(trimmedIdentifier);
       }
     });
   }
@@ -61,21 +64,114 @@ function getSearchClient() {
   return new SearchClient(endpoint, indexName, new AzureKeyCredential(apiKey.trim()));
 }
 
-export async function deleteSearchDocuments(documentIds) {
-  if (!documentIds.length) {
-    return;
+function sanitizeSearchFilterValue(value) {
+  if (value == null) {
+    return null;
   }
 
+  const stringValue = typeof value === "string" ? value : String(value);
+  const trimmed = stringValue.trim();
+  if (!trimmed.length) {
+    return null;
+  }
+
+  return trimmed.replace(/'/g, "''");
+}
+
+async function collectDocumentIdsByField(client, fieldName, rawValue) {
+  const sanitized = sanitizeSearchFilterValue(rawValue);
+  if (!sanitized) {
+    return [];
+  }
+
+  try {
+    const searchResults = await client.search("*", {
+      filter: `${fieldName} eq '${sanitized}'`,
+      select: ["id"],
+      top: 1000,
+    });
+
+    const ids = [];
+    for await (const result of searchResults.results) {
+      const identifier = result?.document?.id;
+      if (typeof identifier !== "string") {
+        continue;
+      }
+      const trimmed = identifier.trim();
+      if (trimmed.length) {
+        ids.push(trimmed);
+      }
+    }
+
+    return ids;
+  } catch (error) {
+    console.warn("[content] Failed to query search documents", {
+      field: fieldName,
+      value: rawValue,
+      error,
+    });
+    return [];
+  }
+}
+
+export async function deleteSearchDocuments(documentIds = [], options = {}) {
   const client = getSearchClient();
   if (!client) {
     return;
   }
 
+  const identifiers = new Set();
+
+  const providedIds = Array.isArray(documentIds)
+    ? documentIds
+    : typeof documentIds === "string"
+      ? [documentIds]
+      : [];
+
+  providedIds.forEach((id) => {
+    if (typeof id !== "string") {
+      return;
+    }
+    const trimmed = id.trim();
+    if (trimmed.length) {
+      identifiers.add(trimmed);
+    }
+  });
+
+  const contentIds = new Set();
+  if (typeof options.contentId === "string") {
+    const trimmed = options.contentId.trim();
+    if (trimmed.length) {
+      contentIds.add(trimmed);
+    }
+  }
+
+  if (Array.isArray(options.contentIds)) {
+    options.contentIds.forEach((value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        contentIds.add(trimmed);
+      }
+    });
+  }
+
+  for (const contentId of contentIds) {
+    const discoveredIds = await collectDocumentIdsByField(client, "contentId", contentId);
+    discoveredIds.forEach((identifier) => identifiers.add(identifier));
+  }
+
+  if (!identifiers.size) {
+    return;
+  }
+
   try {
-    await client.deleteDocuments(documentIds.map((id) => ({ id })));
+    await client.deleteDocuments(Array.from(identifiers).map((id) => ({ id })));
   } catch (error) {
     console.warn("[content] Failed to delete search documents", {
-      ids: documentIds,
+      ids: Array.from(identifiers),
       error,
     });
   }

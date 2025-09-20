@@ -59,8 +59,12 @@ export async function DELETE(_request, { params }) {
 
   const blobUrlSet = collectBlobUrls();
   const searchIdSet = new Set();
+  const contentIdSet = new Set();
 
   collection.contents.forEach((content) => {
+    if (typeof content.id === "string" && content.id.trim().length) {
+      contentIdSet.add(content.id.trim());
+    }
     collectBlobUrls(content.videoUrl, blobUrlSet);
     if (content.processingMetadata && typeof content.processingMetadata === "object") {
       collectBlobUrls(content.processingMetadata, blobUrlSet);
@@ -70,7 +74,9 @@ export async function DELETE(_request, { params }) {
   });
 
   await deleteBlobUrls(Array.from(blobUrlSet));
-  await deleteSearchDocuments(Array.from(searchIdSet));
+  await deleteSearchDocuments(Array.from(searchIdSet), {
+    contentIds: Array.from(contentIdSet),
+  });
 
   await prisma.$transaction([
     prisma.collectionMembership.deleteMany({ where: { collectionId: collection.id } }),
