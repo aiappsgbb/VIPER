@@ -226,6 +226,7 @@ async function retrieveSearchContext(client, query, options) {
       return documents;
     } catch (parseError) {
       return [];
+
     }
   }
 }
@@ -307,6 +308,7 @@ export async function POST(request) {
     if (!systemContent.includes(supplementalGuidance)) {
       systemContent = [systemContent, supplementalGuidance].filter(Boolean).join("\n\n");
     }
+
     const combinedContent = [systemContent, contextText].filter(Boolean).join("\n\n").trim();
     messages[0] = {
       ...messages[0],
