@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
@@ -120,6 +121,98 @@ function formatSecondsLabel(seconds) {
   }
 
   return label;
+}
+
+function hasMeaningfulValue(value) {
+  if (value == null) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => hasMeaningfulValue(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+
+  return true;
+}
+
+function formatFieldLabel(fieldName) {
+  if (!fieldName) {
+    return "";
+  }
+
+  return fieldName
+    .toString()
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function getValueFromSource(source, fieldName) {
+  if (!source || typeof source !== "object") {
+    return undefined;
+  }
+
+  if (fieldName in source) {
+    return source[fieldName];
+  }
+
+  const lowerFieldName = fieldName.toLowerCase();
+  const matchingKey = Object.keys(source).find(
+    (candidate) => candidate.toLowerCase() === lowerFieldName,
+  );
+
+  return matchingKey ? source[matchingKey] : undefined;
+}
+
+function normalizeDetailValue(value) {
+  if (!hasMeaningfulValue(value)) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    const filtered = value.filter((item) => hasMeaningfulValue(item));
+    if (!filtered.length) {
+      return null;
+    }
+
+    const text = filtered
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (typeof item === "number" || typeof item === "boolean") {
+          return String(item);
+        }
+        if (item == null) {
+          return "";
+        }
+        return JSON.stringify(item, null, 2);
+      })
+      .filter((item) => item !== "")
+      .join(", ");
+
+    if (!text) {
+      return null;
+    }
+
+    return { text, multiline: text.includes("\n") };
+  }
+
+  if (typeof value === "object") {
+    return { text: JSON.stringify(value, null, 2), multiline: true };
+  }
+
+  return { text: String(value), multiline: false };
 }
 
 function extractTranscriptUrl(artifacts) {
@@ -823,6 +916,7 @@ export default function DashboardView({
   const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [openSearchResultId, setOpenSearchResultId] = useState(null);
   const [searchError, setSearchError] = useState("");
   const [isRunningActionSummary, setIsRunningActionSummary] = useState(false);
   const [isRunningChapterAnalysis, setIsRunningChapterAnalysis] = useState(false);
@@ -1393,6 +1487,7 @@ export default function DashboardView({
 
       const data = await response.json();
       setSearchResults(Array.isArray(data?.message) ? data.message : []);
+      setOpenSearchResultId(null);
     } catch (error) {
       setSearchError("We couldn't complete the search. Try adjusting your filters and trying again.");
     } finally {
@@ -1898,26 +1993,241 @@ export default function DashboardView({
                       <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
                     ) : (
                       searchResults.map((result, index) => {
-                        const timestamp = extractNumericSeconds(
-                          result.start_timestamp ?? result.start_frame ?? result.start,
-                        );
+                        const resultKey = String(result.id ?? result.segmentIndex ?? index);
+                        const rawContent = getValueFromSource(result, "content");
+                        let parsedContent = null;
+
+                        if (rawContent && typeof rawContent === "string") {
+                          const parsed = safeParseJson(rawContent);
+                          if (parsed && typeof parsed === "object") {
+                            parsedContent = parsed;
+                          }
+                        } else if (rawContent && typeof rawContent === "object") {
+                          parsedContent = rawContent;
+                        }
+
+                        const getFieldValue = (fieldNames) => {
+                          for (const fieldName of fieldNames) {
+                            if (!fieldName) {
+                              continue;
+                            }
+
+                            const direct = getValueFromSource(result, fieldName);
+                            if (hasMeaningfulValue(direct)) {
+                              return direct;
+                            }
+
+                            if (parsedContent) {
+                              const nested = getValueFromSource(parsedContent, fieldName);
+                              if (hasMeaningfulValue(nested)) {
+                                return nested;
+                              }
+                            }
+                          }
+
+                          return null;
+                        };
+
+                        const summaryRaw = getFieldValue(["summary", "text"]);
+                        let summaryText = "Relevant moment";
+                        if (typeof summaryRaw === "string" && summaryRaw.trim()) {
+                          summaryText = summaryRaw.trim();
+                        } else if (summaryRaw != null) {
+                          const normalizedSummary = normalizeDetailValue(summaryRaw);
+                          if (normalizedSummary?.text) {
+                            summaryText = normalizedSummary.text;
+                          }
+                        }
+
+                        const startValue = getFieldValue([
+                          "startSeconds",
+                          "startTimestamp",
+                          "start_timestamp",
+                          "startTime",
+                          "start",
+                          "startFrame",
+                          "start_frame",
+                        ]);
+                        const endValue = getFieldValue([
+                          "endSeconds",
+                          "endTimestamp",
+                          "end_timestamp",
+                          "endTime",
+                          "end",
+                          "endFrame",
+                          "end_frame",
+                        ]);
+                        const startSeconds = extractNumericSeconds(startValue);
+                        const endSeconds = extractNumericSeconds(endValue);
+                        const startLabel =
+                          startSeconds != null
+                            ? formatSecondsLabel(startSeconds)
+                            : typeof startValue === "string"
+                              ? startValue
+                              : null;
+                        const endLabel =
+                          endSeconds != null
+                            ? formatSecondsLabel(endSeconds)
+                            : typeof endValue === "string"
+                              ? endValue
+                              : null;
+                        const intervalLabel =
+                          startLabel && endLabel
+                            ? `${startLabel} – ${endLabel}`
+                            : startLabel
+                              ? `Starts at ${startLabel}`
+                              : endLabel
+                                ? `Ends at ${endLabel}`
+                                : null;
+                        const durationSeconds =
+                          startSeconds != null && endSeconds != null
+                            ? Math.max(endSeconds - startSeconds, 0)
+                            : null;
+                        const durationLabel =
+                          durationSeconds != null ? formatSecondsLabel(durationSeconds) : null;
+                        const timestamp = startSeconds ?? null;
+
+                        const detailItems = [];
+                        const addDetail = (label, value) => {
+                          if (!label) {
+                            return;
+                          }
+
+                          const normalized = normalizeDetailValue(value);
+                          if (!normalized) {
+                            return;
+                          }
+
+                          detailItems.push({
+                            label,
+                            text: normalized.text,
+                            multiline: normalized.multiline,
+                          });
+                        };
+
+                        if (intervalLabel) {
+                          addDetail("Time interval", intervalLabel);
+                        }
+
+                        if (durationLabel) {
+                          addDetail("Duration", durationLabel);
+                        }
+
+                        if (hasMeaningfulValue(summaryRaw)) {
+                          addDetail("Summary", summaryRaw);
+                        } else if (summaryText && summaryText !== "Relevant moment") {
+                          addDetail("Summary", summaryText);
+                        }
+
+                        const actionsValue = getFieldValue(["actions"]);
+                        if (hasMeaningfulValue(actionsValue)) {
+                          addDetail("Actions", actionsValue);
+                        }
+
+                        const charactersValue = getFieldValue(["characters", "people"]);
+                        if (hasMeaningfulValue(charactersValue)) {
+                          addDetail("People", charactersValue);
+                        }
+
+                        const sceneThemeValue = getFieldValue(["sceneTheme", "scene_theme", "theme"]);
+                        if (hasMeaningfulValue(sceneThemeValue)) {
+                          addDetail("Scene theme", sceneThemeValue);
+                        }
+
+                        const sentimentValue = getFieldValue(["sentiment"]);
+                        if (hasMeaningfulValue(sentimentValue)) {
+                          addDetail("Sentiment", sentimentValue);
+                        }
+
+                        const keyObjectsValue = getFieldValue(["keyObjects", "key_objects"]);
+                        if (hasMeaningfulValue(keyObjectsValue)) {
+                          addDetail("Key objects", keyObjectsValue);
+                        }
+
+                        const customFieldsRaw = getFieldValue(["customFields"]);
+                        if (customFieldsRaw) {
+                          let normalizedCustomFields = customFieldsRaw;
+                          if (typeof normalizedCustomFields === "string") {
+                            const parsed = safeParseJson(normalizedCustomFields);
+                            if (parsed && typeof parsed === "object") {
+                              normalizedCustomFields = parsed;
+                            }
+                          }
+
+                          if (Array.isArray(normalizedCustomFields)) {
+                            normalizedCustomFields.forEach((entry) => {
+                              if (!entry || typeof entry !== "object") {
+                                return;
+                              }
+
+                              Object.entries(entry).forEach(([key, value]) => {
+                                addDetail(formatFieldLabel(key) || key, value);
+                              });
+                            });
+                          } else if (
+                            normalizedCustomFields &&
+                            typeof normalizedCustomFields === "object"
+                          ) {
+                            Object.entries(normalizedCustomFields).forEach(([key, value]) => {
+                              addDetail(formatFieldLabel(key) || key, value);
+                            });
+                          }
+                        }
+
                         return (
-                          <div className="flex items-center justify-between gap-3 p-4" key={`${result.id ?? index}`}>
-                            <div className="space-y-1 text-sm">
-                              <p className="font-medium text-slate-800">
-                                {result.summary ?? result.text ?? "Relevant moment"}
-                              </p>
-                              {result.start_timestamp || result.start ? (
-                                <p className="text-xs text-slate-500">
-                                  Starts at {result.start_timestamp ?? result.start}
-                                </p>
-                              ) : null}
-                            </div>
-                            {timestamp != null ? (
-                              <Button onClick={() => handleSeekToTimestamp(timestamp)} size="sm" variant="outline">
-                                Jump
-                              </Button>
-                            ) : null}
+                          <div className="p-4" key={resultKey}>
+                            <Collapsible
+                              open={openSearchResultId === resultKey}
+                              onOpenChange={(isOpen) =>
+                                setOpenSearchResultId(isOpen ? resultKey : null)
+                              }
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <CollapsibleTrigger className="group flex flex-1 items-start justify-between gap-3 rounded-md px-0 py-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-medium text-slate-800">{summaryText}</p>
+                                    {intervalLabel ? (
+                                      <p className="text-xs text-slate-500">{intervalLabel}</p>
+                                    ) : null}
+                                  </div>
+                                  <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                                </CollapsibleTrigger>
+                                {timestamp != null ? (
+                                  <Button
+                                    onClick={() => handleSeekToTimestamp(timestamp)}
+                                    size="sm"
+                                    type="button"
+                                    variant="outline"
+                                  >
+                                    Jump
+                                  </Button>
+                                ) : null}
+                              </div>
+                              <CollapsibleContent className="space-y-3 pt-3">
+                                {detailItems.length ? (
+                                  <dl className="space-y-3 text-sm text-slate-600">
+                                    {detailItems.map((item, detailIndex) => (
+                                      <div className="space-y-1" key={`${resultKey}-detail-${detailIndex}`}>
+                                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                          {item.label}
+                                        </dt>
+                                        <dd
+                                          className={`text-sm text-slate-600${
+                                            item.multiline ? " whitespace-pre-wrap" : ""
+                                          }`}
+                                        >
+                                          {item.text}
+                                        </dd>
+                                      </div>
+                                    ))}
+                                  </dl>
+                                ) : (
+                                  <p className="text-sm text-slate-500">
+                                    No additional details available for this result.
+                                  </p>
+                                )}
+                              </CollapsibleContent>
+                            </Collapsible>
                           </div>
                         );
                       })
