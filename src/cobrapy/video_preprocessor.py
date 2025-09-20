@@ -35,12 +35,12 @@ class VideoPreProcessor:
         self,
         output_directory: str = None,
         segment_length: int = 10,
-        fps: float = 0.33,
+        fps: float = 1,
         generate_transcripts_flag: bool = True,
         max_workers: int = None,
         trim_to_nearest_second=False,
         allow_partial_segments=True,
-        overwrite_output=False,
+        overwrite_output=True,
     ) -> str:
         start_time = time.time()
         print(
