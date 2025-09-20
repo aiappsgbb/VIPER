@@ -37,10 +37,68 @@ function buildDisplayName(session, content) {
   );
 }
 
+function isHttpUrl(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (error) {
+    return false;
+  }
+}
+
+function resolveVideoSource(cobraMeta, content) {
+  const candidates = [
+    cobraMeta?.videoUrl,
+    cobraMeta?.storageUrl,
+    content?.videoUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+function resolveManifestReference(cobraMeta) {
+  if (!cobraMeta || typeof cobraMeta !== "object") {
+    return null;
+  }
+
+  const candidates = [
+    cobraMeta.manifestUrl,
+    cobraMeta.manifestPath,
+    cobraMeta?.actionSummary?.storageArtifacts?.manifest,
+    cobraMeta?.chapterAnalysis?.storageArtifacts?.manifest,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 function buildRequestPayload({ content, session, cobraMeta }) {
+  const videoSource = resolveVideoSource(cobraMeta, content);
+  const manifestReference = resolveManifestReference(cobraMeta);
+
   const payload = {
-    video_path: cobraMeta.localVideoPath,
-    manifest_path: cobraMeta.manifestPath ?? null,
+    video_path: videoSource,
+    manifest_path: manifestReference ?? null,
     organization: content.organizationId,
     organization_name: content.organization?.name ?? undefined,
     collection: content.collectionId,
@@ -48,10 +106,10 @@ function buildRequestPayload({ content, session, cobraMeta }) {
     user: session.user.id,
     user_name: buildDisplayName(session, content),
     video_id: content.id,
-    video_url: content.videoUrl,
+    video_url: videoSource,
   };
 
-  if (cobraMeta.manifestPath) {
+  if (manifestReference && !isHttpUrl(manifestReference)) {
     payload.skip_preprocess = true;
   }
 
@@ -86,7 +144,8 @@ export async function POST(_request, { params }) {
     content.processingMetadata,
   );
 
-  if (!cobraMeta.localVideoPath) {
+  const videoSource = resolveVideoSource(cobraMeta, content);
+  if (!videoSource) {
     return NextResponse.json(
       {
         error:
@@ -115,7 +174,9 @@ export async function POST(_request, { params }) {
     response = await fetch(getChapterAnalysisEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildRequestPayload({ content, session, cobraMeta })),
+      body: JSON.stringify(
+        buildRequestPayload({ content, session, cobraMeta }),
+      ),
     });
     data = await response.json().catch(() => null);
   } catch (error) {
@@ -162,7 +223,23 @@ export async function POST(_request, { params }) {
     return NextResponse.json({ error: errorMessage }, { status: response.status || 500 });
   }
 
-  cobraMeta.manifestPath = data?.manifest_path ?? cobraMeta.manifestPath ?? null;
+  const manifestUrlFromResponse =
+    (data?.storage_artifacts && data.storage_artifacts.manifest) ||
+    (typeof data?.manifest_path === "string" && isHttpUrl(data.manifest_path)
+      ? data.manifest_path
+      : null);
+
+  if (manifestUrlFromResponse) {
+    cobraMeta.manifestUrl = manifestUrlFromResponse;
+    cobraMeta.manifestPath = manifestUrlFromResponse;
+  } else if (cobraMeta.manifestUrl) {
+    cobraMeta.manifestPath = cobraMeta.manifestUrl;
+  } else if (cobraMeta.manifestPath && isHttpUrl(cobraMeta.manifestPath)) {
+    cobraMeta.manifestUrl = cobraMeta.manifestPath;
+  } else {
+    cobraMeta.manifestUrl = null;
+    cobraMeta.manifestPath = null;
+  }
   cobraMeta.chapterAnalysis = {
     lastRunAt: new Date().toISOString(),
     analysis: data?.analysis ?? null,
@@ -187,7 +264,7 @@ export async function POST(_request, { params }) {
   return NextResponse.json(
     {
       analysis: data?.analysis ?? "ChapterAnalysis",
-      manifestPath: data?.manifest_path ?? null,
+      manifestPath: manifestUrlFromResponse ?? cobraMeta.manifestUrl ?? null,
       analysisOutputPath: data?.analysis_output_path ?? null,
       storageArtifacts: data?.storage_artifacts ?? null,
       filters: {

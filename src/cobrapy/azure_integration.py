@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Sequence
+import tempfile
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 from azure.core.credentials import AzureKeyCredential, AzureNamedKeyCredential
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.search.documents import SearchClient
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -69,6 +71,22 @@ class AzureStorageManager:
         except ResourceExistsError:
             pass
 
+    def _split_blob_url(self, blob_url: str) -> Tuple[str, str]:
+        parsed = urlparse(blob_url)
+        if not parsed.path or parsed.path == "/":
+            raise ValueError(f"Unable to parse blob url: {blob_url}")
+
+        path = parsed.path.lstrip("/")
+        if not path:
+            raise ValueError(f"Unable to determine blob name from url: {blob_url}")
+
+        parts = path.split("/", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Blob url must include container and blob name: {blob_url}")
+
+        container, blob = parts
+        return container, unquote(blob)
+
     def _upload_file(self, container: str, file_path: str, blob_name: str) -> str:
         blob_client = self._client.get_blob_client(container=container, blob=blob_name)
         with open(file_path, "rb") as data:
@@ -94,7 +112,9 @@ class AzureStorageManager:
             "source",
             os.path.basename(video_path),
         )
-        return self._upload_file(self.video_container, video_path, blob_name)
+        url = self._upload_file(self.video_container, video_path, blob_name)
+        manifest.source_video.path = url
+        return url
 
     def upload_manifest(self, manifest: VideoManifest) -> Optional[str]:
         if not manifest.video_manifest_path or not os.path.exists(
@@ -108,7 +128,9 @@ class AzureStorageManager:
             "manifests",
             os.path.basename(manifest.video_manifest_path),
         )
-        return self._upload_file(self.output_container, manifest.video_manifest_path, blob_name)
+        url = self._upload_file(self.output_container, manifest.video_manifest_path, blob_name)
+        manifest.video_manifest_path = url
+        return url
 
     def upload_transcription(self, manifest: VideoManifest) -> Optional[str]:
         if manifest.audio_transcription is None or not self.output_container:
@@ -151,6 +173,34 @@ class AzureStorageManager:
             )
 
         return uploaded
+
+    def delete_blob_by_url(self, blob_url: Optional[str]) -> None:
+        if not blob_url:
+            return
+
+        container, blob_name = self._split_blob_url(blob_url)
+        blob_client = self._client.get_blob_client(container=container, blob=blob_name)
+        try:
+            blob_client.delete_blob(delete_snapshots="include")
+        except ResourceNotFoundError:
+            pass
+
+    def download_blob_to_tempfile(
+        self, blob_url: str, *, suffix: Optional[str] = None
+    ) -> str:
+        container, blob_name = self._split_blob_url(blob_url)
+        blob_client = self._client.get_blob_client(container=container, blob=blob_name)
+
+        extension = suffix
+        if extension is None:
+            _, inferred = os.path.splitext(blob_name)
+            extension = inferred
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp:
+            downloader = blob_client.download_blob()
+            tmp.write(downloader.readall())
+
+        return tmp.name
 
 
 CUSTOM_FIELD_EXCLUSION_KEYS = {
