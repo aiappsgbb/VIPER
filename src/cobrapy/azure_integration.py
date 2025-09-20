@@ -153,6 +153,82 @@ class AzureStorageManager:
         return uploaded
 
 
+CUSTOM_FIELD_EXCLUSION_KEYS = {
+    "_segment_index",
+    "_segment_name",
+    "_segment_entry_index",
+    "start_timestamp",
+    "end_timestamp",
+    "scene_theme",
+    "summary",
+    "actions",
+    "characters",
+    "key_objects",
+    "sentiment",
+}
+
+
+def _stringify_custom_field_value(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        return value.strip()
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    if isinstance(value, (list, tuple, set, frozenset)):
+        parts: List[str] = []
+        for item in value:
+            normalized = _stringify_custom_field_value(item)
+            if normalized:
+                parts.append(normalized)
+        return ", ".join(parts)
+
+    if isinstance(value, dict):
+        parts = []
+        for key, nested_value in value.items():
+            nested_text = _stringify_custom_field_value(nested_value)
+            if not nested_text:
+                continue
+            if key:
+                parts.append(f"{key}: {nested_text}")
+            else:
+                parts.append(nested_text)
+        return "; ".join(parts)
+
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _extract_custom_fields(entry: Dict[str, Any]) -> List[str]:
+    if not entry:
+        return []
+
+    custom_entries: List[str] = []
+
+    for key, value in entry.items():
+        if not key:
+            continue
+
+        if key in CUSTOM_FIELD_EXCLUSION_KEYS or key.startswith("_"):
+            continue
+
+        text = _stringify_custom_field_value(value)
+        if not text:
+            continue
+
+        custom_entries.append(f"{key}: {text}")
+
+    return custom_entries
+
+
 class AzureSearchUploader:
     """Uploads generated summaries to Azure AI Search."""
 
@@ -203,6 +279,8 @@ class AzureSearchUploader:
             if not isinstance(entry, dict):
                 continue
 
+            custom_fields = _extract_custom_fields(entry)
+
             document = {
                 "id": str(uuid4()),
                 "videoName": manifest.name,
@@ -230,6 +308,9 @@ class AzureSearchUploader:
                 "source": (metadata or {}).get("source", "cobrapy"),
                 "content": json.dumps(entry, default=str),
             }
+            if custom_fields:
+                document["customFields"] = custom_fields
+
             documents.append(document)
 
         if not documents:
