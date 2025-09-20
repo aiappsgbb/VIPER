@@ -44,6 +44,11 @@ def _summarize_request(request: "BaseAnalysisRequest") -> Dict[str, Any]:
     """Return a lightweight representation of an analysis request for logging."""
 
     analysis_template = request.analysis_template or []
+    lens_preview = None
+    if request.analysis_lens:
+        lens = request.analysis_lens.strip()
+        if lens:
+            lens_preview = lens if len(lens) <= 120 else lens[:117] + "..."
     return {
         "video_path": request.video_path,
         "manifest_path": request.manifest_path,
@@ -62,6 +67,7 @@ def _summarize_request(request: "BaseAnalysisRequest") -> Dict[str, Any]:
         "collection": request.collection,
         "user": request.user,
         "video_id": request.video_id,
+        "analysis_lens_preview": lens_preview,
     }
 
 
@@ -175,6 +181,10 @@ class BaseAnalysisRequest(BaseModel):
     analysis_template: Optional[List[Dict[str, str]]] = Field(
         default=None,
         description="Custom template describing the JSON fields for action summary analyses.",
+    )
+    analysis_lens: Optional[str] = Field(
+        default=None,
+        description="Optional lens instructions that tailor the action summary.",
     )
 
     @model_validator(mode="after")
@@ -490,6 +500,16 @@ def run_action_summary(request: BaseAnalysisRequest):
             if request.analysis_template
             else ActionSummary()
         )
+
+        if request.analysis_lens:
+            lens_prompt = request.analysis_lens.strip()
+        else:
+            lens_prompt = ""
+
+        if lens_prompt:
+            analysis_config.lens_prompt = lens_prompt
+        elif getattr(analysis_config, "system_prompt_lens", None):
+            analysis_config.lens_prompt = analysis_config.system_prompt_lens
 
         logger.info(
             "Invoking action summary analysis for %s (run_async=%s, max_workers=%s, reprocess_segments=%s)",

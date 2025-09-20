@@ -322,6 +322,7 @@ function buildDefaultActionSummaryConfigState() {
     upload_to_azure: true,
     skip_preprocess: false,
     output_directory: "",
+    lens_prompt: "",
   };
 }
 
@@ -441,6 +442,19 @@ function buildInitialActionSummaryConfigState(config, uploadMetadata) {
       }
     }
 
+    if (
+
+      Object.prototype.hasOwnProperty.call(data, "lens_prompt") ||
+      Object.prototype.hasOwnProperty.call(data, "lensPrompt")
+    ) {
+      const lensValue = data.lens_prompt ?? data.lensPrompt;
+      if (typeof lensValue === "string") {
+        state.lens_prompt = lensValue.trim();
+      } else if (lensValue == null) {
+        state.lens_prompt = "";
+      }
+    }
+
     const booleanFields = [
       "run_async",
       "overwrite_output",
@@ -495,6 +509,15 @@ function buildActionSummaryConfigPayload(state) {
     sanitized.output_directory = directory.length ? directory : null;
   }
 
+  if (state.lens_prompt !== undefined) {
+    if (typeof state.lens_prompt === "string") {
+      const trimmedLens = state.lens_prompt.trim();
+      sanitized.lens_prompt = trimmedLens.length ? trimmedLens : null;
+    } else if (state.lens_prompt == null) {
+      sanitized.lens_prompt = null;
+    }
+  }
+
   return sanitized;
 }
 
@@ -508,6 +531,16 @@ function sanitizeActionSummaryConfigState(state) {
 function summarizeActionSummaryConfig(state) {
   const config = buildActionSummaryConfigPayload(state);
   const summary = [];
+
+  const lensPrompt =
+    typeof config.lens_prompt === "string" ? config.lens_prompt.trim() : "";
+  if (lensPrompt.length) {
+    const preview = lensPrompt.replace(/\s+/g, " ").trim();
+    const truncated = preview.length > 120 ? `${preview.slice(0, 117)}…` : preview;
+    summary.push(`Lens: ${truncated}`);
+  } else {
+    summary.push("Lens: Default");
+  }
 
   summary.push(
     `Segment length: ${config.segment_length} second${
@@ -1882,6 +1915,27 @@ export default function DashboardView({
                                       value={draftActionSummaryConfig.output_directory}
                                     />
                                   </label>
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Analysis lens
+                                    <Textarea
+                                      className="mt-1"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          lens_prompt: event.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional context or perspective to guide the analysis"
+                                      rows={4}
+                                      value={draftActionSummaryConfig.lens_prompt}
+                                    />
+                                  </label>
+                                  <p className="text-xs text-slate-500">
+                                    Leave blank to use the default lens. Provide custom instructions to
+                                    tailor how the model describes each scene.
+                                  </p>
                                 </div>
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   {ACTION_SUMMARY_TOGGLE_FIELDS.map(({ key, label }) => (

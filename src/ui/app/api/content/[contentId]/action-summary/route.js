@@ -145,6 +145,7 @@ const DEFAULT_ACTION_SUMMARY_CONFIG = {
   upload_to_azure: true,
   skip_preprocess: false,
   output_directory: null,
+  lens_prompt: null,
 };
 
 function sanitizeActionSummaryConfigOverride(config) {
@@ -185,6 +186,19 @@ function sanitizeActionSummaryConfigOverride(config) {
       sanitized.output_directory = outputDirectory.trim();
     } else {
       sanitized.output_directory = null;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(config, "lens_prompt") ||
+    Object.prototype.hasOwnProperty.call(config, "lensPrompt")
+  ) {
+    const lensValue = config.lens_prompt ?? config.lensPrompt;
+    if (typeof lensValue === "string") {
+      const trimmedLens = lensValue.trim();
+      sanitized.lens_prompt = trimmedLens.length ? trimmedLens : null;
+    } else if (lensValue == null) {
+      sanitized.lens_prompt = null;
     }
   }
 
@@ -267,7 +281,6 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
     }
 
     if (
-
       Object.prototype.hasOwnProperty.call(data, "output_directory") ||
       Object.prototype.hasOwnProperty.call(data, "outputDirectory")
     ) {
@@ -278,6 +291,19 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
         base.output_directory = outputDirectory.trim();
       } else {
         base.output_directory = null;
+      }
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(data, "lens_prompt") ||
+      Object.prototype.hasOwnProperty.call(data, "lensPrompt")
+    ) {
+      const lensValue = data.lens_prompt ?? data.lensPrompt;
+
+      if (typeof lensValue === "string" && lensValue.trim().length) {
+        base.lens_prompt = lensValue.trim();
+      } else if (lensValue == null) {
+        base.lens_prompt = null;
       }
     }
 
@@ -316,6 +342,13 @@ function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
 
   if (typeof base.output_directory !== "string") {
     base.output_directory = null;
+  }
+
+  if (typeof base.lens_prompt === "string") {
+    const trimmedLens = base.lens_prompt.trim();
+    base.lens_prompt = trimmedLens.length ? trimmedLens : null;
+  } else {
+    base.lens_prompt = null;
   }
 
   return base;
@@ -362,6 +395,13 @@ function buildRequestPayload({
 
   if (typeof normalizedConfig.output_directory === "string") {
     payload.output_directory = normalizedConfig.output_directory;
+  }
+
+  if (
+    typeof normalizedConfig.lens_prompt === "string" &&
+    normalizedConfig.lens_prompt.trim().length
+  ) {
+    payload.analysis_lens = normalizedConfig.lens_prompt.trim();
   }
 
   if (Array.isArray(analysisTemplate) && analysisTemplate.length > 0) {
