@@ -104,6 +104,9 @@ if (Test-Path $EnvFilePath) {
     $frontendRunArgs += @("--env-file", (Resolve-Path $EnvFilePath).Path)
 }
 $frontendRunArgs += @("-e", "VIPER_BASE_URL=http://$BackendContainerName:8000")
+
+$frontendRunArgs += @("-e", "VIPER_BACKEND_INTERNAL_URL=http://$BackendContainerName:8000")
+
 $frontendRunArgs += $FrontendImageName
 Write-Host "Starting frontend container '$FrontendContainerName'." -ForegroundColor Cyan
 Invoke-CheckedCommand -FilePath "docker" -Arguments $frontendRunArgs

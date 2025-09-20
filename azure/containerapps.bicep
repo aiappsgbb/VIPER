@@ -32,7 +32,6 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: acrName
 }
 
-var acrCredentials = listCredentials(acr.id, '2019-05-01-preview')
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsWorkspaceName
@@ -59,7 +58,10 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   }
 }
 
-var resolvedFrontendBaseUrl = empty(frontendBaseUrl) ? format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain) : frontendBaseUrl
+
+var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
+var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
+
 
 var backendEnv = [for setting in backendEnvVars: {
   name: setting.name
@@ -75,15 +77,20 @@ var frontendEnv = arrayConcat(
     {
 
       name: 'VIPER_BASE_URL'
+      value: resolvedBackendBaseUrl
+    },
+    {
+      name: 'VIPER_BACKEND_INTERNAL_URL'
+      value: backendInternalUrl
 
-      value: resolvedFrontendBaseUrl
     }
   ]
 )
 
 var registryServer = acr.properties.loginServer
-var registrySecretName = 'acr-password'
-var registrySecretValue = acrCredentials.passwords[0].value
+
+
+var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
 
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
@@ -135,22 +142,19 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
+      activeRevisionsMode: 'Single'
       ingress: {
         external: false
         targetPort: 8000
-        transport: 'auto'
+        transport: 'https'
+
       }
       registries: [
         {
           server: registryServer
-          username: acrCredentials.username
-          passwordSecretRef: registrySecretName
-        }
-      ]
-      secrets: [
-        {
-          name: registrySecretName
-          value: registrySecretValue
+
+          identity: 'SystemAssigned'
+
         }
       ]
     }
@@ -177,26 +181,23 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
   identity: {
     type: 'SystemAssigned'
   }
-
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
+      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: 3000
-        transport: 'auto'
+        transport: 'https'
+        allowInsecure: false
+
       }
       registries: [
         {
           server: registryServer
-          username: acrCredentials.username
-          passwordSecretRef: registrySecretName
-        }
-      ]
-      secrets: [
-        {
-          name: registrySecretName
-          value: registrySecretValue
+
+          identity: 'SystemAssigned'
+
         }
       ]
     }
@@ -220,6 +221,26 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
 var storageRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageRoleGuid)
 var searchRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid)
 var speechRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', speechRoleGuid)
+var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleGuid)
+
+resource backendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, acrPullRoleGuid, backendApp.identity.principalId)
+  scope: acr
+  properties: {
+    principalId: backendApp.identity.principalId
+    roleDefinitionId: acrPullRoleDefinitionId
+  }
+}
+
+resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, acrPullRoleGuid, frontendApp.identity.principalId)
+  scope: acr
+  properties: {
+    principalId: frontendApp.identity.principalId
+    roleDefinitionId: acrPullRoleDefinitionId
+  }
+}
+
 
 resource backendStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasStorageAccount) {
   name: guid(storageAccount.id, storageRoleGuid, backendApp.identity.principalId)
@@ -277,4 +298,5 @@ resource frontendSpeechRoleAssignment 'Microsoft.Authorization/roleAssignments@2
 
 
 output frontendUrl string = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
-output backendInternalUrl string = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
+output backendInternalUrl string = backendInternalUrl
+

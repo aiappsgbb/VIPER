@@ -148,7 +148,9 @@ if (-not $FrontendContainerAppName) {
 }
 
 Write-Host "Ensuring Azure Container Registry '$AcrName'." -ForegroundColor Cyan
-Invoke-CheckedAz -Arguments @("acr", "create", "--resource-group", $ResourceGroupName, "--name", $AcrName, "--location", $Location, "--sku", "Basic", "--admin-enabled", "true") | Out-Null
+
+Invoke-CheckedAz -Arguments @("acr", "create", "--resource-group", $ResourceGroupName, "--name", $AcrName, "--location", $Location, "--sku", "Basic", "--admin-enabled", "false") | Out-Null
+
 Invoke-CheckedAz -Arguments @("acr", "login", "--name", $AcrName) | Out-Null
 
 $backendRegistryImage = "$AcrName.azurecr.io/$BackendImageName:$BackendImageTag"
@@ -166,17 +168,24 @@ Invoke-CheckedDocker -Arguments @("push", $frontendRegistryImage)
 
 $backendEnvVars = @()
 $frontendEnvVars = @()
-$frontendBaseUrlOverride = ""
+
+$backendBaseUrlOverride = ""
+
 
 if (-not $SkipEnvFile.IsPresent -and (Test-Path $EnvFilePath)) {
     $parsedEnv = Parse-EnvFile -Path $EnvFilePath
     foreach ($entry in $parsedEnv) {
         if ($entry.name -eq "VIPER_BASE_URL") {
             if (-not [string]::IsNullOrWhiteSpace($entry.value)) {
-                $frontendBaseUrlOverride = $entry.value
+
+                $backendBaseUrlOverride = $entry.value
             }
             continue
         }
+        if ($entry.name -eq "VIPER_BACKEND_INTERNAL_URL") {
+            continue
+        }
+
         $backendEnvVars += $entry
         $frontendEnvVars += $entry
     }
@@ -235,8 +244,9 @@ if ($backendEnvFile) {
 if ($frontendEnvFile) {
     $parameterValues += "frontendEnvVars=@$frontendEnvFile"
 }
-if ($frontendBaseUrlOverride) {
-    $parameterValues += "frontendBaseUrl=$frontendBaseUrlOverride"
+
+if ($backendBaseUrlOverride) {
+    $parameterValues += "frontendBaseUrl=$backendBaseUrlOverride"
 }
 
 

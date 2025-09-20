@@ -2,7 +2,11 @@ const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
 export function getBackendBaseUrl() {
   const configured =
-    process.env.VIPER_BASE_URL ?? process.env.COBRAPY_BASE_URL;
+
+    process.env.VIPER_BASE_URL ??
+    process.env.VIPER_BACKEND_INTERNAL_URL ??
+    process.env.COBRAPY_BASE_URL;
+
   if (configured && typeof configured === "string" && configured.trim().length) {
     return configured.trim();
   }
