@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -134,16 +136,16 @@ export default function ChatWidget({
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       {isOpen ? (
-        <div className="pointer-events-auto w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
-          <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white">
+        <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-3rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:w-[32rem]">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-900 px-5 py-4 text-white">
 
             <div className="space-y-2">
 
-              <p className="text-sm font-semibold">Ask VIPER</p>
-              <p className="text-xs text-slate-200">
+              <p className="text-base font-semibold">Ask VIPER</p>
+              <p className="text-xs text-slate-200 md:text-sm">
                 Intelligent answers sourced from your video analyses.
               </p>
-              <p className="text-xs text-slate-300 truncate" title={focusLabel}>
+              <p className="truncate text-xs text-slate-300 md:text-sm" title={focusLabel}>
                 {focusLabel}
               </p>
 
@@ -196,16 +198,28 @@ export default function ChatWidget({
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex h-[28rem] flex-col">
-            <ScrollArea className="flex-1 px-4 py-3">
+          <div className="flex h-[32rem] flex-col">
+            <ScrollArea className="flex-1 px-5 py-4">
               <div className="space-y-4">
                 {displayMessages.length === 0 ? (
-                  <div className="rounded-md bg-slate-100 p-4 text-sm text-slate-600">
+                  <div className="rounded-lg bg-slate-100 p-5 text-sm text-slate-600">
                     Ask about people, actions, or chapters to get an answer that references the exact moment in the video.
                   </div>
                 ) : (
                   displayMessages.map((message, index) => {
                     const isAssistant = message.role === "assistant";
+                    const linkClassName = cn(
+                      "font-medium underline underline-offset-2 transition-colors",
+                      isAssistant
+                        ? "text-slate-100 hover:text-slate-300"
+                        : "text-slate-800 hover:text-slate-600",
+                    );
+                    const codeClassName = cn(
+                      "rounded px-1.5 py-0.5 font-mono text-[0.75rem]",
+                      isAssistant
+                        ? "bg-slate-800/80 text-slate-100"
+                        : "bg-slate-200 text-slate-800",
+                    );
                     return (
                       <div
                         className={cn("flex", isAssistant ? "justify-start" : "justify-end")}
@@ -213,16 +227,42 @@ export default function ChatWidget({
                       >
                         <div
                           className={cn(
-                            "max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed shadow-sm",
+                            "max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-md",
                             isAssistant
                               ? "bg-slate-900 text-slate-100"
                               : "bg-slate-100 text-slate-800",
                           )}
                         >
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             {isAssistant ? "Assistant" : "You"}
                           </p>
-                          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                          <ReactMarkdown
+                            className={cn(
+                              "prose prose-sm max-w-none break-words",
+                              isAssistant
+                                ? "prose-invert prose-p:text-slate-100 prose-headings:text-slate-100 prose-strong:text-white"
+                                : "prose-slate",
+                            )}
+                            linkTarget="_blank"
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ node, ...props }) => <a {...props} className={linkClassName} />,
+                              code: ({ node, inline, className, children, ...props }) => (
+                                <code
+                                  {...props}
+                                  className={cn(
+                                    codeClassName,
+                                    className,
+                                    inline ? "" : "mt-2 block whitespace-pre-wrap",
+                                  )}
+                                >
+                                  {inline ? children : String(children).replace(/\n$/, "")}
+                                </code>
+                              ),
+                            }}
+                          >
+                            {message.content ?? ""}
+                          </ReactMarkdown>
                         </div>
                       </div>
                     );
@@ -231,17 +271,22 @@ export default function ChatWidget({
                 <div ref={endOfMessagesRef} />
               </div>
             </ScrollArea>
-            <form className="border-t border-slate-200 bg-slate-50 p-3" onSubmit={handleFormSubmit}>
+            <form className="border-t border-slate-200 bg-slate-50 p-4" onSubmit={handleFormSubmit}>
               <Textarea
                 onChange={handleInputChange}
                 placeholder="Ask the assistant about what happens in the footage…"
-                rows={3}
+                rows={4}
                 value={input}
               />
               <div className="mt-2 flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-500">Shift + Enter for a new line.</p>
-                <Button disabled={isLoading || !input.trim()} size="sm" type="submit">
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                <p className="text-xs text-slate-500 md:text-sm">Shift + Enter for a new line.</p>
+                <Button
+                  className="gap-2 px-4 text-sm"
+                  disabled={isLoading || !input.trim()}
+                  size="sm"
+                  type="submit"
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   Send
                 </Button>
               </div>
@@ -252,7 +297,7 @@ export default function ChatWidget({
       <Button
         aria-expanded={isOpen}
         aria-haspopup="dialog"
-        className="pointer-events-auto h-12 rounded-full px-5 shadow-lg"
+        className="pointer-events-auto h-14 rounded-full px-6 text-base shadow-lg"
         onClick={toggleOpen}
         type="button"
       >
