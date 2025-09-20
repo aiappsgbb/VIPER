@@ -21,12 +21,28 @@ export default function ChatWidget({
   chapterAnalysisContext,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+
+  const [searchScope, setSearchScope] = useState("video");
+  const hasCollectionScope = Boolean(selectedContent?.collection?.id);
+  const resolvedSearchScope = hasCollectionScope && searchScope === "collection" ? "collection" : "video";
+
+  useEffect(() => {
+    setSearchScope("video");
+  }, [selectedContent?.id]);
+
+  useEffect(() => {
+    if (!hasCollectionScope) {
+      setSearchScope("video");
+    }
+  }, [hasCollectionScope]);
   const chatBody = useMemo(
     () => ({
-      contentId: selectedContent?.id ?? null,
+      contentId: resolvedSearchScope === "video" ? selectedContent?.id ?? null : null,
       collectionId: selectedContent?.collection?.id ?? null,
       organizationId: selectedContent?.organization?.id ?? null,
       contentTitle: selectedContent?.title ?? null,
+      searchScope: resolvedSearchScope,
+
       actionSummary: sanitizeArray(actionSummaryContext),
       chapterAnalysis: sanitizeArray(chapterAnalysisContext),
     }),
@@ -37,6 +53,9 @@ export default function ChatWidget({
       selectedContent?.title,
       actionSummaryContext,
       chapterAnalysisContext,
+
+      resolvedSearchScope,
+
     ],
   );
 
@@ -51,8 +70,15 @@ export default function ChatWidget({
         `When the user references \"this video\" focus on the content titled \"${selectedContent.title}\".`,
       );
     }
+
+    segments.push(
+      resolvedSearchScope === "collection"
+        ? "You may reference action summaries from any video within the selected collection, but treat chapter analysis details as only describing the currently selected video."
+        : "Limit supporting action-summary evidence to this video's timeline while treating chapter analysis data as video-specific.",
+    );
     return segments.join(" ");
-  }, [selectedContent?.title]);
+  }, [resolvedSearchScope, selectedContent?.title]);
+
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } =
     useChat({
@@ -98,12 +124,21 @@ export default function ChatWidget({
     ? `Now watching: ${selectedContent.title}`
     : "Ask about this video";
 
+
+  const scopeDescription =
+    resolvedSearchScope === "collection"
+      ? "Searching action summaries across this collection."
+      : "Searching action summaries within this video.";
+
+
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       {isOpen ? (
         <div className="pointer-events-auto w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
           <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-900 px-4 py-3 text-white">
-            <div className="space-y-1">
+
+            <div className="space-y-2">
+
               <p className="text-sm font-semibold">Ask VIPER</p>
               <p className="text-xs text-slate-200">
                 Intelligent answers sourced from your video analyses.
@@ -111,6 +146,44 @@ export default function ChatWidget({
               <p className="text-xs text-slate-300 truncate" title={focusLabel}>
                 {focusLabel}
               </p>
+
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">Search scope</span>
+                  <div className="flex rounded-full bg-slate-800 p-1">
+                    <button
+                      aria-pressed={resolvedSearchScope === "video"}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition",
+                        resolvedSearchScope === "video"
+                          ? "bg-white text-slate-900 shadow"
+                          : "text-slate-200 hover:bg-slate-700/80",
+                      )}
+                      onClick={() => setSearchScope("video")}
+                      type="button"
+                    >
+                      This video
+                    </button>
+                    {hasCollectionScope ? (
+                      <button
+                        aria-pressed={resolvedSearchScope === "collection"}
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-medium transition",
+                          resolvedSearchScope === "collection"
+                            ? "bg-white text-slate-900 shadow"
+                            : "text-slate-200 hover:bg-slate-700/80",
+                        )}
+                        onClick={() => setSearchScope("collection")}
+                        type="button"
+                      >
+                        Collection
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-300">{scopeDescription}</p>
+              </div>
+
             </div>
             <Button
               aria-label="Close chat"

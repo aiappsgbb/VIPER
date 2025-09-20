@@ -226,6 +226,7 @@ async function retrieveSearchContext(client, query, options) {
       return documents;
     } catch (parseError) {
       return [];
+
     }
   }
 }
@@ -268,11 +269,17 @@ export async function POST(request) {
 
   const actionSummary = sanitizeTimeline(body?.actionSummary ?? []);
   const chapterAnalysis = sanitizeChapters(body?.chapterAnalysis ?? []);
+  const searchScope = body?.searchScope === "collection" ? "collection" : "video";
 
   const contextSections = [];
   if (body?.contentTitle) {
     contextSections.push(`Video title: ${body.contentTitle}`);
   }
+  contextSections.push(
+    searchScope === "collection"
+      ? "Action-summary search scope: collection (chapter analysis remains specific to the selected video)."
+      : "Action-summary search scope: this video only.",
+  );
   if (searchDocuments.length) {
     contextSections.push(`Search highlights:\n${JSON.stringify(searchDocuments, null, 2)}`);
   }
@@ -301,6 +308,7 @@ export async function POST(request) {
     if (!systemContent.includes(supplementalGuidance)) {
       systemContent = [systemContent, supplementalGuidance].filter(Boolean).join("\n\n");
     }
+
     const combinedContent = [systemContent, contextText].filter(Boolean).join("\n\n").trim();
     messages[0] = {
       ...messages[0],
