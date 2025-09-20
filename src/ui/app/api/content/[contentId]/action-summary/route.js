@@ -1,9 +1,17 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
 import { buildBackendUrl } from "@/lib/backend";
+import {
+  collectBlobUrls,
+  collectSearchDocumentIds,
+  deleteBlobUrls,
+  deleteSearchDocuments,
+} from "@/lib/content-cleanup";
 
 function getActionSummaryEndpoint() {
   const configured = process.env.ACTION_SUMMARY_ENDPOINT;
@@ -91,6 +99,359 @@ function resolveManifestReference(cobraMeta) {
   }
 
   return null;
+}
+
+function createActionSummaryRunId() {
+  try {
+    return randomUUID();
+  } catch (error) {
+    return `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+function normalizeActionSummaryRun(run) {
+  if (!run || typeof run !== "object") {
+    return null;
+  }
+
+  let wasMigrated = false;
+
+  let id = null;
+  if (typeof run.id === "string" && run.id.trim().length) {
+    id = run.id.trim();
+  } else if (typeof run.runId === "string" && run.runId.trim().length) {
+    id = run.runId.trim();
+    wasMigrated = true;
+  } else {
+    id = createActionSummaryRunId();
+    wasMigrated = true;
+  }
+
+  const name =
+    typeof run.name === "string" && run.name.trim().length
+      ? run.name.trim()
+      : typeof run.label === "string" && run.label.trim().length
+        ? run.label.trim()
+        : null;
+
+  const analysisOutputPath =
+    run.analysisOutputPath ?? run.analysis_output_path ?? null;
+
+  const storageArtifacts =
+    run.storageArtifacts ?? run.storage_artifacts ?? null;
+
+  const searchUploads = Array.isArray(run.searchUploads)
+    ? run.searchUploads
+    : Array.isArray(run.search_uploads)
+      ? run.search_uploads
+      : [];
+
+  const analysisTemplate =
+    run.analysisTemplate ?? run.analysis_template ?? null;
+
+  const manifestPath = run.manifestPath ?? run.manifest_path ?? null;
+  const manifestUrl =
+    run.manifestUrl ?? run.manifest_url ?? manifestPath ?? null;
+
+  const createdAt =
+    run.createdAt ?? run.requestedAt ?? run.lastRunAt ?? run.completedAt ?? null;
+  const requestedAt = run.requestedAt ?? run.createdAt ?? null;
+  const completedAt = run.completedAt ?? run.lastRunAt ?? createdAt ?? null;
+
+  const normalized = {
+    id,
+    name,
+    analysis: run.analysis ?? null,
+    analysisOutputPath,
+    storageArtifacts,
+    searchUploads,
+    filters: run.filters ?? null,
+    config:
+      run.config && typeof run.config === "object"
+        ? run.config
+        : run.config ?? null,
+    analysisTemplate,
+    manifestPath,
+    manifestUrl,
+    createdAt,
+    requestedAt,
+    completedAt,
+  };
+
+  Object.entries(run).forEach(([key, value]) => {
+    if (
+      key in normalized ||
+      [
+        "analysis_output_path",
+        "storage_artifacts",
+        "search_uploads",
+        "manifest_path",
+        "manifest_url",
+        "runId",
+      ].includes(key)
+    ) {
+      return;
+    }
+    normalized[key] = value;
+  });
+
+  if (
+    run.analysis_output_path !== undefined ||
+    run.storage_artifacts !== undefined ||
+    run.search_uploads !== undefined ||
+    run.manifest_path !== undefined ||
+    run.manifest_url !== undefined
+  ) {
+    wasMigrated = true;
+  }
+
+  normalized._wasMigrated = wasMigrated;
+  return normalized;
+}
+
+function buildLegacyRunFromMeta(rawMeta) {
+  if (!rawMeta || typeof rawMeta !== "object") {
+    return null;
+  }
+
+  const hasLegacyData =
+    rawMeta.analysis != null ||
+    rawMeta.analysisOutputPath != null ||
+    rawMeta.analysis_output_path != null ||
+    rawMeta.storageArtifacts != null ||
+    rawMeta.storage_artifacts != null ||
+    (Array.isArray(rawMeta.searchUploads) && rawMeta.searchUploads.length) ||
+    (Array.isArray(rawMeta.search_uploads) && rawMeta.search_uploads.length);
+
+  if (!hasLegacyData) {
+    return null;
+  }
+
+  const legacyRun = normalizeActionSummaryRun({
+    id: rawMeta.id,
+    name: rawMeta.name,
+    analysis: rawMeta.analysis,
+    analysisOutputPath:
+      rawMeta.analysisOutputPath ?? rawMeta.analysis_output_path ?? null,
+    storageArtifacts:
+      rawMeta.storageArtifacts ?? rawMeta.storage_artifacts ?? null,
+    searchUploads: rawMeta.searchUploads ?? rawMeta.search_uploads ?? [],
+    filters: rawMeta.filters ?? null,
+    config: rawMeta.config ?? null,
+    analysisTemplate:
+      rawMeta.analysisTemplate ?? rawMeta.analysis_template ?? null,
+    manifestPath: rawMeta.manifestPath ?? rawMeta.manifest_path ?? null,
+    manifestUrl: rawMeta.manifestUrl ?? rawMeta.manifest_url ?? null,
+    createdAt: rawMeta.createdAt ?? null,
+    requestedAt: rawMeta.requestedAt ?? null,
+    completedAt: rawMeta.lastRunAt ?? rawMeta.completedAt ?? null,
+    lastRunAt: rawMeta.lastRunAt ?? null,
+  });
+
+  if (!legacyRun) {
+    return null;
+  }
+
+  legacyRun._wasMigrated = true;
+  return legacyRun;
+}
+
+function normalizeActionSummaryMeta(rawMeta) {
+  const meta = {
+    config: null,
+    analysisTemplate: null,
+    runs: [],
+    activeRunId: null,
+    lastRunAt: null,
+    manifestPath: null,
+    manifestUrl: null,
+    filters: null,
+  };
+
+  let changed = false;
+
+  if (rawMeta && typeof rawMeta === "object") {
+    if (rawMeta.config != null) {
+      meta.config = rawMeta.config;
+    }
+
+    if (rawMeta.analysisTemplate != null) {
+      meta.analysisTemplate = rawMeta.analysisTemplate;
+    } else if (rawMeta.analysis_template != null) {
+      meta.analysisTemplate = rawMeta.analysis_template;
+      changed = true;
+    }
+
+    if (rawMeta.filters != null) {
+      meta.filters = rawMeta.filters;
+    }
+
+    if (rawMeta.manifestPath != null) {
+      meta.manifestPath = rawMeta.manifestPath;
+    } else if (rawMeta.manifest_path != null) {
+      meta.manifestPath = rawMeta.manifest_path;
+      changed = true;
+    }
+
+    if (rawMeta.manifestUrl != null) {
+      meta.manifestUrl = rawMeta.manifestUrl;
+    } else if (rawMeta.manifest_url != null) {
+      meta.manifestUrl = rawMeta.manifest_url;
+      changed = true;
+    }
+
+    if (rawMeta.lastRunAt != null) {
+      meta.lastRunAt = rawMeta.lastRunAt;
+    } else if (rawMeta.last_run_at != null) {
+      meta.lastRunAt = rawMeta.last_run_at;
+      changed = true;
+    }
+
+    if (typeof rawMeta.activeRunId === "string" && rawMeta.activeRunId.trim().length) {
+      meta.activeRunId = rawMeta.activeRunId.trim();
+    }
+  }
+
+  const normalizedRuns = [];
+  if (Array.isArray(rawMeta?.runs)) {
+    rawMeta.runs.forEach((run) => {
+      const normalized = normalizeActionSummaryRun(run);
+      if (!normalized) {
+        return;
+      }
+      normalizedRuns.push(normalized);
+      if (normalized._wasMigrated) {
+        changed = true;
+      }
+    });
+  }
+
+  if (!normalizedRuns.length) {
+    const legacyRun = buildLegacyRunFromMeta(rawMeta);
+    if (legacyRun) {
+      normalizedRuns.push(legacyRun);
+      changed = true;
+    }
+  }
+
+  if (!meta.analysisTemplate) {
+    const templateRun = normalizedRuns.find((run) => run.analysisTemplate);
+    if (templateRun?.analysisTemplate) {
+      meta.analysisTemplate = templateRun.analysisTemplate;
+    }
+  }
+
+  if (!meta.config) {
+    const configRun = normalizedRuns.find(
+      (run) => run.config && typeof run.config === "object",
+    );
+    if (configRun) {
+      meta.config = configRun.config;
+    }
+  }
+
+  if (!meta.filters) {
+    const filterRun = normalizedRuns.find((run) => run.filters);
+    if (filterRun?.filters) {
+      meta.filters = filterRun.filters;
+    }
+  }
+
+  if (normalizedRuns.length) {
+    const seen = new Set();
+    const deduped = [];
+    normalizedRuns.forEach((run) => {
+      if (seen.has(run.id)) {
+        changed = true;
+        return;
+      }
+      seen.add(run.id);
+      deduped.push(run);
+    });
+
+    meta.runs = deduped.map((run) => {
+      const { _wasMigrated, ...rest } = run;
+      return rest;
+    });
+
+    if (!meta.activeRunId || !deduped.some((run) => run.id === meta.activeRunId)) {
+      const fallback = deduped[deduped.length - 1];
+      meta.activeRunId = fallback?.id ?? null;
+      changed = true;
+    }
+
+    if (!meta.lastRunAt) {
+      const active =
+        deduped.find((run) => run.id === meta.activeRunId) ??
+        deduped[deduped.length - 1];
+      meta.lastRunAt = active?.completedAt ?? active?.createdAt ?? null;
+    }
+
+    if (!meta.manifestPath) {
+      const active =
+        deduped.find((run) => run.id === meta.activeRunId) ??
+        deduped[deduped.length - 1];
+      meta.manifestPath = active?.manifestPath ?? null;
+    }
+
+    if (!meta.manifestUrl) {
+      const active =
+        deduped.find((run) => run.id === meta.activeRunId) ??
+        deduped[deduped.length - 1];
+      meta.manifestUrl = active?.manifestUrl ?? meta.manifestPath ?? null;
+    }
+  } else {
+    meta.runs = [];
+    meta.activeRunId = null;
+    meta.lastRunAt = null;
+  }
+
+  return { meta, changed };
+}
+
+function ensureActionSummaryMeta(cobraMeta) {
+  if (!cobraMeta || typeof cobraMeta !== "object") {
+    return { meta: normalizeActionSummaryMeta(null).meta, changed: false };
+  }
+
+  const { meta, changed } = normalizeActionSummaryMeta(cobraMeta.actionSummary);
+  cobraMeta.actionSummary = meta;
+  return { meta, changed };
+}
+
+function getActionSummaryRun(meta, runId) {
+  if (!meta || !Array.isArray(meta.runs) || !runId) {
+    return null;
+  }
+
+  return meta.runs.find((run) => run.id === runId) ?? null;
+}
+
+function getActiveActionSummaryRun(meta) {
+  if (!meta || !Array.isArray(meta.runs) || !meta.runs.length) {
+    return null;
+  }
+
+  if (meta.activeRunId) {
+    return meta.runs.find((run) => run.id === meta.activeRunId) ?? meta.runs.at(-1);
+  }
+
+  return meta.runs.at(-1);
+}
+
+function removeActionSummaryRun(meta, runId) {
+  if (!meta || !Array.isArray(meta.runs)) {
+    return { removed: null, runs: [] };
+  }
+
+  const runs = meta.runs.slice();
+  const index = runs.findIndex((run) => run.id === runId);
+  if (index === -1) {
+    return { removed: null, runs };
+  }
+
+  const [removed] = runs.splice(index, 1);
+  return { removed, runs };
 }
 
 function coercePositiveInteger(value) {
@@ -509,7 +870,9 @@ async function loadActionSummaryContext(params) {
     content.processingMetadata,
   );
 
-  return { session, content, processingMetadata, cobraMeta };
+  const { meta: actionSummaryMeta } = ensureActionSummaryMeta(cobraMeta);
+
+  return { session, content, processingMetadata, cobraMeta, actionSummaryMeta };
 }
 
 export async function POST(request, { params }) {
@@ -518,7 +881,13 @@ export async function POST(request, { params }) {
     return context.response;
   }
 
-  const { session, content, processingMetadata, cobraMeta } = context;
+  const {
+    session,
+    content,
+    processingMetadata,
+    cobraMeta,
+    actionSummaryMeta,
+  } = context;
 
   const videoSource = resolveVideoSource(cobraMeta, content);
   if (!videoSource) {
@@ -532,12 +901,12 @@ export async function POST(request, { params }) {
   }
 
   const normalizedExistingTemplate = normalizeAnalysisTemplate(
-    cobraMeta.actionSummary?.analysisTemplate,
+    actionSummaryMeta?.analysisTemplate,
   );
   const existingTemplate =
     normalizedExistingTemplate ??
-    (Array.isArray(cobraMeta.actionSummary?.analysisTemplate)
-      ? cobraMeta.actionSummary.analysisTemplate
+    (Array.isArray(actionSummaryMeta?.analysisTemplate)
+      ? actionSummaryMeta.analysisTemplate
       : null);
 
   let requestBody = null;
@@ -567,7 +936,10 @@ export async function POST(request, { params }) {
   }
 
   let requestedConfig = null;
-  if (requestBody && Object.prototype.hasOwnProperty.call(requestBody, "config")) {
+  if (
+    requestBody &&
+    Object.prototype.hasOwnProperty.call(requestBody, "config")
+  ) {
     requestedConfig = sanitizeActionSummaryConfigOverride(requestBody.config);
   }
 
@@ -581,11 +953,20 @@ export async function POST(request, { params }) {
     });
 
   const now = new Date();
-  cobraMeta.lastActionSummaryRequestedAt = now.toISOString();
-  cobraMeta.actionSummary = {
-    ...(cobraMeta.actionSummary ?? {}),
+  const nowIso = now.toISOString();
+
+  const updatedMeta = {
+    ...actionSummaryMeta,
     config: normalizedConfig,
+    runs: Array.isArray(actionSummaryMeta?.runs)
+      ? [...actionSummaryMeta.runs]
+      : [],
+    status: "PROCESSING",
+    error: null,
   };
+
+  cobraMeta.lastActionSummaryRequestedAt = nowIso;
+  cobraMeta.actionSummary = updatedMeta;
   processingMetadata.cobra = cobraMeta;
 
   await prisma.content.update({
@@ -607,13 +988,11 @@ export async function POST(request, { params }) {
     });
     data = await response.json().catch(() => null);
   } catch (error) {
-    cobraMeta.actionSummary = {
-      lastRunAt: new Date().toISOString(),
-      status: "FAILED",
-      error: error.message,
-      analysisTemplate,
-      config: normalizedConfig,
-    };
+    updatedMeta.lastRunAt = nowIso;
+    updatedMeta.status = "FAILED";
+    updatedMeta.error =
+      error.message ?? "Failed to contact the analysis service.";
+    cobraMeta.actionSummary = updatedMeta;
     processingMetadata.cobra = cobraMeta;
 
     await prisma.content.update({
@@ -624,7 +1003,10 @@ export async function POST(request, { params }) {
       },
     });
 
-    return NextResponse.json({ error: "Failed to contact the analysis service." }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to contact the analysis service." },
+      { status: 502 },
+    );
   }
 
   if (!response?.ok) {
@@ -634,13 +1016,10 @@ export async function POST(request, { params }) {
       data?.message ||
       "Action summary request failed";
 
-    cobraMeta.actionSummary = {
-      lastRunAt: new Date().toISOString(),
-      status: "FAILED",
-      error: errorMessage,
-      analysisTemplate,
-      config: normalizedConfig,
-    };
+    updatedMeta.lastRunAt = nowIso;
+    updatedMeta.status = "FAILED";
+    updatedMeta.error = errorMessage;
+    cobraMeta.actionSummary = updatedMeta;
     processingMetadata.cobra = cobraMeta;
 
     await prisma.content.update({
@@ -651,7 +1030,10 @@ export async function POST(request, { params }) {
       },
     });
 
-    return NextResponse.json({ error: errorMessage }, { status: response.status || 500 });
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: response.status || 500 },
+    );
   }
 
   const manifestUrlFromResponse =
@@ -673,22 +1055,57 @@ export async function POST(request, { params }) {
   }
 
   const responseTemplate =
-    normalizeAnalysisTemplate(data?.analysis_template) ?? analysisTemplate ?? null;
+    normalizeAnalysisTemplate(data?.analysis_template) ??
+    analysisTemplate ??
+    null;
   analysisTemplate = responseTemplate;
-  cobraMeta.actionSummary = {
-    lastRunAt: new Date().toISOString(),
+
+  const filters = {
+    organizationId: content.organizationId,
+    collectionId: content.collectionId,
+    contentId: content.id,
+  };
+
+  const resolvedManifestPath = cobraMeta.manifestPath ?? null;
+  const resolvedManifestUrl =
+    cobraMeta.manifestUrl ?? resolvedManifestPath ?? null;
+
+  const completedAt = new Date().toISOString();
+  const runId = createActionSummaryRunId();
+
+  const runRecord = {
+    id: runId,
+    name:
+      typeof requestBody?.name === "string" && requestBody.name.trim().length
+        ? requestBody.name.trim()
+        : null,
     analysis: data?.analysis ?? null,
     analysisOutputPath: data?.analysis_output_path ?? null,
     storageArtifacts: data?.storage_artifacts ?? null,
     searchUploads: data?.search_uploads ?? [],
-    analysisTemplate: analysisTemplate,
+    analysisTemplate,
     config: normalizedConfig,
-    filters: {
-      organizationId: content.organizationId,
-      collectionId: content.collectionId,
-      contentId: content.id,
-    },
+    filters,
+    manifestPath: resolvedManifestPath,
+    manifestUrl: resolvedManifestUrl,
+    createdAt: nowIso,
+    requestedAt: nowIso,
+    completedAt,
   };
+
+  updatedMeta.runs = updatedMeta.runs.filter((run) => run?.id !== runId);
+  updatedMeta.runs.push(runRecord);
+  updatedMeta.lastRunAt = completedAt;
+  updatedMeta.analysisTemplate = analysisTemplate;
+  updatedMeta.config = normalizedConfig;
+  updatedMeta.filters = filters;
+  updatedMeta.manifestPath = resolvedManifestPath;
+  updatedMeta.manifestUrl = resolvedManifestUrl;
+  updatedMeta.activeRunId = runId;
+  updatedMeta.status = "COMPLETED";
+  updatedMeta.error = null;
+
+  cobraMeta.actionSummary = updatedMeta;
   processingMetadata.cobra = cobraMeta;
 
   await prisma.content.update({
@@ -701,18 +1118,8 @@ export async function POST(request, { params }) {
 
   return NextResponse.json(
     {
-      analysis: data?.analysis ?? "ActionSummary",
-      manifestPath: manifestUrlFromResponse ?? cobraMeta.manifestUrl ?? null,
-      searchUploads: data?.search_uploads ?? [],
-      analysisOutputPath: data?.analysis_output_path ?? null,
-      storageArtifacts: data?.storage_artifacts ?? null,
-      analysisTemplate,
-      config: normalizedConfig,
-      filters: {
-        organizationId: content.organizationId,
-        collectionId: content.collectionId,
-        contentId: content.id,
-      },
+      actionSummary: updatedMeta,
+      run: runRecord,
     },
     { status: 200 },
   );
@@ -724,7 +1131,7 @@ export async function PATCH(request, { params }) {
     return context.response;
   }
 
-  const { content, processingMetadata, cobraMeta } = context;
+  const { content, processingMetadata, cobraMeta, actionSummaryMeta } = context;
 
   let requestBody = null;
   if (request.headers.get("content-type")?.includes("application/json")) {
@@ -756,10 +1163,15 @@ export async function PATCH(request, { params }) {
     configOverride: requestedConfig,
   });
 
-  cobraMeta.actionSummary = {
-    ...(cobraMeta.actionSummary ?? {}),
+  const updatedMeta = {
+    ...actionSummaryMeta,
     config: normalizedConfig,
+    runs: Array.isArray(actionSummaryMeta?.runs)
+      ? [...actionSummaryMeta.runs]
+      : [],
   };
+
+  cobraMeta.actionSummary = updatedMeta;
   processingMetadata.cobra = cobraMeta;
 
   await prisma.content.update({
@@ -769,5 +1181,127 @@ export async function PATCH(request, { params }) {
     },
   });
 
-  return NextResponse.json({ config: normalizedConfig }, { status: 200 });
+  return NextResponse.json({ actionSummary: updatedMeta }, { status: 200 });
+}
+
+export async function DELETE(request, { params }) {
+  const context = await loadActionSummaryContext(params);
+  if (context?.response) {
+    return context.response;
+  }
+
+  const { content, processingMetadata, cobraMeta, actionSummaryMeta } = context;
+
+  const url = new URL(request.url);
+  let runId = url.searchParams.get("runId") ?? url.searchParams.get("id");
+  if (typeof runId === "string" && runId.trim().length) {
+    runId = runId.trim();
+  } else {
+    runId = null;
+  }
+
+  let requestBody = null;
+  if (!runId && request.headers.get("content-type")?.includes("application/json")) {
+    try {
+      requestBody = await request.json();
+    } catch (error) {
+      requestBody = null;
+    }
+  }
+
+  if (!runId && requestBody && typeof requestBody === "object") {
+    const candidateId =
+      requestBody.runId ?? requestBody.id ?? requestBody.actionSummaryId;
+    if (typeof candidateId === "string" && candidateId.trim().length) {
+      runId = candidateId.trim();
+    }
+  }
+
+  if (!runId && actionSummaryMeta?.activeRunId) {
+    runId = actionSummaryMeta.activeRunId;
+  }
+
+  if (!runId) {
+    return NextResponse.json(
+      { error: "Provide the action summary id to delete." },
+      { status: 400 },
+    );
+  }
+
+  const { removed: removedRun, runs } = removeActionSummaryRun(
+    actionSummaryMeta,
+    runId,
+  );
+
+  if (!removedRun) {
+    return NextResponse.json(
+      { error: "Action summary run not found." },
+      { status: 404 },
+    );
+  }
+
+  const blobUrls = Array.from(collectBlobUrls(removedRun));
+  const searchDocumentIds = collectSearchDocumentIds({
+    actionSummary: { runs: [removedRun] },
+  });
+
+  await deleteBlobUrls(blobUrls);
+  await deleteSearchDocuments(searchDocumentIds, { contentId: content.id });
+
+  const updatedMeta = {
+    ...actionSummaryMeta,
+    runs,
+  };
+
+  if (runs.length) {
+    if (!runs.some((run) => run.id === updatedMeta.activeRunId)) {
+      updatedMeta.activeRunId = runs[runs.length - 1].id;
+    }
+
+    const activeRun =
+      runs.find((run) => run.id === updatedMeta.activeRunId) ?? runs.at(-1);
+
+    updatedMeta.lastRunAt = activeRun?.completedAt ?? activeRun?.createdAt ?? null;
+    updatedMeta.manifestPath = activeRun?.manifestPath ?? updatedMeta.manifestPath ?? null;
+    updatedMeta.manifestUrl = activeRun?.manifestUrl ?? updatedMeta.manifestUrl ?? null;
+    if (activeRun?.analysisTemplate && !updatedMeta.analysisTemplate) {
+      updatedMeta.analysisTemplate = activeRun.analysisTemplate;
+    }
+    if (activeRun?.filters) {
+      updatedMeta.filters = activeRun.filters;
+    }
+    updatedMeta.status = "COMPLETED";
+    updatedMeta.error = null;
+  } else {
+    updatedMeta.activeRunId = null;
+    updatedMeta.lastRunAt = null;
+    updatedMeta.manifestPath = null;
+    updatedMeta.manifestUrl = null;
+    updatedMeta.filters = null;
+    updatedMeta.status = "QUEUED";
+    updatedMeta.error = null;
+  }
+
+  cobraMeta.manifestUrl = updatedMeta.manifestUrl ?? cobraMeta.manifestUrl ?? null;
+  cobraMeta.manifestPath = updatedMeta.manifestPath ?? cobraMeta.manifestPath ?? null;
+  cobraMeta.actionSummary = updatedMeta;
+  processingMetadata.cobra = cobraMeta;
+
+  const actionSummaryStatus = runs.length ? "COMPLETED" : "QUEUED";
+
+  await prisma.content.update({
+    where: { id: content.id },
+    data: {
+      actionSummaryStatus,
+      processingMetadata,
+    },
+  });
+
+  return NextResponse.json(
+    {
+      actionSummary: updatedMeta,
+      deletedRunId: removedRun.id,
+    },
+    { status: 200 },
+  );
 }

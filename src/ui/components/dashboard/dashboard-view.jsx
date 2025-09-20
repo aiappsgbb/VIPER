@@ -756,6 +756,209 @@ function normalizeActionSummaryEntries(analysis) {
   return entries.map((entry, index) => normalizeActionSummaryEntry(entry, index));
 }
 
+function generateActionSummaryRunId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeActionSummaryRunState(run) {
+  if (!run || typeof run !== "object") {
+    return null;
+  }
+
+  const id =
+    typeof run.id === "string" && run.id.trim().length
+      ? run.id.trim()
+      : generateActionSummaryRunId();
+
+  const name =
+    typeof run.name === "string" && run.name.trim().length
+      ? run.name.trim()
+      : typeof run.label === "string" && run.label.trim().length
+        ? run.label.trim()
+        : null;
+
+  const analysisTemplate = run.analysisTemplate ?? run.analysis_template ?? null;
+  const analysisOutputPath =
+    run.analysisOutputPath ?? run.analysis_output_path ?? null;
+  const storageArtifacts =
+    run.storageArtifacts ?? run.storage_artifacts ?? null;
+  const searchUploads = Array.isArray(run.searchUploads)
+    ? run.searchUploads
+    : Array.isArray(run.search_uploads)
+      ? run.search_uploads
+      : [];
+  const filters = run.filters ?? null;
+  const manifestPath = run.manifestPath ?? run.manifest_path ?? null;
+  const manifestUrl = run.manifestUrl ?? run.manifest_url ?? manifestPath ?? null;
+
+  const createdAt =
+    run.createdAt ?? run.requestedAt ?? run.lastRunAt ?? run.completedAt ?? null;
+  const completedAt = run.completedAt ?? run.lastRunAt ?? createdAt ?? null;
+
+  const normalized = {
+    id,
+    name,
+    analysis: run.analysis ?? null,
+    analysisTemplate,
+    analysisOutputPath,
+    storageArtifacts,
+    searchUploads,
+    filters,
+    manifestPath,
+    manifestUrl,
+    createdAt,
+    requestedAt: run.requestedAt ?? run.createdAt ?? null,
+    completedAt,
+    config: run.config ?? null,
+  };
+
+  Object.entries(run).forEach(([key, value]) => {
+    if (
+      key in normalized ||
+      [
+        "analysis_output_path",
+        "storage_artifacts",
+        "search_uploads",
+        "manifest_path",
+        "manifest_url",
+        "label",
+      ].includes(key)
+    ) {
+      return;
+    }
+    normalized[key] = value;
+  });
+
+  return normalized;
+}
+
+function hasLegacyActionSummaryData(meta) {
+  if (!meta || typeof meta !== "object") {
+    return false;
+  }
+
+  if (meta.analysis != null || meta.analysis_output_path != null || meta.analysisOutputPath != null) {
+    return true;
+  }
+  if (meta.storageArtifacts != null || meta.storage_artifacts != null) {
+    return true;
+  }
+  if (
+    (Array.isArray(meta.searchUploads) && meta.searchUploads.length) ||
+    (Array.isArray(meta.search_uploads) && meta.search_uploads.length)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeActionSummaryMetaState(meta) {
+  const normalized = {
+    config: meta?.config ?? null,
+    analysisTemplate: meta?.analysisTemplate ?? meta?.analysis_template ?? null,
+    runs: [],
+    activeRunId:
+      typeof meta?.activeRunId === "string" && meta.activeRunId.trim().length
+        ? meta.activeRunId.trim()
+        : null,
+    lastRunAt: meta?.lastRunAt ?? meta?.last_run_at ?? null,
+    manifestPath: meta?.manifestPath ?? meta?.manifest_path ?? null,
+    manifestUrl: meta?.manifestUrl ?? meta?.manifest_url ?? null,
+    filters: meta?.filters ?? null,
+    status: meta?.status ?? null,
+    error: meta?.error ?? null,
+  };
+
+  if (Array.isArray(meta?.runs)) {
+    meta.runs.forEach((run) => {
+      const normalizedRun = normalizeActionSummaryRunState(run);
+      if (!normalizedRun) {
+        return;
+      }
+      if (!normalized.runs.some((existing) => existing.id === normalizedRun.id)) {
+        normalized.runs.push(normalizedRun);
+      }
+    });
+  }
+
+  if (!normalized.runs.length && hasLegacyActionSummaryData(meta)) {
+    const legacyRun = normalizeActionSummaryRunState(meta);
+    if (legacyRun) {
+      normalized.runs.push(legacyRun);
+    }
+  }
+
+  if (normalized.runs.length) {
+    if (!normalized.activeRunId || !normalized.runs.some((run) => run.id === normalized.activeRunId)) {
+      normalized.activeRunId = normalized.runs[normalized.runs.length - 1].id;
+    }
+
+    const activeRun =
+      normalized.runs.find((run) => run.id === normalized.activeRunId) ??
+      normalized.runs[normalized.runs.length - 1];
+
+    normalized.lastRunAt =
+      normalized.lastRunAt ?? activeRun?.completedAt ?? activeRun?.createdAt ?? null;
+    normalized.manifestPath =
+      normalized.manifestPath ?? activeRun?.manifestPath ?? null;
+    normalized.manifestUrl =
+      normalized.manifestUrl ?? activeRun?.manifestUrl ?? normalized.manifestPath ?? null;
+    if (!normalized.analysisTemplate && activeRun?.analysisTemplate) {
+      normalized.analysisTemplate = activeRun.analysisTemplate;
+    }
+    if (!normalized.filters && activeRun?.filters) {
+      normalized.filters = activeRun.filters;
+    }
+  } else {
+    normalized.activeRunId = null;
+    normalized.lastRunAt = null;
+  }
+
+  return normalized;
+}
+
+function selectActionSummaryRun(meta, runId) {
+  if (!meta || !Array.isArray(meta.runs) || !meta.runs.length) {
+    return null;
+  }
+
+  if (runId) {
+    const match = meta.runs.find((run) => run.id === runId);
+    if (match) {
+      return match;
+    }
+  }
+
+  if (meta.activeRunId) {
+    const active = meta.runs.find((run) => run.id === meta.activeRunId);
+    if (active) {
+      return active;
+    }
+  }
+
+  return meta.runs[meta.runs.length - 1];
+}
+
+function formatActionSummaryRunLabel(run, index) {
+  if (!run) {
+    return `Run ${index + 1}`;
+  }
+
+  if (run.name) {
+    return run.name;
+  }
+
+  const timestamp = run.completedAt ?? run.createdAt ?? null;
+  if (timestamp) {
+    return `Run ${index + 1} (${formatDateTime(timestamp)})`;
+  }
+
+  return `Run ${index + 1}`;
+}
+
 function normalizeChapterAnalysisEntry(entry, index) {
   if (!entry || typeof entry !== "object") {
     const textValue = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
@@ -924,26 +1127,28 @@ export default function DashboardView({
   const [actionSummaryError, setActionSummaryError] = useState("");
   const [chapterAnalysisMessage, setChapterAnalysisMessage] = useState("");
   const [chapterAnalysisError, setChapterAnalysisError] = useState("");
-  const [actionSummaryData, setActionSummaryData] = useState(
-    selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
+  const [actionSummaryMeta, setActionSummaryMeta] = useState(() =>
+    normalizeActionSummaryMetaState(
+      selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
+    ),
+  );
+  const [selectedActionSummaryId, setSelectedActionSummaryId] = useState(
+    () => actionSummaryMeta?.activeRunId ?? null,
   );
   const [actionSummaryConfig, setActionSummaryConfig] = useState(() =>
     buildInitialActionSummaryConfigState(
-      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null,
+      actionSummaryMeta?.config ?? null,
       selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null,
     ),
   );
   const [draftActionSummaryConfig, setDraftActionSummaryConfig] = useState(() =>
     buildInitialActionSummaryConfigState(
-      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null,
+      actionSummaryMeta?.config ?? null,
       selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null,
     ),
   );
   const [actionSummaryFields, setActionSummaryFields] = useState(() =>
-    mapTemplateToFields(
-      selectedContent?.processingMetadata?.cobra?.actionSummary?.analysisTemplate ??
-        null,
-    ),
+    mapTemplateToFields(actionSummaryMeta?.analysisTemplate ?? null),
   );
   const [chapterAnalysisData, setChapterAnalysisData] = useState(
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
@@ -997,9 +1202,21 @@ export default function DashboardView({
     return map;
   }, [collections]);
 
+  const actionSummaryRuns = useMemo(
+    () => (Array.isArray(actionSummaryMeta?.runs) ? actionSummaryMeta.runs : []),
+    [actionSummaryMeta?.runs],
+  );
+  const hasActionSummaryRuns = actionSummaryRuns.length > 0;
+  const currentActionSummaryRun = useMemo(
+    () => selectActionSummaryRun(actionSummaryMeta, selectedActionSummaryId),
+    [actionSummaryMeta, selectedActionSummaryId],
+  );
+  const currentActionSummaryIndex = currentActionSummaryRun
+    ? actionSummaryRuns.findIndex((run) => run.id === currentActionSummaryRun.id)
+    : -1;
   const actionSummaryAnalysis = useMemo(
-    () => safeParseJson(actionSummaryData?.analysis),
-    [actionSummaryData],
+    () => safeParseJson(currentActionSummaryRun?.analysis),
+    [currentActionSummaryRun],
   );
   const chapterAnalysisAnalysis = useMemo(
     () => safeParseJson(chapterAnalysisData?.analysis),
@@ -1011,10 +1228,41 @@ export default function DashboardView({
   );
 
   useEffect(() => {
-    setActionSummaryFields(
-      mapTemplateToFields(actionSummaryData?.analysisTemplate ?? null),
-    );
-  }, [actionSummaryData?.analysisTemplate]);
+    const templateSource =
+      actionSummaryMeta?.analysisTemplate ??
+      currentActionSummaryRun?.analysisTemplate ??
+      null;
+    setActionSummaryFields(mapTemplateToFields(templateSource));
+  }, [actionSummaryMeta?.analysisTemplate, currentActionSummaryRun?.analysisTemplate]);
+
+  useEffect(() => {
+    if (!actionSummaryRuns.length) {
+      if (selectedActionSummaryId !== null) {
+        setSelectedActionSummaryId(null);
+      }
+      return;
+    }
+
+    if (
+      selectedActionSummaryId &&
+      actionSummaryRuns.some((run) => run.id === selectedActionSummaryId)
+    ) {
+      return;
+    }
+
+    let fallbackId = actionSummaryMeta?.activeRunId ?? null;
+    if (!fallbackId || !actionSummaryRuns.some((run) => run.id === fallbackId)) {
+      fallbackId = actionSummaryRuns[actionSummaryRuns.length - 1].id;
+    }
+
+    if (fallbackId !== selectedActionSummaryId) {
+      setSelectedActionSummaryId(fallbackId);
+    }
+  }, [
+    actionSummaryRuns,
+    actionSummaryMeta?.activeRunId,
+    selectedActionSummaryId,
+  ]);
 
   const actionSummaryEntries = useMemo(
     () => normalizeActionSummaryEntries(actionSummaryAnalysis),
@@ -1156,11 +1404,12 @@ export default function DashboardView({
     }
 
     const sources = [
-      actionSummaryData?.storageArtifacts,
-      chapterAnalysisData?.storageArtifacts,
+      currentActionSummaryRun?.storageArtifacts,
+      ...actionSummaryRuns.map((run) => run?.storageArtifacts),
       selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
+      chapterAnalysisData?.storageArtifacts,
       selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
-    ];
+    ].filter(Boolean);
 
     for (const artifacts of sources) {
       const candidate = extractTranscriptUrl(artifacts);
@@ -1171,7 +1420,8 @@ export default function DashboardView({
 
     return null;
   }, [
-    actionSummaryData?.storageArtifacts,
+    currentActionSummaryRun?.storageArtifacts,
+    actionSummaryRuns,
     chapterAnalysisData?.storageArtifacts,
     selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
     selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
@@ -1227,8 +1477,20 @@ export default function DashboardView({
     setChapterAnalysisError("");
     setIsRunningActionSummary(false);
     setIsRunningChapterAnalysis(false);
-    setActionSummaryData(selectedContent?.processingMetadata?.cobra?.actionSummary ?? null);
-    setChapterAnalysisData(selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null);
+
+    const nextMeta = normalizeActionSummaryMetaState(
+      selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
+    );
+    setActionSummaryMeta(nextMeta);
+    setSelectedActionSummaryId(
+      nextMeta.activeRunId ??
+        (nextMeta.runs.length
+          ? nextMeta.runs[nextMeta.runs.length - 1].id
+          : null),
+    );
+    setChapterAnalysisData(
+      selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null,
+    );
     setActiveContentFilterId(selectedContent?.id ?? "");
     setSearchQuery("");
     setSearchError("");
@@ -1239,8 +1501,7 @@ export default function DashboardView({
 
     const uploadMetadata =
       selectedContent?.processingMetadata?.cobra?.uploadMetadata ?? null;
-    const savedConfig =
-      selectedContent?.processingMetadata?.cobra?.actionSummary?.config ?? null;
+    const savedConfig = nextMeta?.config ?? null;
     const nextConfigState = buildInitialActionSummaryConfigState(
       savedConfig,
       uploadMetadata,
@@ -1335,7 +1596,7 @@ export default function DashboardView({
     };
   }, [
     transcriptUrl,
-    actionSummaryData?.lastRunAt,
+    actionSummaryMeta?.lastRunAt,
     chapterAnalysisData?.lastRunAt,
     selectedContent?.id,
   ]);
@@ -1437,12 +1698,18 @@ export default function DashboardView({
   const actionSummaryFiltersLabel = useMemo(
     () =>
       buildFilterLabel(
-        actionSummaryData?.filters ?? null,
+        currentActionSummaryRun?.filters ?? actionSummaryMeta?.filters ?? null,
         organizationLookup,
         collectionLookup,
         contentLookup,
       ),
-    [actionSummaryData?.filters, organizationLookup, collectionLookup, contentLookup],
+    [
+      currentActionSummaryRun?.filters,
+      actionSummaryMeta?.filters,
+      organizationLookup,
+      collectionLookup,
+      contentLookup,
+    ],
   );
 
   const chapterAnalysisFiltersLabel = useMemo(
@@ -1628,7 +1895,50 @@ export default function DashboardView({
   const handleResetActionSummarySettings = () => {
     setDraftActionSummaryConfig(buildDefaultActionSummaryConfigState());
   };
+  const handleDeleteActionSummaryRun = async () => {
+    if (!selectedContent?.id || !currentActionSummaryRun?.id) {
+      return;
+    }
 
+    setActionSummaryError("");
+    setActionSummaryMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/content/${selectedContent.id}/action-summary?runId=${encodeURIComponent(currentActionSummaryRun.id)}`,
+        { method: "DELETE" },
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to delete action summary.");
+      }
+
+      const nextMeta =
+        data?.actionSummary != null
+          ? normalizeActionSummaryMetaState(data.actionSummary)
+          : normalizeActionSummaryMetaState({
+              ...actionSummaryMeta,
+              runs: actionSummaryRuns.filter((run) => run.id !== currentActionSummaryRun.id),
+            });
+
+      setActionSummaryMeta(nextMeta);
+      setSelectedActionSummaryId(
+        nextMeta.activeRunId ??
+          (nextMeta.runs.length
+            ? nextMeta.runs[nextMeta.runs.length - 1].id
+            : null),
+      );
+      setActionSummaryMessage("Action summary deleted.");
+      router.refresh();
+    } catch (error) {
+      setActionSummaryError(
+        error instanceof Error
+          ? error.message || "Failed to delete action summary."
+          : "Failed to delete action summary.",
+      );
+    }
+  };
 
   const handleSaveActionSummarySettings = async () => {
     const sanitized = sanitizeActionSummaryConfigState(draftActionSummaryConfig);
@@ -1661,19 +1971,26 @@ export default function DashboardView({
         throw new Error(data?.error ?? "Failed to save action summary settings.");
       }
 
+      const nextMeta =
+        data?.actionSummary != null
+          ? normalizeActionSummaryMetaState(data.actionSummary)
+          : {
+              ...actionSummaryMeta,
+              config: data?.config ?? configPayload ?? actionSummaryMeta?.config ?? null,
+            };
       const responseConfig = buildInitialActionSummaryConfigState(
-        data?.config ?? configPayload ?? null,
+        nextMeta?.config ?? configPayload ?? null,
         null,
       );
       setActionSummaryConfig(responseConfig);
       setDraftActionSummaryConfig(responseConfig);
-      setActionSummaryData((previous) => {
-        const nextConfig = data?.config ?? configPayload ?? null;
-        if (!previous) {
-          return nextConfig ? { config: nextConfig } : null;
-        }
-        return { ...previous, config: nextConfig };
-      });
+      setActionSummaryMeta(nextMeta);
+      setSelectedActionSummaryId(
+        nextMeta.activeRunId ??
+          (nextMeta.runs.length
+            ? nextMeta.runs[nextMeta.runs.length - 1].id
+            : selectedActionSummaryId ?? null),
+      );
       setActionSummaryMessage("Action summary processing settings saved.");
       router.refresh();
       setIsActionSummarySettingsOpen(false);
@@ -1726,8 +2043,38 @@ export default function DashboardView({
         throw new Error(data?.error ?? "Action summary failed");
       }
 
+      const nextMeta =
+        data?.actionSummary != null
+          ? normalizeActionSummaryMetaState(data.actionSummary)
+          : normalizeActionSummaryMetaState({
+              ...actionSummaryMeta,
+              analysisTemplate:
+                data?.analysisTemplate ?? template ?? actionSummaryMeta?.analysisTemplate ?? null,
+              config: data?.config ?? configPayload ?? actionSummaryMeta?.config ?? null,
+              runs: [
+                ...(actionSummaryMeta?.runs ?? []),
+                {
+                  id: data?.run?.id ?? generateActionSummaryRunId(),
+                  analysis: data?.analysis ?? null,
+                  analysisTemplate: data?.analysisTemplate ?? template ?? null,
+                  analysisOutputPath: data?.analysisOutputPath ?? null,
+                  storageArtifacts: data?.storageArtifacts ?? null,
+                  searchUploads: data?.searchUploads ?? [],
+                  config: data?.config ?? configPayload ?? actionSummaryMeta?.config ?? null,
+                  filters:
+                    data?.filters ??
+                    actionSummaryMeta?.filters ?? {
+                      organizationId: selectedContent.organization?.id ?? null,
+                      collectionId: selectedContent.collection?.id ?? null,
+                      contentId: selectedContent.id,
+                    },
+                  completedAt: new Date().toISOString(),
+                },
+              ],
+            });
+
       const responseConfig = buildInitialActionSummaryConfigState(
-        data?.config ?? configPayload ?? null,
+        nextMeta?.config ?? configPayload ?? null,
         null,
       );
       setActionSummaryConfig(responseConfig);
@@ -1735,26 +2082,19 @@ export default function DashboardView({
         setDraftActionSummaryConfig(responseConfig);
       }
 
+      setActionSummaryMeta(nextMeta);
+      setSelectedActionSummaryId(
+        nextMeta.activeRunId ??
+          data?.run?.id ??
+          (nextMeta.runs.length
+            ? nextMeta.runs[nextMeta.runs.length - 1].id
+            : selectedActionSummaryId ?? null),
+      );
+
       setActionSummaryMessage("Action summary completed and search index updated.");
-      setActionSummaryData((previous) => ({
-        ...(previous ?? {}),
-        lastRunAt: new Date().toISOString(),
-        analysis: data?.analysis ?? previous?.analysis ?? null,
-        analysisOutputPath: data?.analysisOutputPath ?? previous?.analysisOutputPath ?? null,
-        storageArtifacts: data?.storageArtifacts ?? previous?.storageArtifacts ?? null,
-        searchUploads: data?.searchUploads ?? previous?.searchUploads ?? [],
-        analysisTemplate:
-          data?.analysisTemplate ?? template ?? previous?.analysisTemplate ?? null,
-        config: data?.config ?? configPayload ?? previous?.config ?? null,
-        filters:
-          data?.filters ??
-          previous?.filters ?? {
-            organizationId: selectedContent.organization?.id ?? null,
-            collectionId: selectedContent.collection?.id ?? null,
-            contentId: selectedContent.id,
-          },
-      }));
-      setActionSummaryFields(mapTemplateToFields(data?.analysisTemplate ?? template));
+      setActionSummaryFields(
+        mapTemplateToFields(nextMeta?.analysisTemplate ?? template),
+      );
       router.refresh();
     } catch (error) {
       setActionSummaryError(error.message ?? "Action summary failed");
@@ -1823,7 +2163,9 @@ export default function DashboardView({
     );
   }
 
-  const actionSummaryArtifactsLabel = summarizeArtifacts(actionSummaryData?.storageArtifacts);
+  const actionSummaryArtifactsLabel = summarizeArtifacts(
+    currentActionSummaryRun?.storageArtifacts,
+  );
   const chapterAnalysisArtifactsLabel = summarizeArtifacts(chapterAnalysisData?.storageArtifacts);
 
   return (
@@ -2632,33 +2974,88 @@ export default function DashboardView({
 
           <Card>
             <CardHeader>
-              <CardTitle>Action summary results</CardTitle>
-              <CardDescription>
-                Review the scene-level recaps generated for this video.
-              </CardDescription>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <CardTitle>Action summary results</CardTitle>
+                  <CardDescription>
+                    Review the scene-level recaps generated for this video.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  {hasActionSummaryRuns ? (
+                    <label className="text-xs font-medium text-slate-600">
+                      Select run
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:w-auto"
+                        onChange={(event) =>
+                          setSelectedActionSummaryId(
+                            event.target.value ? event.target.value : null,
+                          )
+                        }
+                        value={selectedActionSummaryId ?? ""}
+                      >
+                        {actionSummaryRuns.map((run, index) => (
+                          <option key={run.id} value={run.id}>
+                            {formatActionSummaryRunLabel(run, index)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {currentActionSummaryRun ? (
+                    <Button
+                      onClick={handleDeleteActionSummaryRun}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-700">Last run</p>
-                  <p>{formatDateTime(actionSummaryData?.lastRunAt)}</p>
+                  <p>
+                    {formatDateTime(
+                      currentActionSummaryRun?.completedAt ??
+                        currentActionSummaryRun?.createdAt ??
+                        actionSummaryMeta?.lastRunAt,
+                    )}
+                  </p>
                 </div>
+                {currentActionSummaryRun ? (
+                  <div>
+                    <p className="font-medium text-slate-700">Selected run</p>
+                    <p>
+                      {formatActionSummaryRunLabel(
+                        currentActionSummaryRun,
+                        currentActionSummaryIndex >= 0 ? currentActionSummaryIndex : 0,
+                      )}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   <p className="font-medium text-slate-700">Filters</p>
                   <p>{actionSummaryFiltersLabel}</p>
                 </div>
-                {actionSummaryData?.analysisOutputPath ? (
+                {currentActionSummaryRun?.analysisOutputPath ? (
                   <div className="sm:col-span-2">
                     <p className="font-medium text-slate-700">Analysis output</p>
-                    <p className="break-words text-slate-600">{actionSummaryData.analysisOutputPath}</p>
+                    <p className="break-words text-slate-600">
+                      {currentActionSummaryRun.analysisOutputPath}
+                    </p>
                   </div>
                 ) : null}
-                {actionSummaryData?.searchUploads?.length ? (
+                {currentActionSummaryRun?.searchUploads?.length ? (
                   <div>
                     <p className="font-medium text-slate-700">Search uploads</p>
                     <p>
-                      {actionSummaryData.searchUploads.length} document
-                      {actionSummaryData.searchUploads.length === 1 ? "" : "s"} indexed
+                      {currentActionSummaryRun.searchUploads.length} document
+                      {currentActionSummaryRun.searchUploads.length === 1 ? "" : "s"} indexed
                     </p>
                   </div>
                 ) : null}
