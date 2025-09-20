@@ -1,4 +1,4 @@
-# Dockerfile for running the CobraPy FastAPI backend
+# Dockerfile for running the Viper FastAPI backend
 FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -28,7 +28,17 @@ COPY src ./src
 COPY samples ./samples
 COPY sample.env ./sample.env
 
+WORKDIR /app/src/cobrapy
+RUN python -m pip install --no-cache-dir -e .
+
+WORKDIR /app
+
 ENV PYTHONPATH="/app/src"
+
+RUN groupadd --system viper && useradd --system --create-home --gid viper viper \
+    && chown -R viper:viper /app
+
+USER viper
 
 EXPOSE 8000
 
