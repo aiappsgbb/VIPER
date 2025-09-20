@@ -6,11 +6,13 @@ param backendContainerAppName string
 param frontendContainerAppName string
 param backendImage string
 param frontendImage string
+
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars array = []
 @description('Optional environment variables to inject into the Viper UI frontend container.')
 param frontendEnvVars array = []
 @description('Optional override for the Viper UI base URL that points to the Viper backend.')
+
 param frontendBaseUrl string = ''
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
@@ -58,7 +60,9 @@ var frontendEnv = arrayConcat(
   }],
   [
     {
+
       name: 'VIPER_BASE_URL'
+
       value: resolvedFrontendBaseUrl
     }
   ]
