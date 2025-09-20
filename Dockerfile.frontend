@@ -1,0 +1,29 @@
+# Dockerfile for running the Cobra UI frontend
+FROM node:18-alpine AS deps
+
+WORKDIR /app
+
+COPY src/ui/package*.json ./
+RUN npm ci
+
+FROM node:18-alpine AS builder
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY src/ui ./
+
+RUN npm run build
+
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=builder /app ./
+RUN npm prune --omit=dev
+
+EXPOSE 3000
+ENV PORT=3000
+
+CMD ["npm", "run", "start"]
