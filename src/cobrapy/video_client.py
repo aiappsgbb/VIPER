@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Type, Union
 from ast import literal_eval
+from fractions import Fraction
 from dotenv import load_dotenv
 from .cobra_utils import get_file_info
 
@@ -15,6 +16,90 @@ from .cobra_utils import (
     write_video_manifest,
 )
 from .azure_integration import AzureStorageManager, AzureSearchUploader
+
+
+def _coerce_fractional_number(value: Union[str, int, float, None]) -> Optional[float]:
+    """Best-effort conversion of FFprobe style numeric fields to floats."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+
+        try:
+            evaluated = literal_eval(text)
+        except (ValueError, SyntaxError):
+            evaluated = text
+
+        if isinstance(evaluated, (int, float)):
+            return float(evaluated)
+
+        if isinstance(evaluated, str) and evaluated != text:
+            return _coerce_fractional_number(evaluated)
+
+        if isinstance(evaluated, str):
+            try:
+                return float(evaluated)
+            except ValueError:
+                try:
+                    return float(Fraction(evaluated))
+                except (ValueError, ZeroDivisionError):
+                    return None
+
+    return None
+
+
+def _coerce_integer(value: Union[str, int, float, None]) -> Optional[int]:
+    """Parse integers that may be encoded as strings or fractional values."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return None
+
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, float):
+        if value.is_integer():
+            return int(value)
+        return None
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+
+        try:
+            evaluated = literal_eval(text)
+        except (ValueError, SyntaxError):
+            evaluated = text
+
+        if isinstance(evaluated, int):
+            return evaluated
+
+        if isinstance(evaluated, float) and evaluated.is_integer():
+            return int(evaluated)
+
+        if isinstance(evaluated, str):
+            try:
+                return int(evaluated)
+            except ValueError:
+                try:
+                    fraction_value = Fraction(evaluated)
+                except (ValueError, ZeroDivisionError):
+                    return None
+                if fraction_value.denominator == 1:
+                    return int(fraction_value.numerator)
+
+    return None
 
 
 class VideoClient:
@@ -98,7 +183,7 @@ class VideoClient:
         self,
         output_directory: str = None,
         segment_length: int = 10,
-        fps: float = 0.33,
+        fps: float = 1,
         generate_transcripts_flag: bool = True,
         max_workers: int = None,
         trim_to_nearest_second=False,
@@ -222,22 +307,49 @@ class VideoClient:
                 "audio_fps": 0,
             }
 
-            if file_metadata["video_info"] is not None:
+            video_info = file_metadata.get("video_info") or {}
+            if isinstance(video_info, dict) and video_info:
                 manifest_source["video_found"] = True
-                manifest_source["size"] = [file_metadata["video_info"]
-                                           ["width"], file_metadata["video_info"]["height"]]
-                manifest_source["fps"] = literal_eval(
-                    file_metadata["video_info"]["fps"])
-                manifest_source["duration"] = file_metadata["video_info"]["duration"]
-                manifest_source["nframes"] = file_metadata["video_info"]["nb_frames"]
-                if "rotation" in file_metadata["video_info"]["side_data_list"]:
-                    manifest_source["rotation"] = file_metadata["video_info"]["side_data_list"]["rotation"]
 
-            if file_metadata["audio_info"] is not None and file_metadata["audio_info"]["bits_per_sample"] > 0:
-                manifest.source_video.audio_found = True
-                manifest.source_video.audio_duration = file_metadata["audio_info"]["duration"]
-                manifest.source_video.audio_fps = literal_eval(
-                    file_metadata["audio_info"]["avg_frame_rate"])
+                width = video_info.get("width")
+                height = video_info.get("height")
+                if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+                    manifest_source["size"] = [int(width), int(height)]
+
+                fps_value = _coerce_fractional_number(video_info.get("fps"))
+                if fps_value is not None:
+                    manifest_source["fps"] = fps_value
+
+                duration_value = _coerce_fractional_number(video_info.get("duration"))
+                if duration_value is not None:
+                    manifest_source["duration"] = duration_value
+
+                frame_count = _coerce_integer(video_info.get("nb_frames"))
+                if frame_count is not None:
+                    manifest_source["nframes"] = frame_count
+
+                side_data = video_info.get("side_data_list")
+                if isinstance(side_data, dict) and "rotation" in side_data:
+                    rotation_value = _coerce_integer(side_data.get("rotation"))
+                    if rotation_value is not None:
+                        manifest_source["rotation"] = rotation_value
+
+            audio_info = file_metadata.get("audio_info") or {}
+            bits_per_sample = audio_info.get("bits_per_sample")
+            if (
+                isinstance(audio_info, dict)
+                and bits_per_sample is not None
+                and bits_per_sample > 0
+            ):
+                manifest_source["audio_found"] = True
+
+                audio_duration = _coerce_fractional_number(audio_info.get("duration"))
+                if audio_duration is not None:
+                    manifest_source["audio_duration"] = audio_duration
+
+                audio_fps = _coerce_fractional_number(audio_info.get("avg_frame_rate"))
+                if audio_fps is not None:
+                    manifest_source["audio_fps"] = audio_fps
 
             manifest.source_video = manifest.source_video.model_copy(
                 update=manifest_source

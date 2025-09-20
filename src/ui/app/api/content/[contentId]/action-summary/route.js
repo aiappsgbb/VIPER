@@ -130,7 +130,195 @@ function normalizeAnalysisTemplate(template) {
   return normalized.length ? normalized : null;
 }
 
-function buildRequestPayload({ content, session, cobraMeta, analysisTemplate }) {
+const DEFAULT_ACTION_SUMMARY_CONFIG = {
+  segment_length: 10,
+  fps: 1,
+  max_workers: null,
+  run_async: true,
+  overwrite_output: false,
+  reprocess_segments: false,
+  generate_transcripts: true,
+  trim_to_nearest_second: false,
+  allow_partial_segments: true,
+  upload_to_azure: true,
+  skip_preprocess: false,
+  output_directory: null,
+};
+
+function sanitizeActionSummaryConfigOverride(config) {
+  if (!config || typeof config !== "object") {
+    return null;
+  }
+
+  const sanitized = {};
+
+  const segmentLength = coercePositiveInteger(
+    config.segment_length ?? config.segmentLength,
+  );
+  if (segmentLength != null) {
+    sanitized.segment_length = segmentLength;
+  }
+
+  const fps = coercePositiveNumber(config.fps);
+  if (fps != null) {
+    sanitized.fps = fps;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(config, "max_workers") ||
+    Object.prototype.hasOwnProperty.call(config, "maxWorkers")
+  ) {
+    const maxWorkersValue = config.max_workers ?? config.maxWorkers;
+    const maxWorkers = coercePositiveInteger(maxWorkersValue);
+    sanitized.max_workers = maxWorkers != null ? maxWorkers : null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(config, "output_directory") ||
+    Object.prototype.hasOwnProperty.call(config, "outputDirectory")
+  ) {
+    const outputDirectory = config.output_directory ?? config.outputDirectory;
+    if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
+      sanitized.output_directory = outputDirectory.trim();
+    } else {
+      sanitized.output_directory = null;
+    }
+  }
+
+  const booleanFields = [
+    ["run_async", config.run_async ?? config.runAsync],
+    ["overwrite_output", config.overwrite_output ?? config.overwriteOutput],
+    ["reprocess_segments", config.reprocess_segments ?? config.reprocessSegments],
+    [
+      "generate_transcripts",
+      config.generate_transcripts ?? config.generateTranscripts,
+    ],
+    [
+      "trim_to_nearest_second",
+      config.trim_to_nearest_second ?? config.trimToNearestSecond,
+    ],
+    [
+      "allow_partial_segments",
+      config.allow_partial_segments ?? config.allowPartialSegments,
+    ],
+    ["upload_to_azure", config.upload_to_azure ?? config.uploadToAzure],
+    ["skip_preprocess", config.skip_preprocess ?? config.skipPreprocess],
+  ];
+
+  booleanFields.forEach(([key, value]) => {
+    const coerced = coerceBoolean(value);
+    if (coerced != null) {
+      sanitized[key] = coerced;
+    }
+  });
+
+  return Object.keys(sanitized).length ? sanitized : null;
+}
+
+function buildNormalizedActionSummaryConfig({ cobraMeta, configOverride }) {
+  const base = {
+    ...DEFAULT_ACTION_SUMMARY_CONFIG,
+    skip_preprocess: cobraMeta?.manifestPath
+      ? true
+      : DEFAULT_ACTION_SUMMARY_CONFIG.skip_preprocess,
+  };
+
+  const sources = [
+    cobraMeta?.uploadMetadata,
+    cobraMeta?.actionSummary?.config,
+    configOverride,
+  ];
+
+  sources.forEach((source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+
+    const segmentLength = coercePositiveInteger(
+      source.segment_length ?? source.segmentLength,
+    );
+    if (segmentLength != null) {
+      base.segment_length = segmentLength;
+    }
+
+    const fps = coercePositiveNumber(source.fps);
+    if (fps != null) {
+      base.fps = fps;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(source, "max_workers") ||
+      Object.prototype.hasOwnProperty.call(source, "maxWorkers")
+    ) {
+      const maxWorkers = coercePositiveInteger(
+        source.max_workers ?? source.maxWorkers,
+      );
+      base.max_workers = maxWorkers != null ? maxWorkers : null;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(source, "output_directory") ||
+      Object.prototype.hasOwnProperty.call(source, "outputDirectory")
+    ) {
+      const outputDirectory =
+        source.output_directory ?? source.outputDirectory ?? null;
+      if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
+        base.output_directory = outputDirectory.trim();
+      } else {
+        base.output_directory = null;
+      }
+    }
+
+    const booleanFields = [
+      ["run_async", source.run_async ?? source.runAsync],
+      ["overwrite_output", source.overwrite_output ?? source.overwriteOutput],
+      [
+        "reprocess_segments",
+        source.reprocess_segments ?? source.reprocessSegments,
+      ],
+      [
+        "generate_transcripts",
+        source.generate_transcripts ?? source.generateTranscripts,
+      ],
+      [
+        "trim_to_nearest_second",
+        source.trim_to_nearest_second ?? source.trimToNearestSecond,
+      ],
+      [
+        "allow_partial_segments",
+        source.allow_partial_segments ?? source.allowPartialSegments,
+      ],
+      ["upload_to_azure", source.upload_to_azure ?? source.uploadToAzure],
+      ["skip_preprocess", source.skip_preprocess ?? source.skipPreprocess],
+    ];
+
+    booleanFields.forEach(([key, value]) => {
+      const coerced = coerceBoolean(value);
+      if (coerced != null) {
+        base[key] = coerced;
+      }
+    });
+  });
+
+  if (typeof base.output_directory !== "string") {
+    base.output_directory = null;
+  }
+
+  return base;
+}
+
+function buildRequestPayload({
+  content,
+  session,
+  cobraMeta,
+  analysisTemplate,
+  configOverride,
+}) {
+  const normalizedConfig = buildNormalizedActionSummaryConfig({
+    cobraMeta,
+    configOverride,
+  });
+
   const payload = {
     video_path: cobraMeta.localVideoPath,
     manifest_path: cobraMeta.manifestPath ?? null,
@@ -142,113 +330,31 @@ function buildRequestPayload({ content, session, cobraMeta, analysisTemplate }) 
     user_name: buildDisplayName(session, content),
     video_id: content.id,
     video_url: content.videoUrl,
+    segment_length: normalizedConfig.segment_length,
+    fps: normalizedConfig.fps,
+    run_async: normalizedConfig.run_async,
+    overwrite_output: normalizedConfig.overwrite_output,
+    reprocess_segments: normalizedConfig.reprocess_segments,
+    generate_transcripts: normalizedConfig.generate_transcripts,
+    trim_to_nearest_second: normalizedConfig.trim_to_nearest_second,
+    allow_partial_segments: normalizedConfig.allow_partial_segments,
+    upload_to_azure: normalizedConfig.upload_to_azure,
+    skip_preprocess: normalizedConfig.skip_preprocess,
   };
 
-  const uploadMetadata =
-    (typeof cobraMeta.uploadMetadata === "object" && cobraMeta.uploadMetadata !== null
-      ? cobraMeta.uploadMetadata
-      : null) || {};
-
-  const segmentLength = coercePositiveInteger(uploadMetadata.segment_length);
-  if (segmentLength != null) {
-    payload.segment_length = segmentLength;
+  if (normalizedConfig.max_workers != null) {
+    payload.max_workers = normalizedConfig.max_workers;
   }
 
-  const fps = coercePositiveNumber(uploadMetadata.fps);
-  if (fps != null) {
-    payload.fps = fps;
-  }
-
-  const maxWorkers = coercePositiveInteger(uploadMetadata.max_workers);
-  if (maxWorkers != null) {
-    payload.max_workers = maxWorkers;
-  }
-
-  const runAsync = coerceBoolean(uploadMetadata.run_async);
-  if (runAsync != null) {
-    payload.run_async = runAsync;
-  }
-
-  const overwriteOutput = coerceBoolean(uploadMetadata.overwrite_output);
-  if (overwriteOutput != null) {
-    payload.overwrite_output = overwriteOutput;
-  }
-
-  const reprocessSegments = coerceBoolean(uploadMetadata.reprocess_segments);
-  if (reprocessSegments != null) {
-    payload.reprocess_segments = reprocessSegments;
-  }
-
-  const generateTranscripts = coerceBoolean(uploadMetadata.generate_transcripts);
-  if (generateTranscripts != null) {
-    payload.generate_transcripts = generateTranscripts;
-  }
-
-  const trimToNearestSecond = coerceBoolean(uploadMetadata.trim_to_nearest_second);
-  if (trimToNearestSecond != null) {
-    payload.trim_to_nearest_second = trimToNearestSecond;
-  }
-
-  const allowPartialSegments = coerceBoolean(uploadMetadata.allow_partial_segments);
-  if (allowPartialSegments != null) {
-    payload.allow_partial_segments = allowPartialSegments;
-  }
-
-  const uploadToAzure = coerceBoolean(uploadMetadata.upload_to_azure);
-  if (uploadToAzure != null) {
-    payload.upload_to_azure = uploadToAzure;
-  }
-
-  const outputDirectory = uploadMetadata.output_directory;
-  if (typeof outputDirectory === "string" && outputDirectory.trim().length) {
-    payload.output_directory = outputDirectory.trim();
-  }
-
-  if (payload.segment_length == null) {
-    payload.segment_length = 10;
-  }
-
-  if (payload.fps == null) {
-    payload.fps = 0.33;
-  }
-
-  if (typeof payload.generate_transcripts !== "boolean") {
-    payload.generate_transcripts = true;
-  }
-
-  if (typeof payload.trim_to_nearest_second !== "boolean") {
-    payload.trim_to_nearest_second = false;
-  }
-
-  if (typeof payload.allow_partial_segments !== "boolean") {
-    payload.allow_partial_segments = true;
-  }
-
-  if (typeof payload.overwrite_output !== "boolean") {
-    payload.overwrite_output = false;
-  }
-
-  if (typeof payload.reprocess_segments !== "boolean") {
-    payload.reprocess_segments = false;
-  }
-
-  if (typeof payload.run_async !== "boolean") {
-    payload.run_async = true;
-  }
-
-  if (typeof payload.upload_to_azure !== "boolean") {
-    payload.upload_to_azure = true;
-  }
-
-  if (cobraMeta.manifestPath) {
-    payload.skip_preprocess = true;
+  if (typeof normalizedConfig.output_directory === "string") {
+    payload.output_directory = normalizedConfig.output_directory;
   }
 
   if (Array.isArray(analysisTemplate) && analysisTemplate.length > 0) {
     payload.analysis_template = analysisTemplate;
   }
 
-  return payload;
+  return { payload, config: normalizedConfig };
 }
 
 export async function POST(request, { params }) {
@@ -324,8 +430,25 @@ export async function POST(request, { params }) {
     }
   }
 
+  let requestedConfig = null;
+  if (requestBody && Object.prototype.hasOwnProperty.call(requestBody, "config")) {
+    requestedConfig = sanitizeActionSummaryConfigOverride(requestBody.config);
+  }
+
+  const { payload: requestPayload, config: normalizedConfig } = buildRequestPayload({
+    content,
+    session,
+    cobraMeta,
+    analysisTemplate,
+    configOverride: requestedConfig,
+  });
+
   const now = new Date();
   cobraMeta.lastActionSummaryRequestedAt = now.toISOString();
+  cobraMeta.actionSummary = {
+    ...(cobraMeta.actionSummary ?? {}),
+    config: normalizedConfig,
+  };
   processingMetadata.cobra = cobraMeta;
 
   await prisma.content.update({
@@ -343,14 +466,7 @@ export async function POST(request, { params }) {
     response = await fetch(getActionSummaryEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        buildRequestPayload({
-          content,
-          session,
-          cobraMeta,
-          analysisTemplate,
-        }),
-      ),
+      body: JSON.stringify(requestPayload),
     });
     data = await response.json().catch(() => null);
   } catch (error) {
@@ -359,6 +475,7 @@ export async function POST(request, { params }) {
       status: "FAILED",
       error: error.message,
       analysisTemplate,
+      config: normalizedConfig,
     };
     processingMetadata.cobra = cobraMeta;
 
@@ -385,6 +502,7 @@ export async function POST(request, { params }) {
       status: "FAILED",
       error: errorMessage,
       analysisTemplate,
+      config: normalizedConfig,
     };
     processingMetadata.cobra = cobraMeta;
 
@@ -410,6 +528,7 @@ export async function POST(request, { params }) {
     storageArtifacts: data?.storage_artifacts ?? null,
     searchUploads: data?.search_uploads ?? [],
     analysisTemplate: analysisTemplate,
+    config: normalizedConfig,
     filters: {
       organizationId: content.organizationId,
       collectionId: content.collectionId,
@@ -434,6 +553,7 @@ export async function POST(request, { params }) {
       analysisOutputPath: data?.analysis_output_path ?? null,
       storageArtifacts: data?.storage_artifacts ?? null,
       analysisTemplate,
+      config: normalizedConfig,
       filters: {
         organizationId: content.organizationId,
         collectionId: content.collectionId,

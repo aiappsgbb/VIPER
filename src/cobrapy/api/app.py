@@ -144,7 +144,7 @@ class BaseAnalysisRequest(BaseModel):
     )
     output_directory: Optional[str] = None
     segment_length: int = 10
-    fps: float = 0.33
+    fps: float = 1
     max_workers: Optional[int] = None
     run_async: bool = True
     overwrite_output: bool = False
