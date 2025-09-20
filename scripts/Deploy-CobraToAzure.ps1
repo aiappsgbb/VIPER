@@ -8,17 +8,13 @@ param(
     [string]$LogAnalyticsWorkspaceName,
     [string]$BackendContainerAppName,
     [string]$FrontendContainerAppName,
-    [string]$BackendImageName = "viper-backend",
-    [string]$FrontendImageName = "viper-frontend",
+    [string]$BackendImageName = "cobrapy-backend",
+    [string]$FrontendImageName = "cobrapy-frontend",
     [string]$BackendImageTag = "latest",
     [string]$FrontendImageTag = "latest",
     [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/.." ).Path,
     [string]$EnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) ".env"),
-
-    [switch]$SkipEnvFile,
-    [string]$AzureEnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "azure/.env"),
-    [switch]$SkipAzureEnvFile
-
+    [switch]$SkipEnvFile
 )
 
 Set-StrictMode -Version Latest
@@ -56,7 +52,7 @@ function New-SanitizedName {
     param(
         [Parameter(Mandatory)][string]$Base,
         [Parameter(Mandatory)][int]$MaxLength,
-        [string]$Default = "viper"
+        [string]$Default = "cobra"
     )
 
     $sanitized = ($Base.ToLower() -replace "[^a-z0-9-]", "-").Trim('-')
@@ -135,16 +131,16 @@ if (-not $AcrName) {
     $AcrName = New-AcrName -Base $ResourceGroupName
 }
 if (-not $ManagedEnvironmentName) {
-    $ManagedEnvironmentName = New-SanitizedName -Base "$ResourceGroupName-env" -MaxLength 32 -Default "viper-env"
+    $ManagedEnvironmentName = New-SanitizedName -Base "$ResourceGroupName-env" -MaxLength 32 -Default "cobrapy-env"
 }
 if (-not $LogAnalyticsWorkspaceName) {
-    $LogAnalyticsWorkspaceName = New-SanitizedName -Base "$ResourceGroupName-logs" -MaxLength 63 -Default "viper-logs"
+    $LogAnalyticsWorkspaceName = New-SanitizedName -Base "$ResourceGroupName-logs" -MaxLength 63 -Default "cobrapy-logs"
 }
 if (-not $BackendContainerAppName) {
-    $BackendContainerAppName = New-SanitizedName -Base "$ResourceGroupName-backend" -MaxLength 32 -Default "viper-backend"
+    $BackendContainerAppName = New-SanitizedName -Base "$ResourceGroupName-backend" -MaxLength 32 -Default "cobrapy-backend"
 }
 if (-not $FrontendContainerAppName) {
-    $FrontendContainerAppName = New-SanitizedName -Base "$ResourceGroupName-frontend" -MaxLength 32 -Default "viper-frontend"
+    $FrontendContainerAppName = New-SanitizedName -Base "$ResourceGroupName-frontend" -MaxLength 32 -Default "cobrapy-frontend"
 }
 
 Write-Host "Ensuring Azure Container Registry '$AcrName'." -ForegroundColor Cyan
@@ -171,7 +167,7 @@ $frontendBaseUrlOverride = ""
 if (-not $SkipEnvFile.IsPresent -and (Test-Path $EnvFilePath)) {
     $parsedEnv = Parse-EnvFile -Path $EnvFilePath
     foreach ($entry in $parsedEnv) {
-        if ($entry.name -eq "VIPER_BASE_URL") {
+        if ($entry.name -eq "COBRAPY_BASE_URL") {
             if (-not [string]::IsNullOrWhiteSpace($entry.value)) {
                 $frontendBaseUrlOverride = $entry.value
             }
@@ -183,17 +179,6 @@ if (-not $SkipEnvFile.IsPresent -and (Test-Path $EnvFilePath)) {
 } elseif (-not $SkipEnvFile.IsPresent) {
     Write-Warning "Environment file '$EnvFilePath' was not found. Deployment will continue without injecting application settings."
 }
-
-
-$azureParameterValues = @{}
-if (-not $SkipAzureEnvFile.IsPresent -and (Test-Path $AzureEnvFilePath)) {
-    foreach ($entry in Parse-EnvFile -Path $AzureEnvFilePath) {
-        $azureParameterValues[$entry.name] = $entry.value
-    }
-} elseif (-not $SkipAzureEnvFile.IsPresent) {
-    Write-Warning "Azure environment file '$AzureEnvFilePath' was not found. Role assignments will be skipped unless parameters are provided manually."
-}
-
 
 $tempFiles = @()
 function New-TempParameterFile {
@@ -238,35 +223,6 @@ if ($frontendEnvFile) {
 if ($frontendBaseUrlOverride) {
     $parameterValues += "frontendBaseUrl=$frontendBaseUrlOverride"
 }
-
-
-$storageAccountNameParam = $azureParameterValues['VIPER_AZURE_STORAGE_ACCOUNT_NAME']
-if ($storageAccountNameParam) {
-    $parameterValues += "storageAccountName=$storageAccountNameParam"
-    $storageAccountRgParam = $azureParameterValues['VIPER_AZURE_STORAGE_RESOURCE_GROUP']
-    if ($storageAccountRgParam) {
-        $parameterValues += "storageAccountResourceGroup=$storageAccountRgParam"
-    }
-}
-
-$searchServiceNameParam = $azureParameterValues['VIPER_AZURE_SEARCH_SERVICE_NAME']
-if ($searchServiceNameParam) {
-    $parameterValues += "searchServiceName=$searchServiceNameParam"
-    $searchServiceRgParam = $azureParameterValues['VIPER_AZURE_SEARCH_RESOURCE_GROUP']
-    if ($searchServiceRgParam) {
-        $parameterValues += "searchServiceResourceGroup=$searchServiceRgParam"
-    }
-}
-
-$speechAccountNameParam = $azureParameterValues['VIPER_AZURE_SPEECH_ACCOUNT_NAME']
-if ($speechAccountNameParam) {
-    $parameterValues += "speechAccountName=$speechAccountNameParam"
-    $speechAccountRgParam = $azureParameterValues['VIPER_AZURE_SPEECH_RESOURCE_GROUP']
-    if ($speechAccountRgParam) {
-        $parameterValues += "speechAccountResourceGroup=$speechAccountRgParam"
-    }
-}
-
 
 $deploymentArgs = @(
     "deployment", "group", "create",

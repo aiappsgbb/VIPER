@@ -1,4 +1,6 @@
+
 # Dockerfile for running the Viper UI frontend
+
 FROM node:18-alpine AS deps
 
 WORKDIR /app

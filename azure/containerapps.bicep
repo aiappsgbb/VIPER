@@ -6,11 +6,13 @@ param backendContainerAppName string
 param frontendContainerAppName string
 param backendImage string
 param frontendImage string
+
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars array = []
 @description('Optional environment variables to inject into the Viper UI frontend container.')
 param frontendEnvVars array = []
 @description('Optional override for the Viper UI base URL that points to the Viper backend.')
+
 param frontendBaseUrl string = ''
 @description('Name of an existing Storage Account to grant access to via managed identity.')
 param storageAccountName string = ''
@@ -24,6 +26,7 @@ param searchServiceResourceGroup string = ''
 param speechAccountName string = ''
 @description('Resource group containing the Azure AI Speech account. Defaults to the deployment resource group when omitted.')
 param speechAccountResourceGroup string = ''
+
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: acrName
@@ -70,7 +73,9 @@ var frontendEnv = arrayConcat(
   }],
   [
     {
+
       name: 'VIPER_BASE_URL'
+
       value: resolvedFrontendBaseUrl
     }
   ]
@@ -79,6 +84,7 @@ var frontendEnv = arrayConcat(
 var registryServer = acr.properties.loginServer
 var registrySecretName = 'acr-password'
 var registrySecretValue = acrCredentials.passwords[0].value
+
 
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchRoleGuid = 'de139f84-1756-47ae-9be6-808fbbe84772'
@@ -125,6 +131,7 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
   identity: {
     type: 'SystemAssigned'
   }
+
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
@@ -166,9 +173,11 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
 resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: frontendContainerAppName
   location: location
+
   identity: {
     type: 'SystemAssigned'
   }
+
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
@@ -206,6 +215,7 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
     }
   }
 }
+
 
 var storageRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageRoleGuid)
 var searchRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid)
@@ -264,6 +274,7 @@ resource frontendSpeechRoleAssignment 'Microsoft.Authorization/roleAssignments@2
     roleDefinitionId: speechRoleDefinitionId
   }
 }
+
 
 output frontendUrl string = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
 output backendInternalUrl string = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
