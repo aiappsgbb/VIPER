@@ -807,6 +807,8 @@ export default function DashboardView({
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
+  const videoPlaybackUrl = selectedContent?.videoPlaybackUrl ?? null;
+  const videoSource = videoPlaybackUrl ?? selectedContent?.videoUrl ?? null;
   const [currentTimestamp, setCurrentTimestamp] = useState(0);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
@@ -878,6 +880,12 @@ export default function DashboardView({
     });
     return map;
   }, [collections]);
+
+  useEffect(() => {
+    if (!videoSource) {
+      playerRef.current = null;
+    }
+  }, [videoSource]);
 
   const contentLookup = useMemo(() => {
     const map = new Map();
@@ -1758,17 +1766,23 @@ export default function DashboardView({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="aspect-video overflow-hidden rounded-xl bg-black/80">
-                <ReactPlayer
-                  controls
-                  height="100%"
-                  ref={(player) => {
-                    playerRef.current = player;
-                  }}
-                  onProgress={handlePlayerProgress}
-                  onSeek={handlePlayerSeek}
-                  url={selectedContent.videoUrl}
-                  width="100%"
-                />
+                {videoSource ? (
+                  <ReactPlayer
+                    controls
+                    height="100%"
+                    ref={(player) => {
+                      playerRef.current = player ?? null;
+                    }}
+                    onProgress={handlePlayerProgress}
+                    onSeek={handlePlayerSeek}
+                    url={videoSource}
+                    width="100%"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-200/80">
+                    Video preview unavailable.
+                  </div>
+                )}
               </div>
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-900/95 text-slate-100 shadow-sm">
                 <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide">
