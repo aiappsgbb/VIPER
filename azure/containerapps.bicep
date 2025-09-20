@@ -6,11 +6,13 @@ param backendContainerAppName string
 param frontendContainerAppName string
 param backendImage string
 param frontendImage string
+
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars array = []
 @description('Optional environment variables to inject into the Viper UI frontend container.')
 param frontendEnvVars array = []
 @description('Optional override for the Viper UI base URL that points to the Viper backend.')
+
 param frontendBaseUrl string = ''
 @description('Name of an existing Storage Account to grant access to via managed identity.')
 param storageAccountName string = ''
@@ -25,9 +27,11 @@ param speechAccountName string = ''
 @description('Resource group containing the Azure AI Speech account. Defaults to the deployment resource group when omitted.')
 param speechAccountResourceGroup string = ''
 
+
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: acrName
 }
+
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsWorkspaceName
@@ -54,8 +58,10 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   }
 }
 
+
 var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
 var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
+
 
 var backendEnv = [for setting in backendEnvVars: {
   name: setting.name
@@ -69,19 +75,23 @@ var frontendEnv = arrayConcat(
   }],
   [
     {
+
       name: 'VIPER_BASE_URL'
       value: resolvedBackendBaseUrl
     },
     {
       name: 'VIPER_BACKEND_INTERNAL_URL'
       value: backendInternalUrl
+
     }
   ]
 )
 
 var registryServer = acr.properties.loginServer
 
+
 var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+
 
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchRoleGuid = 'de139f84-1756-47ae-9be6-808fbbe84772'
@@ -128,6 +138,7 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
   identity: {
     type: 'SystemAssigned'
   }
+
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
@@ -136,11 +147,14 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
         external: false
         targetPort: 8000
         transport: 'https'
+
       }
       registries: [
         {
           server: registryServer
+
           identity: 'SystemAssigned'
+
         }
       ]
     }
@@ -163,6 +177,7 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
 resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: frontendContainerAppName
   location: location
+
   identity: {
     type: 'SystemAssigned'
   }
@@ -175,11 +190,14 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
         targetPort: 3000
         transport: 'https'
         allowInsecure: false
+
       }
       registries: [
         {
           server: registryServer
+
           identity: 'SystemAssigned'
+
         }
       ]
     }
@@ -198,6 +216,7 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
     }
   }
 }
+
 
 var storageRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageRoleGuid)
 var searchRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid)
@@ -221,6 +240,7 @@ resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@
     roleDefinitionId: acrPullRoleDefinitionId
   }
 }
+
 
 resource backendStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasStorageAccount) {
   name: guid(storageAccount.id, storageRoleGuid, backendApp.identity.principalId)
@@ -276,5 +296,7 @@ resource frontendSpeechRoleAssignment 'Microsoft.Authorization/roleAssignments@2
   }
 }
 
+
 output frontendUrl string = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
 output backendInternalUrl string = backendInternalUrl
+

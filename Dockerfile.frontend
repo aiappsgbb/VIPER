@@ -1,4 +1,6 @@
+
 # Dockerfile for running the Viper UI frontend
+
 FROM node:18-alpine AS deps
 
 WORKDIR /app
@@ -21,6 +23,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=builder /app ./
+
 RUN npm prune --omit=dev \
     && npm cache clean --force \
     && addgroup -S viper \
@@ -28,6 +31,7 @@ RUN npm prune --omit=dev \
     && chown -R viper:viper /app
 
 USER viper
+
 
 EXPOSE 3000
 ENV PORT=3000

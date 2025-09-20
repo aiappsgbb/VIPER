@@ -2,11 +2,11 @@
 param(
     [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/.." ).Path,
     [string]$EnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) ".env"),
-    [string]$BackendImageName = "viper-backend",
-    [string]$FrontendImageName = "viper-frontend",
-    [string]$BackendContainerName = "viper-backend",
-    [string]$FrontendContainerName = "viper-frontend",
-    [string]$DockerNetworkName = "viper-network"
+    [string]$BackendImageName = "cobrapy-backend",
+    [string]$FrontendImageName = "cobrapy-frontend",
+    [string]$BackendContainerName = "cobrapy-backend",
+    [string]$FrontendContainerName = "cobrapy-frontend",
+    [string]$DockerNetworkName = "cobrapy-network"
 )
 
 Set-StrictMode -Version Latest
@@ -61,20 +61,9 @@ Assert-CommandExists -Name "docker"
 $projectRootPath = (Resolve-Path $ProjectRoot).Path
 Set-Location $projectRootPath
 
-Write-Host "Installing cobrapy from the local source tree." -ForegroundColor Cyan
+Write-Host "Installing CobraPy with pip." -ForegroundColor Cyan
 Invoke-CheckedCommand -FilePath "python" -Arguments @("-m", "pip", "install", "--upgrade", "pip")
-
-$editableSourcePath = Join-Path $projectRootPath "src/cobrapy"
-if (-not (Test-Path $editableSourcePath)) {
-    throw "Unable to locate cobrapy source at '$editableSourcePath'."
-}
-
-Push-Location $editableSourcePath
-try {
-    Invoke-CheckedCommand -FilePath "python" -Arguments @("-m", "pip", "install", "-e", ".")
-} finally {
-    Pop-Location
-}
+Invoke-CheckedCommand -FilePath "python" -Arguments @("-m", "pip", "install", "--upgrade", "cobrapy")
 
 Write-Host "Building backend Docker image '$BackendImageName'." -ForegroundColor Cyan
 Invoke-CheckedCommand -FilePath "docker" -Arguments @("build", "-f", "Dockerfile.backend", "-t", $BackendImageName, ".")
@@ -103,13 +92,10 @@ $frontendRunArgs = @(
 if (Test-Path $EnvFilePath) {
     $frontendRunArgs += @("--env-file", (Resolve-Path $EnvFilePath).Path)
 }
-$frontendRunArgs += @("-e", "VIPER_BASE_URL=http://$BackendContainerName:8000")
-
-$frontendRunArgs += @("-e", "VIPER_BACKEND_INTERNAL_URL=http://$BackendContainerName:8000")
-
+$frontendRunArgs += @("-e", "COBRAPY_BASE_URL=http://$BackendContainerName:8000")
 $frontendRunArgs += $FrontendImageName
 Write-Host "Starting frontend container '$FrontendContainerName'." -ForegroundColor Cyan
 Invoke-CheckedCommand -FilePath "docker" -Arguments $frontendRunArgs
 
-Write-Host "The Viper backend is now available at http://localhost:8000." -ForegroundColor Green
-Write-Host "The Viper UI frontend is now available at http://localhost:3000." -ForegroundColor Green
+Write-Host "The CobraPy backend is now available at http://localhost:8000." -ForegroundColor Green
+Write-Host "The Cobra UI frontend is now available at http://localhost:3000." -ForegroundColor Green

@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2 } from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
+import ChatWidget from "@/components/chat/chat-widget";
 
 const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
 
@@ -322,6 +323,7 @@ function buildDefaultActionSummaryConfigState() {
     upload_to_azure: true,
     skip_preprocess: false,
     output_directory: "",
+    lens_prompt: "",
   };
 }
 
@@ -441,6 +443,19 @@ function buildInitialActionSummaryConfigState(config, uploadMetadata) {
       }
     }
 
+    if (
+
+      Object.prototype.hasOwnProperty.call(data, "lens_prompt") ||
+      Object.prototype.hasOwnProperty.call(data, "lensPrompt")
+    ) {
+      const lensValue = data.lens_prompt ?? data.lensPrompt;
+      if (typeof lensValue === "string") {
+        state.lens_prompt = lensValue.trim();
+      } else if (lensValue == null) {
+        state.lens_prompt = "";
+      }
+    }
+
     const booleanFields = [
       "run_async",
       "overwrite_output",
@@ -495,6 +510,15 @@ function buildActionSummaryConfigPayload(state) {
     sanitized.output_directory = directory.length ? directory : null;
   }
 
+  if (state.lens_prompt !== undefined) {
+    if (typeof state.lens_prompt === "string") {
+      const trimmedLens = state.lens_prompt.trim();
+      sanitized.lens_prompt = trimmedLens.length ? trimmedLens : null;
+    } else if (state.lens_prompt == null) {
+      sanitized.lens_prompt = null;
+    }
+  }
+
   return sanitized;
 }
 
@@ -508,6 +532,16 @@ function sanitizeActionSummaryConfigState(state) {
 function summarizeActionSummaryConfig(state) {
   const config = buildActionSummaryConfigPayload(state);
   const summary = [];
+
+  const lensPrompt =
+    typeof config.lens_prompt === "string" ? config.lens_prompt.trim() : "";
+  if (lensPrompt.length) {
+    const preview = lensPrompt.replace(/\s+/g, " ").trim();
+    const truncated = preview.length > 120 ? `${preview.slice(0, 117)}…` : preview;
+    summary.push(`Lens: ${truncated}`);
+  } else {
+    summary.push("Lens: Default");
+  }
 
   summary.push(
     `Segment length: ${config.segment_length} second${
@@ -588,6 +622,8 @@ function normalizeActionSummaryEntry(entry, index) {
     entry.End_Timestamp ??
     entry.End ??
     null;
+  const startSeconds = extractNumericSeconds(startValue);
+  const endSeconds = extractNumericSeconds(endValue);
 
   return {
     id: entry.id ?? entry.segment_id ?? entry.Start_Timestamp ?? `action-${index}`,
@@ -605,7 +641,11 @@ function normalizeActionSummaryEntry(entry, index) {
     keyObjects: entry.key_objects ?? entry.Key_Objects ?? null,
     start: startValue,
     end: endValue,
-    startSeconds: extractNumericSeconds(startValue),
+    startSeconds,
+    endSeconds,
+    startLabel:
+      startValue ?? (startSeconds != null ? formatSecondsLabel(startSeconds) : null),
+    endLabel: endValue ?? (endSeconds != null ? formatSecondsLabel(endSeconds) : null),
     raw: entry,
   };
 }
@@ -767,13 +807,16 @@ export default function DashboardView({
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
+  const [currentTimestamp, setCurrentTimestamp] = useState(0);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
   );
   const [activeOrganizationId, setActiveOrganizationId] = useState(
     selectedContent?.organization?.id ?? collections[0]?.organization?.id ?? null,
   );
-  const [activeContentFilterId, setActiveContentFilterId] = useState("");
+  const [activeContentFilterId, setActiveContentFilterId] = useState(
+    selectedContent?.id ?? "",
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -879,6 +922,125 @@ export default function DashboardView({
     () => normalizeChapterAnalysisEntries(chapterAnalysisAnalysis),
     [chapterAnalysisAnalysis],
   );
+  const currentActionSummaryEntry = useMemo(() => {
+    if (!actionSummaryEntries.length) {
+      return null;
+    }
+
+    const now =
+      typeof currentTimestamp === "number" && Number.isFinite(currentTimestamp)
+        ? currentTimestamp
+        : 0;
+
+    let fallback = actionSummaryEntries[actionSummaryEntries.length - 1] ?? null;
+
+    for (let index = 0; index < actionSummaryEntries.length; index += 1) {
+      const entry = actionSummaryEntries[index];
+      const startSeconds =
+        typeof entry.startSeconds === "number" && Number.isFinite(entry.startSeconds)
+          ? entry.startSeconds
+          : index === 0
+          ? 0
+          : null;
+      const endSeconds =
+        typeof entry.endSeconds === "number" && Number.isFinite(entry.endSeconds)
+          ? entry.endSeconds
+          : typeof actionSummaryEntries[index + 1]?.startSeconds === "number"
+          ? actionSummaryEntries[index + 1].startSeconds
+          : null;
+
+      if (startSeconds != null && now < startSeconds) {
+        break;
+      }
+
+      if (
+        (startSeconds == null || now >= startSeconds) &&
+        (endSeconds == null || now < endSeconds)
+      ) {
+        return entry;
+      }
+
+      if (startSeconds != null && now >= startSeconds) {
+        fallback = entry;
+      }
+    }
+
+    return fallback;
+  }, [actionSummaryEntries, currentTimestamp]);
+  const currentTimestampLabel = useMemo(
+    () => formatSecondsLabel(currentTimestamp),
+    [currentTimestamp],
+  );
+  const actionSummaryChatContext = useMemo(
+    () =>
+      actionSummaryEntries
+        .map((entry) => {
+          const payload = {
+            id: entry.id,
+            summary: entry.summary ?? null,
+            startTime: entry.startLabel ?? null,
+            endTime: entry.endLabel ?? null,
+            startSeconds:
+              typeof entry.startSeconds === "number" && Number.isFinite(entry.startSeconds)
+                ? entry.startSeconds
+                : null,
+            endSeconds:
+              typeof entry.endSeconds === "number" && Number.isFinite(entry.endSeconds)
+                ? entry.endSeconds
+                : null,
+            actions: entry.actions ?? null,
+            characters: entry.characters ?? null,
+            keyObjects: entry.keyObjects ?? null,
+            sentiment: entry.sentiment ?? null,
+            theme: entry.theme ?? null,
+          };
+
+          return Object.fromEntries(
+            Object.entries(payload).filter(([_, value]) => {
+              if (value == null) {
+                return false;
+              }
+              if (typeof value === "string") {
+                return value.trim().length > 0;
+              }
+              return true;
+            }),
+          );
+        })
+        .filter((entry) => Object.keys(entry).length > 1),
+    [actionSummaryEntries],
+  );
+  const chapterAnalysisChatContext = useMemo(
+    () =>
+      chapterAnalysisEntries
+        .map((entry) => {
+          const payload = {
+            id: entry.id,
+            title: entry.title ?? null,
+            summary: entry.summary ?? null,
+            startTime: entry.start ?? null,
+            endTime: entry.end ?? null,
+            startSeconds:
+              typeof entry.startSeconds === "number" && Number.isFinite(entry.startSeconds)
+                ? entry.startSeconds
+                : null,
+          };
+
+          return Object.fromEntries(
+            Object.entries(payload).filter(([_, value]) => {
+              if (value == null) {
+                return false;
+              }
+              if (typeof value === "string") {
+                return value.trim().length > 0;
+              }
+              return true;
+            }),
+          );
+        })
+        .filter((entry) => Object.keys(entry).length > 1),
+    [chapterAnalysisEntries],
+  );
 
   const activeCollection = useMemo(
     () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
@@ -965,7 +1127,10 @@ export default function DashboardView({
     setIsRunningChapterAnalysis(false);
     setActionSummaryData(selectedContent?.processingMetadata?.cobra?.actionSummary ?? null);
     setChapterAnalysisData(selectedContent?.processingMetadata?.cobra?.chapterAnalysis ?? null);
-    setActiveContentFilterId("");
+    setActiveContentFilterId(selectedContent?.id ?? "");
+    setSearchQuery("");
+    setSearchError("");
+    setSearchResults([]);
     setTranscriptData(null);
     setTranscriptError("");
     setIsTranscriptLoading(false);
@@ -1072,6 +1237,10 @@ export default function DashboardView({
     chapterAnalysisData?.lastRunAt,
     selectedContent?.id,
   ]);
+
+  useEffect(() => {
+    setCurrentTimestamp(0);
+  }, [selectedContent?.id]);
 
   useEffect(() => {
     if (!activeCollectionId || activeContentFilterId === "") {
@@ -1254,6 +1423,20 @@ export default function DashboardView({
   const handleSeekToTimestamp = (timestamp) => {
     if (playerRef.current && typeof timestamp === "number" && !Number.isNaN(timestamp)) {
       playerRef.current.seekTo(timestamp, "seconds");
+      setCurrentTimestamp(timestamp);
+    }
+  };
+
+  const handlePlayerProgress = (state) => {
+    const playedSeconds = state?.playedSeconds;
+    if (typeof playedSeconds === "number" && Number.isFinite(playedSeconds)) {
+      setCurrentTimestamp(playedSeconds);
+    }
+  };
+
+  const handlePlayerSeek = (seconds) => {
+    if (typeof seconds === "number" && Number.isFinite(seconds)) {
+      setCurrentTimestamp(seconds);
     }
   };
 
@@ -1541,8 +1724,9 @@ export default function DashboardView({
   const chapterAnalysisArtifactsLabel = summarizeArtifacts(chapterAnalysisData?.storageArtifacts);
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-6 py-8">
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+    <>
+      <div className="mx-auto w-full max-w-7xl px-6 py-8">
+        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
           <Card className="overflow-hidden">
             <CardHeader>
@@ -1580,9 +1764,152 @@ export default function DashboardView({
                   ref={(player) => {
                     playerRef.current = player;
                   }}
+                  onProgress={handlePlayerProgress}
+                  onSeek={handlePlayerSeek}
                   url={selectedContent.videoUrl}
                   width="100%"
                 />
+              </div>
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-900/95 text-slate-100 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                  <span>Live scene summary</span>
+                  {currentTimestampLabel ? (
+                    <span className="text-slate-300">{currentTimestampLabel}</span>
+                  ) : null}
+                </div>
+                {currentActionSummaryEntry ? (
+                  <div className="space-y-3 px-4 py-3">
+                    <p className="text-sm font-medium leading-relaxed text-slate-100">
+                      {currentActionSummaryEntry.summary ?? "No summary is available for this moment."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
+                      {currentActionSummaryEntry.startLabel ? (
+                        <span>Start {currentActionSummaryEntry.startLabel}</span>
+                      ) : null}
+                      {currentActionSummaryEntry.endLabel ? (
+                        <span>End {currentActionSummaryEntry.endLabel}</span>
+                      ) : null}
+                      {currentActionSummaryEntry.actions ? (
+                        <span>Actions: {currentActionSummaryEntry.actions}</span>
+                      ) : null}
+                      {currentActionSummaryEntry.characters ? (
+                        <span>People: {currentActionSummaryEntry.characters}</span>
+                      ) : null}
+                      {currentActionSummaryEntry.theme ? (
+                        <span>Theme: {currentActionSummaryEntry.theme}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 text-sm text-slate-300">
+                    Run an action summary to generate an AI teleprompter that follows along with the video.
+                  </div>
+                )}
+              </div>
+              <div className="space-y-4 rounded-lg border border-slate-200 bg-white/60 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-700">AI search</p>
+                  <p className="text-xs text-slate-500">
+                    Search the indexed analyses, review the matches, and jump straight to the relevant timestamp.
+                  </p>
+                  <p className="text-xs text-slate-400">{searchFilterLabel}</p>
+                </div>
+                <form className="space-y-3" onSubmit={handleSearch}>
+                  <Input
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="e.g. Show me when the team boards the aircraft"
+                    value={searchQuery}
+                  />
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <label className="text-xs font-semibold text-slate-600">
+                      Organization
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        onChange={handleOrganizationChange}
+                        value={activeOrganizationId ?? ""}
+                      >
+                        <option value="">All organizations</option>
+                        {organizationOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Collection
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        onChange={handleCollectionChange}
+                        value={activeCollectionId ?? ""}
+                      >
+                        <option value="">All collections</option>
+                        {collectionOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-600">
+                      Video
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        onChange={(event) => setActiveContentFilterId(event.target.value)}
+                        value={activeContentFilterId}
+                      >
+                        <option value="">All videos in selection</option>
+                        {videoOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      <p className="font-medium text-slate-600">Scope</p>
+                      <p className="mt-1 leading-relaxed">{searchFilterLabel}</p>
+                    </div>
+                    <Button disabled={isSearching || !searchQuery.trim()} type="submit">
+                      {isSearching ? "Searching…" : "Search"}
+                    </Button>
+                  </div>
+                </form>
+                {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
+                <ScrollArea className="max-h-64 rounded-lg border border-slate-200 bg-white/70">
+                  <div className="divide-y divide-slate-200">
+                    {searchResults.length === 0 ? (
+                      <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
+                    ) : (
+                      searchResults.map((result, index) => {
+                        const timestamp = extractNumericSeconds(
+                          result.start_timestamp ?? result.start_frame ?? result.start,
+                        );
+                        return (
+                          <div className="flex items-center justify-between gap-3 p-4" key={`${result.id ?? index}`}>
+                            <div className="space-y-1 text-sm">
+                              <p className="font-medium text-slate-800">
+                                {result.summary ?? result.text ?? "Relevant moment"}
+                              </p>
+                              {result.start_timestamp || result.start ? (
+                                <p className="text-xs text-slate-500">
+                                  Starts at {result.start_timestamp ?? result.start}
+                                </p>
+                              ) : null}
+                            </div>
+                            {timestamp != null ? (
+                              <Button onClick={() => handleSeekToTimestamp(timestamp)} size="sm" variant="outline">
+                                Jump
+                              </Button>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
               </div>
               <div className="space-y-3 rounded-lg border border-slate-200 bg-white/60 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1883,6 +2210,27 @@ export default function DashboardView({
                                     />
                                   </label>
                                 </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Analysis lens
+                                    <Textarea
+                                      className="mt-1"
+                                      onChange={(event) =>
+                                        setDraftActionSummaryConfig((current) => ({
+                                          ...current,
+                                          lens_prompt: event.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional context or perspective to guide the analysis"
+                                      rows={4}
+                                      value={draftActionSummaryConfig.lens_prompt}
+                                    />
+                                  </label>
+                                  <p className="text-xs text-slate-500">
+                                    Leave blank to use the default lens. Provide custom instructions to
+                                    tailor how the model describes each scene.
+                                  </p>
+                                </div>
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   {ACTION_SUMMARY_TOGGLE_FIELDS.map(({ key, label }) => (
                                     <label
@@ -1955,119 +2303,6 @@ export default function DashboardView({
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>AI search</CardTitle>
-              <CardDescription>
-                Ask questions about this collection and jump to the most relevant moments.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <form className="space-y-3" onSubmit={handleSearch}>
-                <div className="grid gap-3 lg:grid-cols-3">
-                  <label className="text-sm font-medium text-slate-600">
-                    Organization
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      onChange={handleOrganizationChange}
-                      value={activeOrganizationId ?? ""}
-                    >
-                      <option value="">All organizations</option>
-                      {organizationOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-sm font-medium text-slate-600">
-                    Collection
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      onChange={handleCollectionChange}
-                      value={activeCollectionId ?? ""}
-                    >
-                      <option value="">All collections</option>
-                      {collectionOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-sm font-medium text-slate-600">
-                    Video
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                      onChange={(event) => setActiveContentFilterId(event.target.value)}
-                      value={activeContentFilterId}
-                    >
-                      <option value="">All videos in selection</option>
-                      {videoOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-600" htmlFor="search-query">
-                    Search query
-                  </label>
-                  <Input
-                    id="search-query"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="e.g. Show moments with onboarding walkthroughs"
-                    value={searchQuery}
-                  />
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    <p className="font-medium text-slate-600">Filters applied</p>
-                    <p className="mt-1 leading-relaxed">{searchFilterLabel}</p>
-                  </div>
-                  <Button disabled={isSearching || !searchQuery} type="submit">
-                    {isSearching ? "Searching…" : "Search"}
-                  </Button>
-                </div>
-              </form>
-              {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
-              <ScrollArea className="max-h-72 rounded-lg border border-slate-200">
-                <div className="divide-y divide-slate-200">
-                  {searchResults.length === 0 ? (
-                    <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
-                  ) : (
-                    searchResults.map((result, index) => {
-                      const timestamp = extractNumericSeconds(
-                        result.start_timestamp ?? result.start_frame ?? result.start,
-                      );
-                      return (
-                        <div className="flex items-center justify-between gap-3 p-4" key={`${result.id ?? index}`}>
-                          <div className="space-y-1 text-sm">
-                            <p className="font-medium text-slate-800">
-                              {result.summary ?? result.text ?? "Relevant moment"}
-                            </p>
-                            {result.start_timestamp || result.start ? (
-                              <p className="text-xs text-slate-500">
-                                Starts at {result.start_timestamp ?? result.start}
-                              </p>
-                            ) : null}
-                          </div>
-                          {timestamp != null ? (
-                            <Button onClick={() => handleSeekToTimestamp(timestamp)} size="sm" variant="outline">
-                              Jump
-                            </Button>
-                          ) : null}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </ScrollArea>
             </CardContent>
           </Card>
 
@@ -2316,7 +2551,13 @@ export default function DashboardView({
             </CardContent>
           </Card>
         </div>
+        </div>
       </div>
-    </div>
+      <ChatWidget
+        actionSummaryContext={actionSummaryChatContext}
+        chapterAnalysisContext={chapterAnalysisChatContext}
+        selectedContent={selectedContent}
+      />
+    </>
   );
 }
