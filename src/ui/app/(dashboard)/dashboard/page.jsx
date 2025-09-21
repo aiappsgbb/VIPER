@@ -124,7 +124,10 @@ export default async function DashboardPage({ searchParams }) {
   );
 
   const contentId = searchParams?.contentId;
-  const selectedContent = allContents.find((content) => content.id === contentId) ?? allContents[0] ?? null;
+  const selectedContent =
+    allContents.find((content) => content.id === contentId) ?? allContents[0] ?? null;
+
+  const initialSearchStart = searchParams?.start ?? searchParams?.t ?? null;
 
   return (
     <DashboardView
@@ -134,6 +137,7 @@ export default async function DashboardPage({ searchParams }) {
       canManageCollections={canManageCollections(session.user.role)}
       canCreateCollections={canCreateCollections(session.user.role)}
       canDeleteContent={canDeleteContent(session.user.role)}
+      initialSearchStart={initialSearchStart}
     />
   );
 }

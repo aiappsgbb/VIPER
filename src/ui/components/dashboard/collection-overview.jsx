@@ -357,7 +357,7 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
                   </Button>
                 </form>
                 {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
-                <ScrollArea className="max-h-96 rounded-lg border border-slate-200">
+                <ScrollArea className="max-h-[60vh] rounded-lg border border-slate-200">
                   <div className="divide-y divide-slate-200">
                     {!hasSearched ? (
                       <p className="p-4 text-sm text-slate-500">
@@ -366,33 +366,48 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
                     ) : normalizedResults.length === 0 ? (
                       <p className="p-4 text-sm text-slate-500">No matches found yet. Try another question.</p>
                     ) : (
-                      normalizedResults.map((result) => (
-                        <div className="space-y-3 p-4" key={result.id}>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="space-y-2">
-                              <p className="font-medium text-slate-800">{result.summary}</p>
-                              {result.details ? (
-                                <p className="text-sm text-slate-600">{result.details}</p>
-                              ) : null}
-                              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                                {result.startSeconds != null ? (
-                                  <span>Starts at {formatTimestamp(result.startSeconds)}</span>
+                      normalizedResults.map((result) => {
+                        const startParam =
+                          typeof result.startSeconds === "number" &&
+                          Number.isFinite(result.startSeconds)
+                            ? (Math.round(Math.max(0, result.startSeconds) * 1000) / 1000).toString()
+                            : null;
+                        const query = new URLSearchParams();
+                        if (result.contentId) {
+                          query.set("contentId", result.contentId);
+                        }
+                        if (startParam) {
+                          query.set("start", startParam);
+                        }
+                        const href = query.toString() ? `/dashboard?${query.toString()}` : "/dashboard";
+                        const buttonLabel = startParam ? "Open & jump" : "Open video";
+
+                        return (
+                          <div className="space-y-3 p-4" key={result.id}>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-2">
+                                <p className="font-medium text-slate-800">{result.summary}</p>
+                                {result.details ? (
+                                  <p className="text-sm text-slate-600">{result.details}</p>
                                 ) : null}
-                                {typeof result.score === "number" ? (
-                                  <span>Score: {result.score.toFixed(2)}</span>
-                                ) : null}
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                                  {result.startSeconds != null ? (
+                                    <span>Starts at {formatTimestamp(result.startSeconds)}</span>
+                                  ) : null}
+                                  {typeof result.score === "number" ? (
+                                    <span>Score: {result.score.toFixed(2)}</span>
+                                  ) : null}
+                                </div>
                               </div>
+                              {result.contentId ? (
+                                <Button asChild size="sm" variant="outline">
+                                  <Link href={href}>{buttonLabel}</Link>
+                                </Button>
+                              ) : null}
                             </div>
-                            {result.contentId ? (
-                              <Button asChild size="sm" variant="outline">
-                                <Link href={`/dashboard?contentId=${result.contentId}`}>
-                                  Open video
-                                </Link>
-                              </Button>
-                            ) : null}
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </ScrollArea>

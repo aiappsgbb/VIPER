@@ -1311,6 +1311,7 @@ export default function DashboardView({
   canManageCollections,
   canCreateCollections,
   canDeleteContent = false,
+  initialSearchStart = null,
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
@@ -1321,6 +1322,8 @@ export default function DashboardView({
       : null;
   const videoSource = videoPlaybackUrl;
   const [currentTimestamp, setCurrentTimestamp] = useState(0);
+  const [pendingSeekSeconds, setPendingSeekSeconds] = useState(null);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
   );
@@ -1403,6 +1406,8 @@ export default function DashboardView({
   useEffect(() => {
     if (!videoSource) {
       playerRef.current = null;
+      setIsPlayerReady(false);
+      setPendingSeekSeconds(null);
     }
   }, [videoSource]);
 
@@ -1421,6 +1426,14 @@ export default function DashboardView({
     });
     return map;
   }, [collections]);
+
+  const initialStartSeconds = useMemo(() => {
+    const parsed = extractNumericSeconds(initialSearchStart);
+    if (typeof parsed === "number" && Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+    return null;
+  }, [initialSearchStart]);
 
   const actionSummaryRuns = useMemo(
     () => (Array.isArray(actionSummaryMeta?.runs) ? actionSummaryMeta.runs : []),
@@ -2032,8 +2045,32 @@ export default function DashboardView({
   };
 
   useEffect(() => {
-    setCurrentTimestamp(0);
+    if (typeof initialStartSeconds === "number") {
+      setCurrentTimestamp(initialStartSeconds);
+      setPendingSeekSeconds(initialStartSeconds);
+    } else {
+      setCurrentTimestamp(0);
+      setPendingSeekSeconds(null);
+    }
+  }, [selectedContent?.id, initialStartSeconds]);
+
+  useEffect(() => {
+    setIsPlayerReady(false);
   }, [selectedContent?.id]);
+
+  useEffect(() => {
+    if (!isPlayerReady || pendingSeekSeconds == null) {
+      return;
+    }
+
+    const clamped = Math.max(0, pendingSeekSeconds);
+    const player = playerRef.current;
+    if (player && typeof player.seekTo === "function") {
+      player.seekTo(clamped, "seconds");
+      setCurrentTimestamp(clamped);
+      setPendingSeekSeconds(null);
+    }
+  }, [isPlayerReady, pendingSeekSeconds]);
 
   useEffect(() => {
     if (!activeCollectionId || activeContentFilterId === "") {
@@ -2202,10 +2239,23 @@ export default function DashboardView({
   };
 
   const handleSeekToTimestamp = (timestamp) => {
-    if (playerRef.current && typeof timestamp === "number" && !Number.isNaN(timestamp)) {
-      playerRef.current.seekTo(timestamp, "seconds");
-      setCurrentTimestamp(timestamp);
+    if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
+      return;
     }
+
+    const clamped = Math.max(0, timestamp);
+    const player = playerRef.current;
+    if (player && typeof player.seekTo === "function" && isPlayerReady) {
+      player.seekTo(clamped, "seconds");
+      setCurrentTimestamp(clamped);
+      setPendingSeekSeconds(null);
+    } else {
+      setPendingSeekSeconds(clamped);
+    }
+  };
+
+  const handlePlayerReady = () => {
+    setIsPlayerReady(true);
   };
 
   const handlePlayerProgress = (state) => {
@@ -2582,7 +2632,7 @@ export default function DashboardView({
   return (
     <>
       <div className="mx-auto w-full max-w-7xl px-6 py-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1.5fr)]">
           <div className="space-y-6">
             <Card className="overflow-hidden">
               <CardHeader>
@@ -2674,6 +2724,7 @@ export default function DashboardView({
                     ref={(player) => {
                       playerRef.current = player ?? null;
                     }}
+                    onReady={handlePlayerReady}
                     onProgress={handlePlayerProgress}
                     onSeek={handlePlayerSeek}
                     url={videoSource}
@@ -3418,7 +3469,7 @@ export default function DashboardView({
                 </div>
               </form>
               {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
-              <ScrollArea className="max-h-64 rounded-lg border border-slate-200">
+              <ScrollArea className="max-h-[60vh] rounded-lg border border-slate-200">
                 <div className="divide-y divide-slate-200">
                   {searchResults.length === 0 ? (
                     <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
@@ -3518,7 +3569,34 @@ export default function DashboardView({
                           : null;
                       const durationLabel =
                         durationSeconds != null ? formatSecondsLabel(durationSeconds) : null;
-                      const timestamp = startSeconds ?? null;
+                      const timestamp =
+                        typeof startSeconds === "number" && Number.isFinite(startSeconds)
+                          ? Math.max(0, startSeconds)
+                          : null;
+
+                      const contentReference = getFieldValue([
+                        "contentId",
+                        "content_id",
+                        "videoId",
+                        "video_id",
+                        "content",
+                      ]);
+                      let resultContentId = null;
+                      if (typeof contentReference === "string" && contentReference.trim()) {
+                        resultContentId = contentReference.trim();
+                      } else if (typeof contentReference === "number") {
+                        resultContentId = contentReference.toString();
+                      } else if (contentReference && typeof contentReference === "object") {
+                        const nestedId = getValueFromSource(contentReference, "id");
+                        if (typeof nestedId === "string" && nestedId.trim()) {
+                          resultContentId = nestedId.trim();
+                        } else if (nestedId != null) {
+                          resultContentId = nestedId.toString();
+                        }
+                      }
+
+                      const associatedContentInfo =
+                        resultContentId != null ? contentLookup.get(resultContentId) : null;
 
                       const detailItems = [];
                       const addDetail = (label, value) => {
@@ -3607,6 +3685,53 @@ export default function DashboardView({
                         }
                       }
 
+                      if (associatedContentInfo) {
+                        const videoLabelParts = [
+                          associatedContentInfo.title ?? resultContentId,
+                        ];
+                        if (associatedContentInfo.collectionName) {
+                          videoLabelParts.push(associatedContentInfo.collectionName);
+                        }
+                        if (associatedContentInfo.organizationName) {
+                          videoLabelParts.push(associatedContentInfo.organizationName);
+                        }
+                        addDetail("Video", videoLabelParts.filter(Boolean).join(" • "));
+                      } else if (resultContentId) {
+                        addDetail("Video ID", resultContentId);
+                      }
+
+                      const startParamValue =
+                        timestamp != null
+                          ? (Math.round(timestamp * 1000) / 1000).toString()
+                          : null;
+
+                      const handleResultJump = () => {
+                        if (timestamp == null) {
+                          return;
+                        }
+
+                        if (
+                          resultContentId &&
+                          selectedContent?.id &&
+                          resultContentId !== selectedContent.id
+                        ) {
+                          const params = new URLSearchParams();
+                          params.set("contentId", resultContentId);
+                          if (startParamValue) {
+                            params.set("start", startParamValue);
+                          }
+                          router.push(`/dashboard?${params.toString()}`);
+                          return;
+                        }
+
+                        handleSeekToTimestamp(timestamp);
+                      };
+
+                      const jumpButtonLabel =
+                        resultContentId && selectedContent?.id && resultContentId !== selectedContent.id
+                          ? "Open & jump"
+                          : "Jump";
+
                       return (
                         <div className="p-4" key={resultKey}>
                           <Collapsible
@@ -3627,12 +3752,12 @@ export default function DashboardView({
                               </CollapsibleTrigger>
                               {timestamp != null ? (
                                 <Button
-                                  onClick={() => handleSeekToTimestamp(timestamp)}
+                                  onClick={handleResultJump}
                                   size="sm"
                                   type="button"
                                   variant="outline"
                                 >
-                                  Jump
+                                  {jumpButtonLabel}
                                 </Button>
                               ) : null}
                             </div>
