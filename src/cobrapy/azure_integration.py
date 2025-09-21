@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import tempfile
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import unquote, urlparse
@@ -107,7 +108,7 @@ class AzureStorageManager:
         video_path = manifest.source_video.path
         if not video_path or not os.path.exists(video_path):
             return None
-        blob_name = os.path.join(
+        blob_name = posixpath.join(
             generate_safe_dir_name(manifest.name),
             "source",
             os.path.basename(video_path),
@@ -123,7 +124,7 @@ class AzureStorageManager:
             return None
         if not self.output_container:
             return None
-        blob_name = os.path.join(
+        blob_name = posixpath.join(
             generate_safe_dir_name(manifest.name),
             "manifests",
             os.path.basename(manifest.video_manifest_path),
@@ -135,7 +136,7 @@ class AzureStorageManager:
     def upload_transcription(self, manifest: VideoManifest) -> Optional[str]:
         if manifest.audio_transcription is None or not self.output_container:
             return None
-        blob_name = os.path.join(
+        blob_name = posixpath.join(
             generate_safe_dir_name(manifest.name),
             "transcripts",
             "audio_transcript.json",
@@ -157,17 +158,17 @@ class AzureStorageManager:
             return {}
 
         safe_name = generate_safe_dir_name(manifest.name)
-        analysis_folder = os.path.join(safe_name, "analysis", analysis_name)
+        analysis_folder = posixpath.join(safe_name, "analysis", analysis_name)
         uploaded: Dict[str, str] = {}
 
         if output_path and os.path.exists(output_path):
-            blob_name = os.path.join(analysis_folder, os.path.basename(output_path))
+            blob_name = posixpath.join(analysis_folder, os.path.basename(output_path))
             uploaded["file"] = self._upload_file(
                 self.output_container, output_path, blob_name
             )
 
         if analysis_result is not None:
-            blob_name = os.path.join(analysis_folder, "result.json")
+            blob_name = posixpath.join(analysis_folder, "result.json")
             uploaded["json"] = self._upload_json(
                 self.output_container, blob_name, analysis_result
             )
