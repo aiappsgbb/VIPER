@@ -1,16 +1,8 @@
-import { getVideoPlaybackUrl } from "@/lib/azure";
-
 export async function serializeContent(content) {
-  let playbackUrl = null;
-  try {
-    playbackUrl = await getVideoPlaybackUrl(content.videoUrl);
-  } catch (error) {
-    console.warn(
-      "[serialization] Failed to generate playback URL for content",
-      content.id,
-      error,
-    );
-  }
+  const playbackUrl =
+    typeof content.videoUrl === "string" && content.videoUrl.trim().length
+      ? `/api/content/${content.id}/video`
+      : null;
 
   return {
     ...content,
@@ -26,7 +18,7 @@ export async function serializeContent(content) {
           updatedAt: content.uploadedBy.updatedAt.toISOString(),
         }
       : null,
-    videoPlaybackUrl: playbackUrl ?? null,
+    videoPlaybackUrl: playbackUrl,
   };
 }
 

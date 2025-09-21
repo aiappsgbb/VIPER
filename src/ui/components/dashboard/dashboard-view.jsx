@@ -1201,8 +1201,12 @@ export default function DashboardView({
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
-  const videoPlaybackUrl = selectedContent?.videoPlaybackUrl ?? null;
-  const videoSource = videoPlaybackUrl ?? selectedContent?.videoUrl ?? null;
+  const videoPlaybackUrl =
+    typeof selectedContent?.videoPlaybackUrl === "string" &&
+    selectedContent.videoPlaybackUrl.trim().length
+      ? selectedContent.videoPlaybackUrl
+      : null;
+  const videoSource = videoPlaybackUrl;
   const [currentTimestamp, setCurrentTimestamp] = useState(0);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
