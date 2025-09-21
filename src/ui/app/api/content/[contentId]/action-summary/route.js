@@ -1281,6 +1281,10 @@ export async function DELETE(request, { params }) {
     updatedMeta.lastRunAt = activeRun?.completedAt ?? activeRun?.createdAt ?? null;
     updatedMeta.manifestPath = activeRun?.manifestPath ?? updatedMeta.manifestPath ?? null;
     updatedMeta.manifestUrl = activeRun?.manifestUrl ?? updatedMeta.manifestUrl ?? null;
+    updatedMeta.storageArtifacts = activeRun?.storageArtifacts ?? null;
+    updatedMeta.searchUploads = Array.isArray(activeRun?.searchUploads)
+      ? activeRun.searchUploads
+      : [];
     if (activeRun?.analysisTemplate && !updatedMeta.analysisTemplate) {
       updatedMeta.analysisTemplate = activeRun.analysisTemplate;
     }
@@ -1295,6 +1299,8 @@ export async function DELETE(request, { params }) {
     updatedMeta.manifestPath = null;
     updatedMeta.manifestUrl = null;
     updatedMeta.filters = null;
+    updatedMeta.storageArtifacts = null;
+    updatedMeta.searchUploads = [];
     updatedMeta.status = "QUEUED";
     updatedMeta.error = null;
   }
