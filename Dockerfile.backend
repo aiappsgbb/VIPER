@@ -24,6 +24,7 @@ RUN poetry config virtualenvs.create false \
     && pip install --no-cache-dir "uvicorn[standard]"
 
 # Copy application code
+COPY README.md ./README.md
 COPY src ./src
 COPY samples ./samples
 COPY sample.env ./sample.env
