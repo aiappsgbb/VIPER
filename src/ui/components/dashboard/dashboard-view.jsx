@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Download, Plus, Trash2 } from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
@@ -404,6 +404,94 @@ function normalizeTranscriptData(transcript) {
     durationLabel,
     segments,
   };
+}
+
+function sanitizeFileName(name, fallback = "download") {
+  if (typeof name !== "string") {
+    return fallback;
+  }
+
+  const normalized = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 80);
+
+  return normalized || fallback;
+}
+
+function buildContentDownloadFileName(content, suffix) {
+  const title = sanitizeFileName(content?.title ?? "", "video");
+  const idSegment = sanitizeFileName(
+    typeof content?.id === "string" ? content.id.slice(0, 12) : "",
+    "",
+  );
+  const suffixSegment = sanitizeFileName(suffix ?? "", "data");
+
+  const parts = [title];
+  if (idSegment) {
+    parts.push(idSegment);
+  }
+
+  return `${parts.filter(Boolean).join("-")}-${suffixSegment}.json`;
+}
+
+function compactObject(object) {
+  if (!object || typeof object !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(object).filter(([_, value]) => value != null && value !== ""),
+  );
+}
+
+function triggerJsonDownload(data, fileName) {
+  if (typeof window === "undefined") {
+    throw new Error("Downloads are only available in the browser environment.");
+  }
+
+  const jsonContent = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonContent], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function serializeActionSummaryEntry(entry, index) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const payload = compactObject({
+    order: typeof index === "number" ? index + 1 : null,
+    id: entry.id ?? null,
+    summary: entry.summary ?? null,
+    actions: entry.actions ?? null,
+    characters: entry.characters ?? null,
+    keyObjects: entry.keyObjects ?? null,
+    sentiment: entry.sentiment ?? null,
+    theme: entry.theme ?? null,
+    start: entry.start ?? null,
+    startLabel: entry.startLabel ?? null,
+    startSeconds: entry.startSeconds ?? null,
+    end: entry.end ?? null,
+    endLabel: entry.endLabel ?? null,
+    endSeconds: entry.endSeconds ?? null,
+  });
+
+  if (entry.raw != null) {
+    payload.raw = entry.raw;
+  }
+
+  return payload;
 }
 
 const DEFAULT_ACTION_SUMMARY_FIELDS = [
@@ -1288,6 +1376,9 @@ export default function DashboardView({
   const [transcriptData, setTranscriptData] = useState(null);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState("");
+  const [isDownloadingTranscript, setIsDownloadingTranscript] = useState(false);
+  const [isDownloadingActionSummary, setIsDownloadingActionSummary] =
+    useState(false);
 
   const organizationLookup = useMemo(() => {
     const map = new Map();
@@ -1779,6 +1870,132 @@ export default function DashboardView({
     chapterAnalysisData?.lastRunAt,
     selectedContent?.id,
   ]);
+
+  const transcriptDownloadFileName = useMemo(
+    () => buildContentDownloadFileName(selectedContent, "transcript"),
+    [selectedContent],
+  );
+  const actionSummaryDownloadFileName = useMemo(
+    () => buildContentDownloadFileName(selectedContent, "action-summary"),
+    [selectedContent],
+  );
+
+  const handleDownloadTranscript = async () => {
+    if (isDownloadingTranscript) {
+      return;
+    }
+
+    if (!transcriptUrl && !transcriptData) {
+      setTranscriptError("Transcript not available to download.");
+      return;
+    }
+
+    setIsDownloadingTranscript(true);
+
+    try {
+      let data = transcriptData;
+      if (!data && transcriptUrl) {
+        const response = await fetch(transcriptUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch transcript (${response.status})`);
+        }
+
+        const raw = await response.json();
+        data = normalizeTranscriptData(raw);
+        if (!transcriptData) {
+          setTranscriptData(data);
+        }
+      }
+
+      if (!data) {
+        throw new Error("Transcript data unavailable.");
+      }
+
+      const payload = {
+        meta: compactObject({
+          contentId: selectedContent?.id ?? null,
+          contentTitle: selectedContent?.title ?? null,
+          sourceUrl: transcriptUrl ?? null,
+          downloadedAt: new Date().toISOString(),
+        }),
+        transcript: data,
+      };
+
+      triggerJsonDownload(payload, transcriptDownloadFileName);
+    } catch (error) {
+      console.error("Failed to download transcript", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to download transcript.";
+      setTranscriptError(message);
+    } finally {
+      setIsDownloadingTranscript(false);
+    }
+  };
+
+  const handleDownloadActionSummary = async () => {
+    if (isDownloadingActionSummary || !currentActionSummaryRun) {
+      return;
+    }
+
+    setIsDownloadingActionSummary(true);
+
+    try {
+      const serializedEntries = actionSummaryEntries
+        .map((entry, index) => serializeActionSummaryEntry(entry, index))
+        .filter(Boolean);
+
+      let rawAnalysisPayload = actionSummaryAnalysis;
+      if (rawAnalysisPayload == null) {
+        const fallbackPayload =
+          currentActionSummaryRun.analysis ?? currentActionSummaryRun.result ?? null;
+        rawAnalysisPayload = safeParseJson(fallbackPayload);
+      }
+
+      if (!serializedEntries.length && rawAnalysisPayload == null) {
+        throw new Error("Action summary results are not available yet.");
+      }
+
+      const payload = {
+        meta: compactObject({
+          contentId: selectedContent?.id ?? null,
+          contentTitle: selectedContent?.title ?? null,
+          runId: currentActionSummaryRun.id ?? null,
+          runName: currentActionSummaryRun.name ?? null,
+          createdAt: currentActionSummaryRun.createdAt ?? null,
+          completedAt: currentActionSummaryRun.completedAt ?? null,
+          requestedAt: currentActionSummaryRun.requestedAt ?? null,
+          filters:
+            currentActionSummaryRun.filters ?? actionSummaryMeta?.filters ?? null,
+          analysisOutputPath: currentActionSummaryRun.analysisOutputPath ?? null,
+          manifestUrl:
+            currentActionSummaryRun.manifestUrl ??
+            actionSummaryMeta?.manifestUrl ??
+            actionSummaryMeta?.manifestPath ??
+            null,
+          storageArtifacts: currentActionSummaryRun.storageArtifacts ?? null,
+          downloadedAt: new Date().toISOString(),
+        }),
+        results: serializedEntries,
+      };
+
+      if (rawAnalysisPayload != null) {
+        payload.rawAnalysis = rawAnalysisPayload;
+      }
+
+      triggerJsonDownload(payload, actionSummaryDownloadFileName);
+    } catch (error) {
+      console.error("Failed to download action summary", error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to download action summary.";
+      setActionSummaryError(message);
+    } finally {
+      setIsDownloadingActionSummary(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentTimestamp(0);
@@ -2813,11 +3030,16 @@ export default function DashboardView({
                     <p className="text-sm font-semibold text-slate-700">Transcription</p>
                     <p className="text-xs text-slate-500">{transcriptHeaderDescription}</p>
                   </div>
-                  {transcriptUrl ? (
-                    <Button asChild size="sm" variant="outline">
-                      <a href={transcriptUrl} rel="noreferrer" target="_blank">
-                        Download JSON
-                      </a>
+                  {transcriptUrl || transcriptData ? (
+                    <Button
+                      disabled={isDownloadingTranscript}
+                      onClick={handleDownloadTranscript}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {isDownloadingTranscript ? "Preparing…" : "Download JSON"}
                     </Button>
                   ) : null}
                 </div>
@@ -3233,14 +3455,26 @@ export default function DashboardView({
                     </label>
                   ) : null}
                   {currentActionSummaryRun ? (
-                    <Button
-                      onClick={handleDeleteActionSummaryRun}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        disabled={isDownloadingActionSummary}
+                        onClick={handleDownloadActionSummary}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingActionSummary ? "Preparing…" : "Download JSON"}
+                      </Button>
+                      <Button
+                        onClick={handleDeleteActionSummaryRun}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </div>
