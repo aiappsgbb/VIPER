@@ -3143,31 +3143,20 @@ export default function DashboardView({
                         onOpenChange={handleFieldBuilderOpenChange}
                         open={isFieldBuilderOpen}
                       >
-                        <div className="space-y-2 rounded-md border border-slate-200 bg-white/60 p-3">
-                          <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="space-y-1">
                             <p className="text-xs font-semibold text-slate-600">Fields to capture</p>
-                            <DialogTrigger asChild>
-                              <Button size="sm" type="button" variant="outline">
-                                Configure fields
-                              </Button>
-                            </DialogTrigger>
+                            <p className="text-xs text-slate-500">
+                              {actionSummaryFields.length
+                                ? `${actionSummaryFields.length} field${actionSummaryFields.length === 1 ? "" : "s"} configured`
+                                : "No fields configured yet."}
+                            </p>
                           </div>
-                          {actionSummaryFields.length ? (
-                            <ul className="space-y-1 text-xs leading-snug text-slate-500">
-                              {actionSummaryFields.map((field, index) => (
-                                <li key={field.name || `field-${index}`}>
-                                  <span className="font-medium text-slate-700">
-                                    {field.name || `Field ${index + 1}`}
-                                  </span>
-                                  {field.description ? (
-                                    <span className="block text-slate-500">{field.description}</span>
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-slate-500">No fields configured.</p>
-                          )}
+                          <DialogTrigger asChild>
+                            <Button size="sm" type="button" variant="outline">
+                              Configure fields
+                            </Button>
+                          </DialogTrigger>
                         </div>
                         <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-h-[85vh]">
                           <div className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-hidden p-6 sm:max-h-[85vh]">
@@ -3256,24 +3245,20 @@ export default function DashboardView({
                         onOpenChange={handleSettingsOpenChange}
                         open={isActionSummarySettingsOpen}
                       >
-                        <div className="space-y-2 rounded-md border border-slate-200 bg-white/60 p-3">
-                          <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="space-y-1">
                             <p className="text-xs font-semibold text-slate-600">Processing settings</p>
-                            <DialogTrigger asChild>
-                              <Button size="sm" type="button" variant="outline">
-                                Configure settings
-                              </Button>
-                            </DialogTrigger>
+                            <p className="text-xs text-slate-500">
+                              {actionSummarySettingsSummary.length
+                                ? "Custom settings applied."
+                                : "Using default settings."}
+                            </p>
                           </div>
-                          {actionSummarySettingsSummary.length ? (
-                            <ul className="space-y-1 text-xs leading-snug text-slate-500">
-                              {actionSummarySettingsSummary.map((line) => (
-                                <li key={line}>{line}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-slate-500">Using default settings.</p>
-                          )}
+                          <DialogTrigger asChild>
+                            <Button size="sm" type="button" variant="outline">
+                              Configure settings
+                            </Button>
+                          </DialogTrigger>
                         </div>
                         <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-h-[85vh]">
                           <div className="flex max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-hidden p-6 sm:max-h-[85vh]">
