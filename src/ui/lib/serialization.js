@@ -1,8 +1,6 @@
 export async function serializeContent(content) {
-  const playbackUrl =
-    typeof content.videoUrl === "string" && content.videoUrl.trim().length
-      ? `/api/content/${content.id}/video`
-      : null;
+  const hasVideoSource =
+    typeof content.videoUrl === "string" && content.videoUrl.trim().length > 0;
 
   return {
     ...content,
@@ -18,7 +16,7 @@ export async function serializeContent(content) {
           updatedAt: content.uploadedBy.updatedAt.toISOString(),
         }
       : null,
-    videoPlaybackUrl: playbackUrl,
+    videoPlaybackUrl: hasVideoSource ? `/api/content/${content.id}/video` : null,
   };
 }
 
