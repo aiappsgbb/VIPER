@@ -96,16 +96,93 @@ function extractNumericSeconds(value) {
     return value;
   }
 
-  if (!value) {
+  if (value == null) {
     return null;
   }
 
-  const match = value.toString().match(/\d+(?:\.\d+)?/);
-  if (!match) {
+  const stringValue = value.toString().trim();
+  if (!stringValue) {
     return null;
   }
 
-  const numericValue = Number.parseFloat(match[0]);
+  const normalizedValue = stringValue.replace(/,/g, ".");
+
+  const isoMatch = normalizedValue.match(
+    /^P(T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)$/i,
+  );
+  if (isoMatch) {
+    const hours = Number.parseFloat(isoMatch[2] ?? "0");
+    const minutes = Number.parseFloat(isoMatch[3] ?? "0");
+    const seconds = Number.parseFloat(isoMatch[4] ?? "0");
+
+    if (
+      !Number.isNaN(hours) &&
+      !Number.isNaN(minutes) &&
+      !Number.isNaN(seconds)
+    ) {
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+  }
+
+  const colonSanitized = normalizedValue
+    .replace(/^[^\d-]+/, "")
+    .replace(/[^0-9:.]+$/, "");
+  if (colonSanitized.includes(":")) {
+    const colonParts = colonSanitized
+      .split(":")
+      .map((part) => part.trim())
+      .filter((part) => part !== "");
+
+    if (colonParts.length >= 2) {
+      let seconds = 0;
+      let multiplier = 1;
+      for (let index = colonParts.length - 1; index >= 0; index -= 1) {
+        const numericPart = Number.parseFloat(colonParts[index]);
+        if (Number.isNaN(numericPart)) {
+          seconds = Number.NaN;
+          break;
+        }
+        seconds += numericPart * multiplier;
+        multiplier *= 60;
+      }
+      if (!Number.isNaN(seconds)) {
+        return seconds;
+      }
+    }
+  }
+
+  let accumulatedSeconds = 0;
+  let matchedDurationUnits = false;
+  const durationPattern =
+    /(\d+(?:\.\d+)?)\s*(hours?|hrs?|hr|h|minutes?|mins?|min|m(?!s)|seconds?|secs?|sec|s)/gi;
+
+  let durationMatch;
+  while ((durationMatch = durationPattern.exec(normalizedValue))) {
+    matchedDurationUnits = true;
+    const amount = Number.parseFloat(durationMatch[1]);
+    if (Number.isNaN(amount)) {
+      continue;
+    }
+
+    const unit = durationMatch[2].toLowerCase();
+    if (unit.startsWith("h")) {
+      accumulatedSeconds += amount * 3600;
+    } else if (unit.startsWith("m")) {
+      accumulatedSeconds += amount * 60;
+    } else {
+      accumulatedSeconds += amount;
+    }
+  }
+  if (matchedDurationUnits) {
+    return accumulatedSeconds;
+  }
+
+  const fallbackMatch = normalizedValue.match(/-?\d+(?:\.\d+)?/);
+  if (!fallbackMatch) {
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(fallbackMatch[0]);
   return Number.isNaN(numericValue) ? null : numericValue;
 }
 
