@@ -248,11 +248,15 @@ export default function ChatWidget({
                             )}
                           >
                             <ReactMarkdown
-                              linkTarget="_blank"
                               remarkPlugins={[remarkGfm]}
                               components={{
-                                a: ({ node, className, ...props }) => (
-                                  <a {...props} className={cn(linkClassName, className)} />
+                                a: ({ node, className, target, rel, ...props }) => (
+                                  <a
+                                    {...props}
+                                    className={cn(linkClassName, className)}
+                                    target={target ?? "_blank"}
+                                    rel={rel ?? "noreferrer"}
+                                  />
                                 ),
                                 code: ({ node, inline, className, children, ...props }) => (
                                   <code
