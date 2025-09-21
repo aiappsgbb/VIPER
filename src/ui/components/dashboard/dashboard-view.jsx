@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -1118,6 +1120,7 @@ export default function DashboardView({
   managementOrganizations,
   canManageCollections,
   canCreateCollections,
+  canDeleteContent = false,
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
@@ -1134,7 +1137,6 @@ export default function DashboardView({
     selectedContent?.id ?? "",
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [collectionSearchQuery, setCollectionSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [openSearchResultId, setOpenSearchResultId] = useState(null);
@@ -1145,6 +1147,9 @@ export default function DashboardView({
   const [actionSummaryError, setActionSummaryError] = useState("");
   const [chapterAnalysisMessage, setChapterAnalysisMessage] = useState("");
   const [chapterAnalysisError, setChapterAnalysisError] = useState("");
+  const [isDeleteContentDialogOpen, setIsDeleteContentDialogOpen] = useState(false);
+  const [isDeletingContent, setIsDeletingContent] = useState(false);
+  const [deleteContentError, setDeleteContentError] = useState("");
   const [actionSummaryMeta, setActionSummaryMeta] = useState(() =>
     normalizeActionSummaryMetaState(
       selectedContent?.processingMetadata?.cobra?.actionSummary ?? null,
@@ -1414,6 +1419,53 @@ export default function DashboardView({
     () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
     [collections, activeCollectionId],
   );
+
+  const handleDeleteContent = async () => {
+    if (!selectedContent?.id) {
+      return;
+    }
+
+    setDeleteContentError("");
+    setIsDeletingContent(true);
+
+    try {
+      const response = await fetch(`/api/content/${selectedContent.id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to delete this video.");
+      }
+
+      setIsDeleteContentDialogOpen(false);
+
+      const fallbackContentId =
+        activeCollection?.contents?.find((item) => item.id !== selectedContent.id)?.id ??
+        collections
+          .flatMap((collection) => collection.contents)
+          .find((item) => item.id !== selectedContent.id)?.id ??
+        null;
+
+      if (fallbackContentId) {
+        router.replace(`/dashboard?contentId=${fallbackContentId}`);
+      } else {
+        router.replace("/dashboard");
+      }
+
+      router.refresh();
+    } catch (error) {
+      setDeleteContentError(
+        error instanceof Error ? error.message : "Failed to delete this video.",
+      );
+    } finally {
+      setIsDeletingContent(false);
+    }
+  };
+
+  const collectionOverviewHref = selectedContent?.collection?.id
+    ? `/dashboard/collections/${selectedContent.collection.id}`
+    : null;
 
   const transcriptUrl = useMemo(() => {
     const direct = selectedContent?.processingMetadata?.cobra?.transcriptUrl;
@@ -1752,7 +1804,6 @@ export default function DashboardView({
     setIsSearching(true);
     setSearchError("");
     setSearchQuery(trimmedQuery);
-    setCollectionSearchQuery(trimmedQuery);
 
     try {
       const response = await fetch("/api/cog", {
@@ -1787,24 +1838,6 @@ export default function DashboardView({
       organizationId: activeOrganizationId || null,
       collectionId: activeCollectionId || null,
       contentId: activeContentFilterId || null,
-    });
-  };
-
-  const handleQuickCollectionSearch = async (event) => {
-    event.preventDefault();
-
-    if (!activeCollectionId) {
-      setSearchError("Select a collection before searching.");
-      return;
-    }
-
-    setActiveContentFilterId("");
-
-    await executeSearch({
-      query: collectionSearchQuery,
-      organizationId: activeOrganizationId || null,
-      collectionId: activeCollectionId,
-      contentId: null,
     });
   };
 
@@ -2205,17 +2238,72 @@ export default function DashboardView({
                     <CardDescription>{selectedContent.description}</CardDescription>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}
-                  >
-                    Action summary: {(selectedContent.actionSummaryStatus ?? "UNKNOWN").toLowerCase()}
-                  </span>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}
-                  >
-                    Chapter analysis: {(selectedContent.chapterAnalysisStatus ?? "UNKNOWN").toLowerCase()}
-                  </span>
+                <div className="flex flex-col items-start gap-2 lg:items-end">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}
+                    >
+                      Action summary: {(selectedContent.actionSummaryStatus ?? "UNKNOWN").toLowerCase()}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}
+                    >
+                      Chapter analysis: {(selectedContent.chapterAnalysisStatus ?? "UNKNOWN").toLowerCase()}
+                    </span>
+                  </div>
+                  {collectionOverviewHref || (canDeleteContent && selectedContent?.id) ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {collectionOverviewHref ? (
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={collectionOverviewHref}>Open collection overview</Link>
+                        </Button>
+                      ) : null}
+                      {canDeleteContent && selectedContent?.id ? (
+                        <Dialog
+                          onOpenChange={(open) => {
+                            setIsDeleteContentDialogOpen(open);
+                            if (!open) {
+                              setDeleteContentError("");
+                            }
+                          }}
+                          open={isDeleteContentDialogOpen}
+                        >
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="destructive">
+                              Delete video
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Delete this video?</DialogTitle>
+                              <DialogDescription>
+                                This will permanently remove this video and delete its related analyses and search
+                                documents. This action cannot be undone.
+                              </DialogDescription>
+                            </DialogHeader>
+                            {deleteContentError ? (
+                              <p className="text-sm text-red-600">{deleteContentError}</p>
+                            ) : null}
+                            <DialogFooter>
+                              <DialogClose asChild>
+                                <Button type="button" variant="outline" disabled={isDeletingContent}>
+                                  Cancel
+                                </Button>
+                              </DialogClose>
+                              <Button
+                                disabled={isDeletingContent}
+                                onClick={handleDeleteContent}
+                                type="button"
+                                variant="destructive"
+                              >
+                                {isDeletingContent ? "Deleting…" : "Delete video"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </CardHeader>
@@ -3220,39 +3308,6 @@ export default function DashboardView({
         </div>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Search this collection</CardTitle>
-              <CardDescription>
-                Ask a question to search every video in the selected collection. Results appear in the AI search panel.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleQuickCollectionSearch}>
-                <Input
-                  onChange={(event) => setCollectionSearchQuery(event.target.value)}
-                  placeholder="Ask about this collection"
-                  value={collectionSearchQuery}
-                />
-                <Button
-                  className="sm:self-start"
-                  disabled={
-                    isSearching ||
-                    !collectionSearchQuery.trim() ||
-                    !activeCollectionId
-                  }
-                  type="submit"
-                >
-                  {isSearching ? "Searching…" : "Search collection"}
-                </Button>
-              </form>
-              {!activeCollectionId ? (
-                <p className="text-xs text-slate-500">
-                  Select a collection from the sidebar to search across its videos.
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
           <VideoUploadPanel
             canCreateCollections={canCreateCollections}
             canManageCollections={canManageCollections}

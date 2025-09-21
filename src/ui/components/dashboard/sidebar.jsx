@@ -44,7 +44,22 @@ export default function DashboardSidebar({ organizations, isAdmin }) {
                   ) : (
                     organization.collections.map((collection) => (
                       <div key={collection.id} className="space-y-1">
-                        <p className="text-xs font-medium text-slate-500">{collection.name}</p>
+                        <Link
+                          aria-current={
+                            pathname?.startsWith(`/dashboard/collections/${collection.id}`)
+                              ? "page"
+                              : undefined
+                          }
+                          className={clsx(
+                            "block text-xs font-medium transition",
+                            pathname?.startsWith(`/dashboard/collections/${collection.id}`)
+                              ? "text-slate-900"
+                              : "text-slate-500 hover:text-slate-900",
+                          )}
+                          href={`/dashboard/collections/${collection.id}`}
+                        >
+                          {collection.name}
+                        </Link>
                         <ul className="space-y-1">
                           {collection.contents.length === 0 ? (
                             <li className="text-xs text-slate-400">No videos yet</li>
