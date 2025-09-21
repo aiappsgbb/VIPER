@@ -236,33 +236,38 @@ export default function ChatWidget({
                           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             {isAssistant ? "Assistant" : "You"}
                           </p>
-                          <ReactMarkdown
+                          <div
                             className={cn(
                               "prose prose-sm max-w-none break-words",
                               isAssistant
                                 ? "prose-invert prose-p:text-slate-100 prose-headings:text-slate-100 prose-strong:text-white"
                                 : "prose-slate",
                             )}
-                            linkTarget="_blank"
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: ({ node, ...props }) => <a {...props} className={linkClassName} />,
-                              code: ({ node, inline, className, children, ...props }) => (
-                                <code
-                                  {...props}
-                                  className={cn(
-                                    codeClassName,
-                                    className,
-                                    inline ? "" : "mt-2 block whitespace-pre-wrap",
-                                  )}
-                                >
-                                  {inline ? children : String(children).replace(/\n$/, "")}
-                                </code>
-                              ),
-                            }}
                           >
-                            {message.content ?? ""}
-                          </ReactMarkdown>
+                            <ReactMarkdown
+                              linkTarget="_blank"
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ node, className, ...props }) => (
+                                  <a {...props} className={cn(linkClassName, className)} />
+                                ),
+                                code: ({ node, inline, className, children, ...props }) => (
+                                  <code
+                                    {...props}
+                                    className={cn(
+                                      codeClassName,
+                                      className,
+                                      inline ? "" : "mt-2 block whitespace-pre-wrap",
+                                    )}
+                                  >
+                                    {inline ? children : String(children).replace(/\n$/, "")}
+                                  </code>
+                                ),
+                              }}
+                            >
+                              {message.content ?? ""}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     );
