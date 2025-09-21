@@ -26,25 +26,46 @@ export function collectBlobUrls(value, accumulator = new Set()) {
   return accumulator;
 }
 
+function addSearchUploadsToSet(uploads, ids) {
+  if (!Array.isArray(uploads)) {
+    return;
+  }
+
+  uploads.forEach((upload) => {
+    const identifier = upload?.id ?? upload?.documentId ?? upload?.document_id;
+    const status = upload?.uploadStatus ?? upload?.status;
+    if (typeof identifier !== "string") {
+      return;
+    }
+    const trimmedIdentifier = identifier.trim();
+    if (
+      trimmedIdentifier.length &&
+      (status == null || String(status).toLowerCase() !== "failed")
+    ) {
+      ids.add(trimmedIdentifier);
+    }
+  });
+}
+
 export function collectSearchDocumentIds(metadata) {
   const ids = new Set();
-  const uploads = metadata?.actionSummary?.searchUploads;
-  if (Array.isArray(uploads)) {
-    uploads.forEach((upload) => {
-      const identifier = upload?.id ?? upload?.documentId ?? upload?.document_id;
-      const status = upload?.uploadStatus ?? upload?.status;
-      if (typeof identifier !== "string") {
+  const actionSummary = metadata?.actionSummary;
+  if (!actionSummary || typeof actionSummary !== "object") {
+    return [];
+  }
+
+  addSearchUploadsToSet(actionSummary?.searchUploads, ids);
+  addSearchUploadsToSet(actionSummary?.search_uploads, ids);
+
+  if (Array.isArray(actionSummary?.runs)) {
+    actionSummary.runs.forEach((run) => {
+      if (!run || typeof run !== "object") {
         return;
       }
-      const trimmedIdentifier = identifier.trim();
-      if (
-        trimmedIdentifier.length &&
-        (status == null || String(status).toLowerCase() !== "failed")
-      ) {
-        ids.add(trimmedIdentifier);
-      }
+      addSearchUploadsToSet(run.searchUploads ?? run.search_uploads, ids);
     });
   }
+
   return Array.from(ids);
 }
 
