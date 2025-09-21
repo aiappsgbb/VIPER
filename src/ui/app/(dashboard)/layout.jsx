@@ -4,7 +4,12 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import DashboardSidebar from "@/components/dashboard/sidebar";
 import DashboardHeader from "@/components/dashboard/header";
-import { canAccessAdmin, canViewAllContent } from "@/lib/rbac";
+import {
+  canAccessAdmin,
+  canCreateCollections,
+  canManageCollections,
+  canViewAllContent,
+} from "@/lib/rbac";
 
 async function getSidebarData(user) {
   const canSeeAll = canViewAllContent(user.role);
@@ -106,6 +111,94 @@ export default async function DashboardLayout({ children }) {
   }
 
   const sidebarData = await getSidebarData(session.user);
+  const canSeeAllContent = canViewAllContent(session.user.role);
+
+  const collectionWhere = canSeeAllContent
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+          {
+            organization: {
+              memberships: {
+                some: {
+                  userId: session.user.id,
+                  role: {
+                    in: ["ADMIN", "OWNER"],
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+  const uploadCollections = await prisma.collection.findMany({
+    where: collectionWhere,
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      organization: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          contents: true,
+        },
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const managementOrganizationsWhere = canSeeAllContent
+    ? {}
+    : {
+        OR: [
+          {
+            memberships: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+          {
+            collections: {
+              some: {
+                memberships: {
+                  some: {
+                    userId: session.user.id,
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+  const managementOrganizations = await prisma.organization.findMany({
+    where: managementOrganizationsWhere,
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const defaultUploadCollectionId = uploadCollections[0]?.id ?? null;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -115,7 +208,14 @@ export default async function DashboardLayout({ children }) {
           organizations={sidebarData}
         />
         <div className="flex flex-1 flex-col">
-          <DashboardHeader user={session.user} />
+          <DashboardHeader
+            canCreateCollections={canCreateCollections(session.user.role)}
+            canManageCollections={canManageCollections(session.user.role)}
+            defaultCollectionId={defaultUploadCollectionId}
+            managementOrganizations={managementOrganizations}
+            uploadCollections={uploadCollections}
+            user={session.user}
+          />
           <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
         </div>
       </div>

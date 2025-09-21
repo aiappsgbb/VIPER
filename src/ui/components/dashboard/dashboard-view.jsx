@@ -2612,19 +2612,6 @@ export default function DashboardView({
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <VideoUploadPanel
-                        asDialog
-                        canCreateCollections={canCreateCollections}
-                        canManageCollections={canManageCollections}
-                        collections={collections}
-                        defaultCollectionId={activeCollectionId}
-                        dialogTrigger={
-                          <Button size="sm" type="button">
-                            Upload video
-                          </Button>
-                        }
-                        managementOrganizations={managementOrganizations}
-                      />
                       {collectionOverviewHref ? (
                         <Button asChild size="sm" variant="outline">
                           <Link href={collectionOverviewHref}>Open collection overview</Link>

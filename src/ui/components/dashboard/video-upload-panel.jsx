@@ -60,12 +60,15 @@ export default function VideoUploadPanel({
     const seen = new Map();
     collections.forEach((collection) => {
       if (!seen.has(collection.id)) {
+        const videoCount =
+          collection.contents?.length ?? collection._count?.contents ?? 0;
+
         seen.set(collection.id, {
           id: collection.id,
           name: collection.name,
           organizationName: collection.organization?.name ?? "Unknown organization",
           description: collection.description ?? "",
-          videoCount: collection.contents?.length ?? 0,
+          videoCount,
           updatedAt: collection.updatedAt,
         });
       }
