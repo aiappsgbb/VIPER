@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,18 @@ import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
-const ReactPlayer = dynamic(() => import("react-player"), { ssr: false });
+const ReactPlayer = dynamic(
+  () =>
+    import("react-player").then(({ default: Player }) => {
+      const ReactPlayerWithRef = forwardRef((props, ref) => (
+        <Player {...props} ref={ref} />
+      ));
+
+      ReactPlayerWithRef.displayName = "ReactPlayer";
+      return ReactPlayerWithRef;
+    }),
+  { ssr: false },
+);
 
 function formatStatus(status) {
   const normalized = (status ?? "QUEUED").toUpperCase();
