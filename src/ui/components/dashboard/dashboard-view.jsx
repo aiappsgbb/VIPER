@@ -2331,37 +2331,49 @@ export default function DashboardView({
   return (
     <>
       <div className="mx-auto w-full max-w-7xl px-6 py-8">
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-6">
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    {selectedContent.organization?.name} • {selectedContent.collection?.name}
-                  </p>
-                  <CardTitle className="text-2xl font-semibold text-slate-900">
-                    {selectedContent.title}
-                  </CardTitle>
-                  {selectedContent.description ? (
-                    <CardDescription>{selectedContent.description}</CardDescription>
-                  ) : null}
-                </div>
-                <div className="flex flex-col items-start gap-2 lg:items-end">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}
-                    >
-                      Action summary: {(selectedContent.actionSummaryStatus ?? "UNKNOWN").toLowerCase()}
-                    </span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}
-                    >
-                      Chapter analysis: {(selectedContent.chapterAnalysisStatus ?? "UNKNOWN").toLowerCase()}
-                    </span>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(260px,1fr)]">
+          <div className="space-y-6">
+            <Card className="overflow-hidden">
+              <CardHeader>
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      {selectedContent.organization?.name} • {selectedContent.collection?.name}
+                    </p>
+                    <CardTitle className="text-2xl font-semibold text-slate-900">
+                      {selectedContent.title}
+                    </CardTitle>
+                    {selectedContent.description ? (
+                      <CardDescription>{selectedContent.description}</CardDescription>
+                    ) : null}
                   </div>
-                  {collectionOverviewHref || (canDeleteContent && selectedContent?.id) ? (
+                  <div className="flex flex-col items-start gap-2 lg:items-end">
                     <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.actionSummaryStatus)}`}
+                      >
+                        Action summary: {(selectedContent.actionSummaryStatus ?? "UNKNOWN").toLowerCase()}
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${formatStatus(selectedContent.chapterAnalysisStatus)}`}
+                      >
+                        Chapter analysis: {(selectedContent.chapterAnalysisStatus ?? "UNKNOWN").toLowerCase()}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <VideoUploadPanel
+                        asDialog
+                        canCreateCollections={canCreateCollections}
+                        canManageCollections={canManageCollections}
+                        collections={collections}
+                        defaultCollectionId={activeCollectionId}
+                        dialogTrigger={
+                          <Button size="sm" type="button">
+                            Upload video
+                          </Button>
+                        }
+                        managementOrganizations={managementOrganizations}
+                      />
                       {collectionOverviewHref ? (
                         <Button asChild size="sm" variant="outline">
                           <Link href={collectionOverviewHref}>Open collection overview</Link>
@@ -2412,11 +2424,10 @@ export default function DashboardView({
                         </Dialog>
                       ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
+              </CardHeader>
+              <CardContent className="space-y-6">
               <div className="aspect-video overflow-hidden rounded-xl bg-black/80">
                 {videoSource ? (
                   <ReactPlayer
@@ -3416,14 +3427,7 @@ export default function DashboardView({
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <VideoUploadPanel
-            canCreateCollections={canCreateCollections}
-            canManageCollections={canManageCollections}
-            collections={collections}
-            defaultCollectionId={activeCollectionId}
-            managementOrganizations={managementOrganizations}
-          />
+          <div className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Collection videos</CardTitle>
