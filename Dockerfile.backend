@@ -28,10 +28,8 @@ COPY src ./src
 COPY samples ./samples
 COPY sample.env ./sample.env
 
-WORKDIR /app/src/cobrapy
-RUN python -m pip install --no-cache-dir -e .
-
 WORKDIR /app
+RUN python -m pip install --no-cache-dir -e .
 
 ENV PYTHONPATH="/app/src"
 
