@@ -50,6 +50,24 @@ function safeParseJson(value) {
   }
 }
 
+function createWordPreview(text, wordLimit = 15) {
+  if (text == null) {
+    return "";
+  }
+
+  const normalized = String(text).trim();
+  if (!normalized) {
+    return normalized;
+  }
+
+  const words = normalized.split(/\s+/);
+  if (words.length <= wordLimit) {
+    return normalized;
+  }
+
+  return `${words.slice(0, wordLimit).join(" ")}…`;
+}
+
 function extractArrayFromAnalysis(analysis, candidateKeys = []) {
   if (!analysis) {
     return [];
@@ -2039,6 +2057,8 @@ export default function DashboardView({
                           }
                         }
 
+                        const summaryPreview = createWordPreview(summaryText) || summaryText;
+
                         const startValue = getFieldValue([
                           "startSeconds",
                           "startTimestamp",
@@ -2185,7 +2205,7 @@ export default function DashboardView({
                               <div className="flex items-start justify-between gap-3">
                                 <CollapsibleTrigger className="group flex flex-1 items-start justify-between gap-3 rounded-md px-0 py-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
                                   <div className="space-y-1">
-                                    <p className="text-sm font-medium text-slate-800">{summaryText}</p>
+                                    <p className="text-sm font-medium text-slate-800">{summaryPreview}</p>
                                     {intervalLabel ? (
                                       <p className="text-xs text-slate-500">{intervalLabel}</p>
                                     ) : null}
@@ -2205,22 +2225,24 @@ export default function DashboardView({
                               </div>
                               <CollapsibleContent className="space-y-3 pt-3">
                                 {detailItems.length ? (
-                                  <dl className="space-y-3 text-sm text-slate-600">
-                                    {detailItems.map((item, detailIndex) => (
-                                      <div className="space-y-1" key={`${resultKey}-detail-${detailIndex}`}>
-                                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                          {item.label}
-                                        </dt>
-                                        <dd
-                                          className={`text-sm text-slate-600${
-                                            item.multiline ? " whitespace-pre-wrap" : ""
-                                          }`}
-                                        >
-                                          {item.text}
-                                        </dd>
-                                      </div>
-                                    ))}
-                                  </dl>
+                                  <ScrollArea className="max-h-48 pr-2">
+                                    <dl className="space-y-3 text-sm text-slate-600">
+                                      {detailItems.map((item, detailIndex) => (
+                                        <div className="space-y-1" key={`${resultKey}-detail-${detailIndex}`}>
+                                          <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                            {item.label}
+                                          </dt>
+                                          <dd
+                                            className={`text-sm text-slate-600${
+                                              item.multiline ? " whitespace-pre-wrap" : ""
+                                            }`}
+                                          >
+                                            {item.text}
+                                          </dd>
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  </ScrollArea>
                                 ) : (
                                   <p className="text-sm text-slate-500">
                                     No additional details available for this result.
