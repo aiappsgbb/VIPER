@@ -1667,35 +1667,68 @@ export default function DashboardView({
     ? `/dashboard/collections/${selectedContent.collection.id}`
     : null;
 
-  const transcriptUrl = useMemo(() => {
-    const direct = selectedContent?.processingMetadata?.cobra?.transcriptUrl;
-    if (typeof direct === "string" && direct.trim().length > 0) {
-      return direct.trim();
+  const { transcriptUrl, transcriptSourceSignature } = useMemo(() => {
+    if (!selectedContent?.id) {
+      return { transcriptUrl: null, transcriptSourceSignature: null };
     }
 
-    const sources = [
-      currentActionSummaryRun?.storageArtifacts,
-      ...actionSummaryRuns.map((run) => run?.storageArtifacts),
-      selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
-      chapterAnalysisData?.storageArtifacts,
-      selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
-    ].filter(Boolean);
+    const cobraMeta = selectedContent?.processingMetadata?.cobra ?? {};
+    const directCandidates = [
+      cobraMeta?.transcriptUrl,
+      cobraMeta?.transcript_url,
+      cobraMeta?.transcriptPath,
+      cobraMeta?.transcript_path,
+    ];
 
-    for (const artifacts of sources) {
-      const candidate = extractTranscriptUrl(artifacts);
-      if (candidate) {
-        return candidate;
+    let source = null;
+    for (const candidate of directCandidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        source = candidate.trim();
+        break;
       }
     }
 
-    return null;
+    if (!source) {
+      const artifactSources = [
+        currentActionSummaryRun?.storageArtifacts,
+        currentActionSummaryRun?.storage_artifacts,
+        ...actionSummaryRuns.flatMap((run) => [
+          run?.storageArtifacts,
+          run?.storage_artifacts,
+        ]),
+        selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
+        selectedContent?.processingMetadata?.cobra?.actionSummary?.storage_artifacts,
+        chapterAnalysisData?.storageArtifacts,
+        chapterAnalysisData?.storage_artifacts,
+        selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
+        selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storage_artifacts,
+      ].filter(Boolean);
+
+      for (const artifacts of artifactSources) {
+        const candidate = extractTranscriptUrl(artifacts);
+        if (candidate) {
+          source = candidate;
+          break;
+        }
+      }
+    }
+
+    if (source) {
+      return {
+        transcriptUrl: `/api/content/${selectedContent.id}/transcript`,
+        transcriptSourceSignature: source,
+      };
+    }
+
+    return { transcriptUrl: null, transcriptSourceSignature: null };
   }, [
+    selectedContent?.id,
+    selectedContent?.processingMetadata?.cobra,
     currentActionSummaryRun?.storageArtifacts,
+    currentActionSummaryRun?.storage_artifacts,
     actionSummaryRuns,
     chapterAnalysisData?.storageArtifacts,
-    selectedContent?.processingMetadata?.cobra?.actionSummary?.storageArtifacts,
-    selectedContent?.processingMetadata?.cobra?.chapterAnalysis?.storageArtifacts,
-    selectedContent?.processingMetadata?.cobra?.transcriptUrl,
+    chapterAnalysisData?.storage_artifacts,
   ]);
 
   const transcriptSegments = transcriptData?.segments ?? [];
@@ -1866,6 +1899,7 @@ export default function DashboardView({
     };
   }, [
     transcriptUrl,
+    transcriptSourceSignature,
     actionSummaryMeta?.lastRunAt,
     chapterAnalysisData?.lastRunAt,
     selectedContent?.id,
