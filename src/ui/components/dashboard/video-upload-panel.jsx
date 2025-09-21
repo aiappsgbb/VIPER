@@ -23,6 +23,8 @@ export default function VideoUploadPanel({
   managementOrganizations = [],
   canCreateCollections = false,
   canManageCollections = false,
+  asDialog = false,
+  dialogTrigger = null,
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -32,6 +34,7 @@ export default function VideoUploadPanel({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
@@ -99,6 +102,30 @@ export default function VideoUploadPanel({
     setNewCollectionName("");
     setNewCollectionDescription("");
     setCollectionError("");
+  };
+
+  const handleUploadDialogChange = (open) => {
+    if (!open && isUploading) {
+      return;
+    }
+
+    setIsUploadDialogOpen(open);
+
+    if (open) {
+      setError("");
+      setSuccess("");
+      setCollectionMessage("");
+      setCollectionMessageTone("info");
+      setCollectionError("");
+    } else {
+      resetForm();
+      resetCollectionForm();
+      setCollectionMessage("");
+      setCollectionMessageTone("info");
+      setIsCreateDialogOpen(false);
+      setIsCreatingCollection(false);
+      setCollectionError("");
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -199,8 +226,8 @@ export default function VideoUploadPanel({
 
   const renderCollectionSupport = canCreateCollections && !organizationOptions.length;
 
-  return (
-    <Card>
+  const uploadContent = (
+    <Card className={asDialog ? "border-none shadow-none" : undefined}>
       <CardHeader>
         <CardTitle className="text-lg">Upload a video</CardTitle>
         <CardDescription>
@@ -383,4 +410,24 @@ export default function VideoUploadPanel({
       </form>
     </Card>
   );
+
+  if (asDialog) {
+    const triggerNode =
+      dialogTrigger ?? (
+        <Button size="sm" type="button">
+          Upload video
+        </Button>
+      );
+
+    return (
+      <Dialog onOpenChange={handleUploadDialogChange} open={isUploadDialogOpen}>
+        <DialogTrigger asChild>{triggerNode}</DialogTrigger>
+        <DialogContent className="max-w-3xl p-0">
+          {uploadContent}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return uploadContent;
 }
