@@ -224,11 +224,13 @@ class VideoAnalyzer:
             # generate the prompt for the segment
             # include the right number of previous results to refine and generate the prompt
             if len(results_list) == 0:
-                result_list_subset = None
-            if len(results_list) <= number_of_previous_results_to_refine:
-                result_list_subset = results_list[: len(results_list)]
+                result_list_subset = []
+            elif number_of_previous_results_to_refine > 0:
+                result_list_subset = results_list[
+                    -number_of_previous_results_to_refine :
+                ]
             else:
-                result_list_subset = results_list[:number_of_previous_results_to_refine]
+                result_list_subset = []
 
             result_list_subset_string = json.dumps(result_list_subset)
 
