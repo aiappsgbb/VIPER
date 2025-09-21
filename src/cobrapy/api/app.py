@@ -16,6 +16,7 @@ from ..analysis import ActionSummary, ChapterAnalysis
 from ..azure_integration import AzureStorageManager
 from ..models.environment import CobraEnvironment
 from ..models.video import VideoManifest
+from ..queue_manager import QueueFullError, get_analysis_queue
 from ..video_client import VideoClient
 
 
@@ -479,13 +480,33 @@ async def upload_video(
 
 @app.post("/analysis/action-summary")
 def run_action_summary(request: BaseAnalysisRequest):
+    queue = get_analysis_queue()
+    original_max_workers = request.max_workers
+    clamped_workers = queue.clamp_max_workers(original_max_workers)
+    if original_max_workers != clamped_workers:
+        logger.info(
+            "Clamping requested max_workers from %s to %s to respect queue limits",
+            original_max_workers,
+            clamped_workers,
+        )
+
+    request = request.model_copy(update={"max_workers": clamped_workers})
+
     request_summary = _summarize_request(request)
     logger.info(
         "Received action summary request: %s",
         _serialize_for_log(request_summary),
     )
 
-    try:
+    request_identifier = (
+        request_summary.get("video_id")
+        or request_summary.get("video_path")
+        or request_summary.get("manifest_path")
+        or "unknown"
+    )
+    job_description = f"action-summary:{os.path.basename(str(request_identifier))}"
+
+    def process_request() -> JSONResponse:
         client = _create_client(request)
         _run_preprocess(client, request)
 
@@ -523,21 +544,30 @@ def run_action_summary(request: BaseAnalysisRequest):
         elif getattr(analysis_config, "system_prompt_lens", None):
             analysis_config.lens_prompt = analysis_config.system_prompt_lens
 
+        token_estimate = queue.estimate_tokens(client.manifest, lens_prompt)
         logger.info(
-            "Invoking action summary analysis for %s (run_async=%s, max_workers=%s, reprocess_segments=%s)",
+            "Waiting for token budget (estimated=%s) for %s (pending_jobs=%s)",
+            token_estimate,
             client.manifest.name,
-            request.run_async,
-            request.max_workers,
-            request.reprocess_segments,
+            queue.pending_jobs(),
         )
 
-        result = client.analyze_video(
-            analysis_config=analysis_config,
-            run_async=request.run_async,
-            max_concurrent_tasks=request.max_workers,
-            reprocess_segments=request.reprocess_segments,
-            metadata=metadata,
-        )
+        with queue.consume_tokens(token_estimate):
+            logger.info(
+                "Invoking action summary analysis for %s (run_async=%s, max_workers=%s, reprocess_segments=%s)",
+                client.manifest.name,
+                request.run_async,
+                request.max_workers,
+                request.reprocess_segments,
+            )
+
+            result = client.analyze_video(
+                analysis_config=analysis_config,
+                run_async=request.run_async,
+                max_concurrent_tasks=request.max_workers,
+                reprocess_segments=request.reprocess_segments,
+                metadata=metadata,
+            )
 
         logger.info(
             "Action summary completed for %s. Output path=%s search_uploads=%s",
@@ -556,6 +586,18 @@ def run_action_summary(request: BaseAnalysisRequest):
             ),
             status_code=200,
         )
+
+    try:
+        return queue.execute(process_request, description=job_description)
+    except QueueFullError as exc:
+        logger.warning(
+            "Action summary request rejected because the queue is full (pending=%s)",
+            queue.pending_jobs(),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis service is at capacity. Please retry shortly.",
+        ) from exc
     except HTTPException as exc:
         if exc.status_code >= 500:
             logger.exception(
