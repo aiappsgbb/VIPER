@@ -906,10 +906,15 @@ function normalizeActionSummaryRunState(run) {
     run.createdAt ?? run.requestedAt ?? run.lastRunAt ?? run.completedAt ?? null;
   const completedAt = run.completedAt ?? run.lastRunAt ?? createdAt ?? null;
 
+  const analysisPayload =
+    run.result !== undefined && run.result !== null
+      ? run.result
+      : run.analysis ?? null;
+
   const normalized = {
     id,
     name,
-    analysis: run.analysis ?? null,
+    analysis: analysisPayload,
     analysisTemplate,
     analysisOutputPath,
     storageArtifacts,
@@ -921,6 +926,10 @@ function normalizeActionSummaryRunState(run) {
     requestedAt: run.requestedAt ?? run.createdAt ?? null,
     completedAt,
     config: run.config ?? null,
+    result:
+      run.result !== undefined && run.result !== null
+        ? run.result
+        : analysisPayload,
   };
 
   Object.entries(run).forEach(([key, value]) => {
@@ -948,7 +957,12 @@ function hasLegacyActionSummaryData(meta) {
     return false;
   }
 
-  if (meta.analysis != null || meta.analysis_output_path != null || meta.analysisOutputPath != null) {
+  if (
+    meta.result != null ||
+    meta.analysis != null ||
+    meta.analysis_output_path != null ||
+    meta.analysisOutputPath != null
+  ) {
     return true;
   }
   if (meta.storageArtifacts != null || meta.storage_artifacts != null) {
@@ -1330,7 +1344,10 @@ export default function DashboardView({
     ? actionSummaryRuns.findIndex((run) => run.id === currentActionSummaryRun.id)
     : -1;
   const actionSummaryAnalysis = useMemo(
-    () => safeParseJson(currentActionSummaryRun?.analysis),
+    () =>
+      safeParseJson(
+        currentActionSummaryRun?.analysis ?? currentActionSummaryRun?.result ?? null,
+      ),
     [currentActionSummaryRun],
   );
   const chapterAnalysisAnalysis = useMemo(

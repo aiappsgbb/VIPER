@@ -158,10 +158,15 @@ function normalizeActionSummaryRun(run) {
   const requestedAt = run.requestedAt ?? run.createdAt ?? null;
   const completedAt = run.completedAt ?? run.lastRunAt ?? createdAt ?? null;
 
+  const analysisPayload =
+    run.result !== undefined && run.result !== null
+      ? run.result
+      : run.analysis ?? null;
+
   const normalized = {
     id,
     name,
-    analysis: run.analysis ?? null,
+    analysis: analysisPayload,
     analysisOutputPath,
     storageArtifacts,
     searchUploads,
@@ -176,6 +181,10 @@ function normalizeActionSummaryRun(run) {
     createdAt,
     requestedAt,
     completedAt,
+    result:
+      run.result !== undefined && run.result !== null
+        ? run.result
+        : analysisPayload,
   };
 
   Object.entries(run).forEach(([key, value]) => {
@@ -215,6 +224,7 @@ function buildLegacyRunFromMeta(rawMeta) {
   }
 
   const hasLegacyData =
+    rawMeta.result != null ||
     rawMeta.analysis != null ||
     rawMeta.analysisOutputPath != null ||
     rawMeta.analysis_output_path != null ||
@@ -230,7 +240,7 @@ function buildLegacyRunFromMeta(rawMeta) {
   const legacyRun = normalizeActionSummaryRun({
     id: rawMeta.id,
     name: rawMeta.name,
-    analysis: rawMeta.analysis,
+    analysis: rawMeta.result ?? rawMeta.analysis ?? null,
     analysisOutputPath:
       rawMeta.analysisOutputPath ?? rawMeta.analysis_output_path ?? null,
     storageArtifacts:
@@ -246,6 +256,7 @@ function buildLegacyRunFromMeta(rawMeta) {
     requestedAt: rawMeta.requestedAt ?? null,
     completedAt: rawMeta.lastRunAt ?? rawMeta.completedAt ?? null,
     lastRunAt: rawMeta.lastRunAt ?? null,
+    result: rawMeta.result ?? rawMeta.analysis ?? null,
   });
 
   if (!legacyRun) {
@@ -1073,13 +1084,18 @@ export async function POST(request, { params }) {
   const completedAt = new Date().toISOString();
   const runId = createActionSummaryRunId();
 
+  const analysisResult =
+    data?.result !== undefined && data?.result !== null
+      ? data.result
+      : data?.analysis ?? null;
+
   const runRecord = {
     id: runId,
     name:
       typeof requestBody?.name === "string" && requestBody.name.trim().length
         ? requestBody.name.trim()
         : null,
-    analysis: data?.analysis ?? null,
+    analysis: analysisResult,
     analysisOutputPath: data?.analysis_output_path ?? null,
     storageArtifacts: data?.storage_artifacts ?? null,
     searchUploads: data?.search_uploads ?? [],
@@ -1091,6 +1107,7 @@ export async function POST(request, { params }) {
     createdAt: nowIso,
     requestedAt: nowIso,
     completedAt,
+    result: analysisResult,
   };
 
   updatedMeta.runs = updatedMeta.runs.filter((run) => run?.id !== runId);
