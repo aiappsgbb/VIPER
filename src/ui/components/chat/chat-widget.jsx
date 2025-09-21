@@ -21,16 +21,19 @@ export default function ChatWidget({
   selectedContent,
   actionSummaryContext,
   chapterAnalysisContext,
+  defaultScope = "video",
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const [searchScope, setSearchScope] = useState("video");
+  const [searchScope, setSearchScope] = useState(
+    defaultScope === "collection" ? "collection" : "video",
+  );
   const hasCollectionScope = Boolean(selectedContent?.collection?.id);
   const resolvedSearchScope = hasCollectionScope && searchScope === "collection" ? "collection" : "video";
 
   useEffect(() => {
-    setSearchScope("video");
-  }, [selectedContent?.id]);
+    setSearchScope(defaultScope === "collection" ? "collection" : "video");
+  }, [selectedContent?.id, defaultScope]);
 
   useEffect(() => {
     if (!hasCollectionScope) {

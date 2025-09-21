@@ -128,6 +128,24 @@ export function canUploadContent(role) {
   return hasPermission(role, "uploadContent");
 }
 
+export function canDeleteContent(role) {
+  return [
+    Roles.ADMIN,
+    Roles.SUPER_USER,
+    Roles.ORGANIZATION_ADMIN,
+    Roles.COLLECTION_ADMIN,
+  ].includes(role);
+}
+
+export function canDeleteCollection(role) {
+  return [
+    Roles.ADMIN,
+    Roles.SUPER_USER,
+    Roles.ORGANIZATION_ADMIN,
+    Roles.COLLECTION_ADMIN,
+  ].includes(role);
+}
+
 export const ROLE_ORDER = [
   Roles.USER,
   Roles.COLLECTION_ADMIN,
