@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
 import { buildBackendUrl } from "@/lib/backend";
-import { getAnalysisServiceDispatcher } from "@/lib/analysis-service";
+import { postToAnalysisService } from "@/lib/analysis-service";
 
 function getChapterAnalysisEndpoint() {
   const configured = process.env.CHAPTER_ANALYSIS_ENDPOINT;
@@ -169,18 +169,12 @@ export async function POST(_request, { params }) {
     },
   });
 
-  let response;
-  let data;
+  let requestResult;
   try {
-    response = await fetch(getChapterAnalysisEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        buildRequestPayload({ content, session, cobraMeta }),
-      ),
-      dispatcher: getAnalysisServiceDispatcher(),
-    });
-    data = await response.json().catch(() => null);
+    requestResult = await postToAnalysisService(
+      getChapterAnalysisEndpoint(),
+      buildRequestPayload({ content, session, cobraMeta }),
+    );
   } catch (error) {
     cobraMeta.chapterAnalysis = {
       lastRunAt: new Date().toISOString(),
@@ -200,7 +194,9 @@ export async function POST(_request, { params }) {
     return NextResponse.json({ error: "Failed to contact the analysis service." }, { status: 502 });
   }
 
-  if (!response?.ok) {
+  const { ok, status, data } = requestResult;
+
+  if (!ok) {
     const errorMessage =
       data?.detail ||
       data?.error ||
@@ -222,7 +218,7 @@ export async function POST(_request, { params }) {
       },
     });
 
-    return NextResponse.json({ error: errorMessage }, { status: response.status || 500 });
+    return NextResponse.json({ error: errorMessage }, { status: status || 500 });
   }
 
   const manifestUrlFromResponse =

@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
 import { buildBackendUrl } from "@/lib/backend";
-import { getAnalysisServiceDispatcher } from "@/lib/analysis-service";
+import { postToAnalysisService } from "@/lib/analysis-service";
 import {
   collectBlobUrls,
   collectSearchDocumentIds,
@@ -990,16 +990,12 @@ export async function POST(request, { params }) {
     },
   });
 
-  let response;
-  let data;
+  let requestResult;
   try {
-    response = await fetch(getActionSummaryEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestPayload),
-      dispatcher: getAnalysisServiceDispatcher(),
-    });
-    data = await response.json().catch(() => null);
+    requestResult = await postToAnalysisService(
+      getActionSummaryEndpoint(),
+      requestPayload,
+    );
   } catch (error) {
     updatedMeta.lastRunAt = nowIso;
     updatedMeta.status = "FAILED";
@@ -1022,7 +1018,9 @@ export async function POST(request, { params }) {
     );
   }
 
-  if (!response?.ok) {
+  const { ok, status, data } = requestResult;
+
+  if (!ok) {
     const errorMessage =
       data?.detail ||
       data?.error ||
@@ -1043,10 +1041,7 @@ export async function POST(request, { params }) {
       },
     });
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: response.status || 500 },
-    );
+    return NextResponse.json({ error: errorMessage }, { status: status || 500 });
   }
 
   const manifestUrlFromResponse =
