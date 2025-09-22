@@ -2054,6 +2054,57 @@ export default function DashboardView({
     }
   };
 
+  const performSeek = useCallback(
+    (seconds) => {
+      const player = playerRef.current;
+      if (!player) {
+        return false;
+      }
+
+      let didSeek = false;
+
+      if (typeof player.seekTo === "function") {
+        try {
+          player.seekTo(seconds, "seconds");
+          didSeek = true;
+        } catch (error) {
+          didSeek = false;
+        }
+      }
+
+      if (typeof player.getInternalPlayer === "function") {
+        const internalPlayer = player.getInternalPlayer();
+        if (internalPlayer) {
+          if (
+            typeof internalPlayer.currentTime === "number" &&
+            Number.isFinite(internalPlayer.currentTime)
+          ) {
+            try {
+              internalPlayer.currentTime = seconds;
+              didSeek = true;
+            } catch (error) {
+              // ignore assignment errors for players that do not expose currentTime
+            }
+          } else if (typeof internalPlayer.seek === "function") {
+            try {
+              internalPlayer.seek(seconds);
+              didSeek = true;
+            } catch (error) {
+              // ignore seek errors for players that do not expose seek helpers
+            }
+          }
+        }
+      }
+
+      if (didSeek) {
+        setCurrentTimestamp(seconds);
+      }
+
+      return didSeek;
+    },
+    [],
+  );
+
   useEffect(() => {
     if (typeof initialStartSeconds === "number") {
       const clamped = Math.max(0, initialStartSeconds);
@@ -2280,57 +2331,6 @@ export default function DashboardView({
       contentId: activeContentFilterId || null,
     });
   };
-
-  const performSeek = useCallback(
-    (seconds) => {
-      const player = playerRef.current;
-      if (!player) {
-        return false;
-      }
-
-      let didSeek = false;
-
-      if (typeof player.seekTo === "function") {
-        try {
-          player.seekTo(seconds, "seconds");
-          didSeek = true;
-        } catch (error) {
-          didSeek = false;
-        }
-      }
-
-      if (typeof player.getInternalPlayer === "function") {
-        const internalPlayer = player.getInternalPlayer();
-        if (internalPlayer) {
-          if (
-            typeof internalPlayer.currentTime === "number" &&
-            Number.isFinite(internalPlayer.currentTime)
-          ) {
-            try {
-              internalPlayer.currentTime = seconds;
-              didSeek = true;
-            } catch (error) {
-              // ignore assignment errors for players that do not expose currentTime
-            }
-          } else if (typeof internalPlayer.seek === "function") {
-            try {
-              internalPlayer.seek(seconds);
-              didSeek = true;
-            } catch (error) {
-              // ignore seek errors for players that do not expose seek helpers
-            }
-          }
-        }
-      }
-
-      if (didSeek) {
-        setCurrentTimestamp(seconds);
-      }
-
-      return didSeek;
-    },
-    [],
-  );
 
   const handleSeekToTimestamp = useCallback(
     (timestamp) => {
