@@ -1279,6 +1279,163 @@ function formatActionSummaryRunLabel(run, index) {
   return `Run ${index + 1}`;
 }
 
+function normalizeChapterScene(scene, index) {
+  if (!scene || typeof scene !== "object") {
+    const textValue = typeof scene === "string" ? scene : JSON.stringify(scene, null, 2);
+    return {
+      id: `scene-${index}`,
+      title: `Scene ${index + 1}`,
+      description: textValue,
+      actions: null,
+      characters: null,
+      keyObjects: null,
+      sentiment: null,
+      setting: null,
+      notes: null,
+      start: null,
+      end: null,
+      startSeconds: null,
+      endSeconds: null,
+      startLabel: null,
+      endLabel: null,
+      durationSeconds: null,
+      durationLabel: null,
+      raw: scene,
+    };
+  }
+
+  const startValue =
+    scene.start ??
+    scene.start_time ??
+    scene.start_timestamp ??
+    scene.Start ??
+    scene.Start_Timestamp ??
+    null;
+  const endValue =
+    scene.end ??
+    scene.end_time ??
+    scene.end_timestamp ??
+    scene.End ??
+    scene.End_Timestamp ??
+    null;
+  const startSeconds = extractNumericSeconds(startValue);
+  const endSeconds = extractNumericSeconds(endValue);
+  const durationSeconds =
+    startSeconds != null && endSeconds != null && endSeconds >= startSeconds
+      ? endSeconds - startSeconds
+      : null;
+
+  return {
+    id: scene.id ?? scene.scene_id ?? scene.title ?? `scene-${index}`,
+    title:
+      scene.title ??
+      scene.scene_title ??
+      scene.sceneName ??
+      scene.name ??
+      scene.heading ??
+      `Scene ${index + 1}`,
+    description: scene.description ?? scene.summary ?? scene.overview ?? null,
+    actions: scene.actions ?? scene.key_actions ?? scene.highlights ?? null,
+    characters: scene.characters ?? scene.people ?? scene.participants ?? null,
+    keyObjects: scene.key_objects ?? scene.keyObjects ?? scene.objects ?? null,
+    sentiment: scene.sentiment ?? scene.mood ?? null,
+    setting: scene.setting ?? scene.location ?? scene.environment ?? null,
+    notes: scene.notes ?? scene.details ?? null,
+    start: startValue,
+    end: endValue,
+    startSeconds,
+    endSeconds,
+    startLabel: startValue ?? (startSeconds != null ? formatSecondsLabel(startSeconds) : null),
+    endLabel: endValue ?? (endSeconds != null ? formatSecondsLabel(endSeconds) : null),
+    durationSeconds,
+    durationLabel:
+      durationSeconds != null ? formatSecondsLabel(durationSeconds) : scene.duration ?? null,
+    raw: scene,
+  };
+}
+
+function extractChapterSceneArray(entry) {
+  if (!entry || typeof entry !== "object") {
+    return [];
+  }
+
+  const directScenes = extractArrayFromAnalysis(entry, [
+    "scenes",
+    "sceneBreakdown",
+    "scene_breakdown",
+    "sceneDetails",
+    "scene_details",
+    "sceneList",
+    "scene_list",
+    "items",
+    "entries",
+  ]);
+  if (directScenes.length) {
+    return directScenes;
+  }
+
+  const candidateKeys = [
+    "scenes",
+    "sceneBreakdown",
+    "scene_breakdown",
+    "sceneDetails",
+    "scene_details",
+    "sceneMap",
+    "scene_map",
+    "sceneList",
+    "scene_list",
+  ];
+
+  for (const key of candidateKeys) {
+    const value = entry[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (value && typeof value === "object") {
+      if (Array.isArray(value.scenes)) {
+        return value.scenes;
+      }
+
+      const objectScenes = Object.entries(value)
+        .map(([sceneKey, sceneValue]) => {
+          if (!sceneValue) {
+            return null;
+          }
+
+          if (typeof sceneValue === "object") {
+            return {
+              title:
+                sceneValue.title ??
+                sceneValue.scene_title ??
+                sceneValue.name ??
+                sceneValue.heading ??
+                sceneKey,
+              ...sceneValue,
+            };
+          }
+
+          const textValue =
+            typeof sceneValue === "string"
+              ? sceneValue
+              : JSON.stringify(sceneValue, null, 2);
+
+          return {
+            title: sceneKey,
+            description: textValue,
+          };
+        })
+        .filter(Boolean);
+
+      if (objectScenes.length) {
+        return objectScenes;
+      }
+    }
+  }
+
+  return [];
+}
+
 function normalizeChapterAnalysisEntry(entry, index) {
   if (!entry || typeof entry !== "object") {
     const textValue = typeof entry === "string" ? entry : JSON.stringify(entry, null, 2);
@@ -1289,6 +1446,12 @@ function normalizeChapterAnalysisEntry(entry, index) {
       start: null,
       end: null,
       startSeconds: null,
+      endSeconds: null,
+      startLabel: null,
+      endLabel: null,
+      scenes: [],
+      sceneCount: 0,
+      scenePreview: textValue,
       raw: entry,
     };
   }
@@ -1307,6 +1470,14 @@ function normalizeChapterAnalysisEntry(entry, index) {
     entry.End ??
     entry.End_Timestamp ??
     null;
+  const startSeconds = extractNumericSeconds(startValue);
+  const endSeconds = extractNumericSeconds(endValue);
+
+  const scenes = extractChapterSceneArray(entry).map((scene, sceneIndex) =>
+    normalizeChapterScene(scene, sceneIndex),
+  );
+  const summaryText = entry.summary ?? entry.description ?? entry.overview ?? null;
+  const firstSceneWithDescription = scenes.find((scene) => scene.description);
 
   return {
     id: entry.id ?? entry.chapter_id ?? entry.title ?? `chapter-${index}`,
@@ -1317,10 +1488,16 @@ function normalizeChapterAnalysisEntry(entry, index) {
       entry.name ??
       entry.heading ??
       `Chapter ${index + 1}`,
-    summary: entry.summary ?? entry.description ?? entry.overview ?? null,
+    summary: summaryText,
     start: startValue,
     end: endValue,
-    startSeconds: extractNumericSeconds(startValue),
+    startSeconds,
+    endSeconds,
+    startLabel: startValue ?? (startSeconds != null ? formatSecondsLabel(startSeconds) : null),
+    endLabel: endValue ?? (endSeconds != null ? formatSecondsLabel(endSeconds) : null),
+    scenes,
+    sceneCount: scenes.length,
+    scenePreview: summaryText ?? firstSceneWithDescription?.description ?? null,
     raw: entry,
   };
 }
@@ -1334,7 +1511,18 @@ function normalizeChapterAnalysisEntries(analysis) {
     "items",
   ]);
 
-  return entries.map((entry, index) => normalizeChapterAnalysisEntry(entry, index));
+  if (entries.length) {
+    return entries.map((entry, index) => normalizeChapterAnalysisEntry(entry, index));
+  }
+
+  if (analysis && typeof analysis === "object") {
+    const values = Object.values(analysis).filter((value) => value && typeof value === "object");
+    if (values.length) {
+      return values.map((entry, index) => normalizeChapterAnalysisEntry(entry, index));
+    }
+  }
+
+  return [];
 }
 
 function formatDateTime(value) {
@@ -1449,6 +1637,7 @@ export default function DashboardView({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [openSearchResultId, setOpenSearchResultId] = useState(null);
+  const [openChapterId, setOpenChapterId] = useState(null);
   const [searchError, setSearchError] = useState("");
   const shouldLimitSearchResultsHeight = searchResults.length > 5;
   const [isRunningActionSummary, setIsRunningActionSummary] = useState(false);
@@ -1626,6 +1815,20 @@ export default function DashboardView({
     () => normalizeChapterAnalysisEntries(chapterAnalysisAnalysis),
     [chapterAnalysisAnalysis],
   );
+  useEffect(() => {
+    if (!openChapterId) {
+      return;
+    }
+
+    const hasChapter = chapterAnalysisEntries.some((entry, index) => {
+      const chapterKey = entry.id ?? `chapter-${index}`;
+      return chapterKey === openChapterId;
+    });
+
+    if (!hasChapter) {
+      setOpenChapterId(null);
+    }
+  }, [chapterAnalysisEntries, openChapterId]);
   const currentActionSummaryEntry = useMemo(() => {
     if (!actionSummaryEntries.length) {
       return null;
@@ -1728,7 +1931,60 @@ export default function DashboardView({
               typeof entry.startSeconds === "number" && Number.isFinite(entry.startSeconds)
                 ? entry.startSeconds
                 : null,
+            endSeconds:
+              typeof entry.endSeconds === "number" && Number.isFinite(entry.endSeconds)
+                ? entry.endSeconds
+                : null,
           };
+
+          if (Array.isArray(entry.scenes) && entry.scenes.length) {
+            const scenes = entry.scenes
+              .map((scene) => {
+                const scenePayload = {
+                  title: scene.title ?? null,
+                  summary: scene.description ?? null,
+                  actions: scene.actions ?? null,
+                  characters: scene.characters ?? null,
+                  keyObjects: scene.keyObjects ?? null,
+                  sentiment: scene.sentiment ?? null,
+                  setting: scene.setting ?? null,
+                  startTime: scene.startLabel ?? null,
+                  endTime: scene.endLabel ?? null,
+                  startSeconds:
+                    typeof scene.startSeconds === "number" && Number.isFinite(scene.startSeconds)
+                      ? scene.startSeconds
+                      : null,
+                  endSeconds:
+                    typeof scene.endSeconds === "number" && Number.isFinite(scene.endSeconds)
+                      ? scene.endSeconds
+                      : null,
+                };
+
+                const filteredSceneEntries = Object.entries(scenePayload).filter(([, value]) => {
+                  if (value == null) {
+                    return false;
+                  }
+                  if (typeof value === "string") {
+                    return value.trim().length > 0;
+                  }
+                  if (Array.isArray(value)) {
+                    return value.length > 0;
+                  }
+                  return true;
+                });
+
+                if (filteredSceneEntries.length <= 1) {
+                  return null;
+                }
+
+                return Object.fromEntries(filteredSceneEntries);
+              })
+              .filter(Boolean);
+
+            if (scenes.length) {
+              payload.scenes = scenes;
+            }
+          }
 
           return Object.fromEntries(
             Object.entries(payload).filter(([_, value]) => {
@@ -1737,6 +1993,9 @@ export default function DashboardView({
               }
               if (typeof value === "string") {
                 return value.trim().length > 0;
+              }
+              if (Array.isArray(value)) {
+                return value.length > 0;
               }
               return true;
             }),
@@ -3570,31 +3829,163 @@ export default function DashboardView({
               {chapterAnalysisEntries.length ? (
                 <ScrollArea className="max-h-80 rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
                   <div className="divide-y divide-slate-200/80">
-                    {chapterAnalysisEntries.map((entry, index) => (
-                      <div className="space-y-2 p-4" key={entry.id ?? `chapter-${index}`}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium text-slate-800">{entry.title}</p>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                              {entry.start ? <span>Start: {entry.start}</span> : null}
-                              {entry.end ? <span>End: {entry.end}</span> : null}
+                    {chapterAnalysisEntries.map((entry, index) => {
+                      const chapterKey = entry.id ?? `chapter-${index}`;
+                      const previewSource = entry.summary ?? entry.scenePreview ?? "";
+                      const previewText = previewSource
+                        ? createWordPreview(previewSource, 24)
+                        : null;
+                      const hasScenes = Array.isArray(entry.scenes) && entry.scenes.length > 0;
+
+                      return (
+                        <div className="p-4" key={chapterKey}>
+                          <Collapsible
+                            open={openChapterId === chapterKey}
+                            onOpenChange={(isOpen) =>
+                              setOpenChapterId(isOpen ? chapterKey : null)
+                            }
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <CollapsibleTrigger className="group flex flex-1 items-start justify-between gap-3 rounded-xl px-0 py-0 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-medium text-slate-800">{entry.title}</p>
+                                    {entry.sceneCount ? (
+                                      <span className="rounded-full bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                                        {entry.sceneCount} {entry.sceneCount === 1 ? "scene" : "scenes"}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                    {entry.startLabel ? <span>Start: {entry.startLabel}</span> : null}
+                                    {entry.endLabel ? <span>End: {entry.endLabel}</span> : null}
+                                  </div>
+                                  {previewText ? (
+                                    <p className="text-xs text-slate-500">{previewText}</p>
+                                  ) : null}
+                                </div>
+                                <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-sky-600 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                              </CollapsibleTrigger>
+                              {entry.startSeconds != null ? (
+                                <Button
+                                  onClick={() => handleSeekToTimestamp(entry.startSeconds)}
+                                  size="sm"
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  Jump
+                                </Button>
+                              ) : null}
                             </div>
-                            {entry.summary ? (
-                              <p className="text-xs text-slate-500">{entry.summary}</p>
-                            ) : null}
-                          </div>
-                          {entry.startSeconds != null ? (
-                            <Button
-                              onClick={() => handleSeekToTimestamp(entry.startSeconds)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              Jump
-                            </Button>
-                          ) : null}
+                            <CollapsibleContent className="space-y-4 pt-3">
+                              {entry.summary ? (
+                                <div className="rounded-xl border border-sky-100/80 bg-sky-50/60 p-3 text-sm text-slate-700 shadow-inner">
+                                  {entry.summary}
+                                </div>
+                              ) : null}
+                              {hasScenes ? (
+                                <div className="space-y-3">
+                                  {entry.scenes.map((scene, sceneIndex) => {
+                                    const sceneKey = scene.id ?? `${chapterKey}-scene-${sceneIndex}`;
+                                    const sceneDetails = [
+                                      { label: "Actions", value: scene.actions },
+                                      { label: "Characters", value: scene.characters },
+                                      { label: "Key objects", value: scene.keyObjects },
+                                      { label: "Setting", value: scene.setting },
+                                      { label: "Sentiment", value: scene.sentiment },
+                                      { label: "Notes", value: scene.notes },
+                                    ].filter((detail) => hasMeaningfulValue(detail.value));
+                                    const intervalLabels = [
+                                      scene.startLabel ? `Start: ${scene.startLabel}` : null,
+                                      scene.endLabel ? `End: ${scene.endLabel}` : null,
+                                      scene.durationLabel ? `Duration: ${scene.durationLabel}` : null,
+                                    ].filter(Boolean);
+
+                                    return (
+                                      <div
+                                        className="space-y-2 rounded-xl border border-slate-200/70 bg-white/80 p-3 shadow-sm"
+                                        key={sceneKey}
+                                      >
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                          <div className="space-y-1">
+                                            <p className="text-sm font-semibold text-slate-700">{scene.title}</p>
+                                            {intervalLabels.length ? (
+                                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                                {intervalLabels.map((label) => (
+                                                  <span key={`${sceneKey}-${label}`}>{label}</span>
+                                                ))}
+                                              </div>
+                                            ) : null}
+                                            {scene.description ? (
+                                              <p className="text-xs text-slate-500">{scene.description}</p>
+                                            ) : null}
+                                          </div>
+                                          {scene.startSeconds != null ? (
+                                            <Button
+                                              onClick={() => handleSeekToTimestamp(scene.startSeconds)}
+                                              size="sm"
+                                              type="button"
+                                              variant="outline"
+                                            >
+                                              Jump
+                                            </Button>
+                                          ) : null}
+                                        </div>
+                                        {sceneDetails.length ? (
+                                          <dl className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                                            {sceneDetails.map((detail) => {
+                                              const detailValue = Array.isArray(detail.value)
+                                                ? detail.value
+                                                    .map((item) => {
+                                                      if (item == null) {
+                                                        return null;
+                                                      }
+                                                      if (typeof item === "string") {
+                                                        return item;
+                                                      }
+                                                      try {
+                                                        return JSON.stringify(item);
+                                                      } catch (error) {
+                                                        return String(item);
+                                                      }
+                                                    })
+                                                    .filter(Boolean)
+                                                    .join(", ")
+                                                : typeof detail.value === "object"
+                                                  ? (() => {
+                                                      try {
+                                                        return JSON.stringify(detail.value);
+                                                      } catch (error) {
+                                                        return String(detail.value);
+                                                      }
+                                                    })()
+                                                  : detail.value;
+
+                                              return (
+                                                <div className="space-y-0.5" key={`${sceneKey}-${detail.label}`}>
+                                                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                                    {detail.label}
+                                                  </dt>
+                                                  <dd className="text-xs text-slate-600">{detailValue}</dd>
+                                                </div>
+                                              );
+                                            })}
+                                          </dl>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-500">
+                                  No scene-level details were provided for this chapter.
+                                </p>
+                              )}
+                            </CollapsibleContent>
+                          </Collapsible>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               ) : chapterAnalysisAnalysis ? (
