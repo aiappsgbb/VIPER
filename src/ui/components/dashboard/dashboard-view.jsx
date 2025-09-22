@@ -1398,6 +1398,7 @@ export default function DashboardView({
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
+  const playerReadyRef = useRef(false);
   const videoPlaybackUrl =
     typeof selectedContent?.videoPlaybackUrl === "string" &&
     selectedContent.videoPlaybackUrl.trim().length
@@ -1489,9 +1490,14 @@ export default function DashboardView({
   }, [collections]);
 
   useEffect(() => {
+    playerReadyRef.current = isPlayerReady;
+  }, [isPlayerReady]);
+
+  useEffect(() => {
     if (!videoSource) {
       playerRef.current = null;
       setIsPlayerReady(false);
+      playerReadyRef.current = false;
       setPendingSeekRequest(null);
     }
   }, [videoSource]);
@@ -2134,6 +2140,12 @@ export default function DashboardView({
       return false;
     }
 
+
+    if (!playerReadyRef.current) {
+      return false;
+    }
+
+
     const player = playerRef.current;
     if (!player) {
       return false;
@@ -2161,6 +2173,7 @@ export default function DashboardView({
 
   useEffect(() => {
     setIsPlayerReady(false);
+    playerReadyRef.current = false;
     setCurrentTimestamp(0);
   }, [selectedContent?.id]);
 
@@ -2171,17 +2184,18 @@ export default function DashboardView({
 
     let attempts = 0;
     let timeoutId = null;
-    let isActive = true;
+    let isCancelled = false;
 
     const attemptSeek = () => {
-      if (!isActive) {
+      if (isCancelled) {
         return;
       }
 
       const clamped = Math.max(0, pendingSeekRequest.seconds);
-      if (!isPlayerReady && playerRef.current == null) {
+
+      if (!isPlayerReady || playerRef.current == null) {
         attempts += 1;
-        if (attempts < 20) {
+        if (attempts < 40) {
           timeoutId = setTimeout(attemptSeek, 150);
         }
         return;
@@ -2195,7 +2209,7 @@ export default function DashboardView({
       }
 
       attempts += 1;
-      if (attempts < 20) {
+      if (attempts < 40) {
         timeoutId = setTimeout(attemptSeek, 150);
       }
     };
@@ -2203,7 +2217,7 @@ export default function DashboardView({
     attemptSeek();
 
     return () => {
-      isActive = false;
+      isCancelled = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
@@ -2398,6 +2412,7 @@ export default function DashboardView({
   );
 
   const handlePlayerReady = () => {
+    playerReadyRef.current = true;
     setIsPlayerReady(true);
   };
 
