@@ -14,7 +14,8 @@ param(
     [string]$FrontendImageTag = "latest",
     [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/.." ).Path,
     [string]$EnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) ".env"),
-    [switch]$SkipEnvFile
+    [switch]$SkipEnvFile,
+    [string]$TenantId = "16b3c013-d300-468d-ac64-7eda0820b6d3"
 )
 
 Set-StrictMode -Version Latest
@@ -118,10 +119,31 @@ Assert-CommandExists -Name "docker"
 $projectRootPath = (Resolve-Path $ProjectRoot).Path
 Set-Location $projectRootPath
 
-& az account show *> $null
-if ($LASTEXITCODE -ne 0) {
+$requiresLogin = $true
+$accountShowResult = & az account show --output json 2>$null
+if ($LASTEXITCODE -eq 0) {
+    if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+        $accountDetails = $null
+        try {
+            $accountDetails = $accountShowResult | ConvertFrom-Json
+        } catch {
+            $accountDetails = $null
+        }
+        if ($accountDetails -and $accountDetails.tenantId -eq $TenantId) {
+            $requiresLogin = $false
+        }
+    } else {
+        $requiresLogin = $false
+    }
+}
+
+if ($requiresLogin) {
     Write-Host "Authenticating with Azure..." -ForegroundColor Cyan
-    Invoke-CheckedAz -Arguments @("login") | Out-Null
+    $loginArguments = @("login")
+    if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+        $loginArguments += @("--tenant", $TenantId)
+    }
+    Invoke-CheckedAz -Arguments $loginArguments | Out-Null
 }
 Invoke-CheckedAz -Arguments @("account", "set", "--subscription", $SubscriptionId)
 

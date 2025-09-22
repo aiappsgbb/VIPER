@@ -45,10 +45,12 @@ Leaving entries blank skips the associated role assignment. When a resource grou
    - Bootstrap the Azure AI Search index schema, create a query API key, and inject the required environment variables into the deployed containers.
    - Print the public FQDN for the frontend application when deployment completes.
 
+   By default the script ensures you are authenticated against the `16b3c013-d300-468d-ac64-7eda0820b6d3` Azure AD tenant before continuing. Use the optional `-TenantId` parameter if you need to override this behaviour.
+
 ### Customisation options
 
 
-The deployment script accepts optional parameters for the ACR name, Container Apps environment name, container app names, image tags, virtual network name, and the Azure resource names that will be created. These default to deterministic names derived from the resource group when omitted. Use `-SkipEnvFile` if you do not want to send `.env` values to Azure, and `-SkipAzureEnvFile` if you prefer to control the managed identity parameters manually or bind to existing resources.
+The deployment script accepts optional parameters for the ACR name, Container Apps environment name, container app names, image tags, virtual network name, the Azure AD tenant, and the Azure resource names that will be created. These default to deterministic names derived from the resource group when omitted. Use `-SkipEnvFile` if you do not want to send `.env` values to Azure, and `-SkipAzureEnvFile` if you prefer to control the managed identity parameters manually or bind to existing resources.
 
 To override the URL that the frontend uses to reach the backend in Azure, set `VIPER_BASE_URL` in your `.env` before running the deployment script. Otherwise the template will generate the secure internal URL based on the Container Apps environment domain.
 
