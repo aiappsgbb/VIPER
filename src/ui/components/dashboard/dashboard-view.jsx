@@ -1,7 +1,14 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -32,18 +39,38 @@ import {
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
-const ReactPlayer = dynamic(
-  () =>
-    import("react-player").then(({ default: Player }) => {
-      const ReactPlayerWithRef = forwardRef((props, ref) => (
-        <Player {...props} ref={ref} />
-      ));
+const ReactPlayer = forwardRef((props, ref) => {
+  const [PlayerComponent, setPlayerComponent] = useState(null);
+  const internalRef = useRef(null);
 
-      ReactPlayerWithRef.displayName = "ReactPlayer";
-      return ReactPlayerWithRef;
-    }),
-  { ssr: false },
-);
+  useImperativeHandle(ref, () => internalRef.current);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    import("react-player")
+      .then(({ default: Player }) => {
+        if (isMounted) {
+          setPlayerComponent(() => Player);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load react-player", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (!PlayerComponent) {
+    return null;
+  }
+
+  return <PlayerComponent {...props} ref={internalRef} />;
+});
+
+ReactPlayer.displayName = "ReactPlayer";
 
 function formatStatus(status) {
   const normalized = (status ?? "QUEUED").toUpperCase();
