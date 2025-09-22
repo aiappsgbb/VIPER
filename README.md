@@ -15,7 +15,7 @@ cd /path/to/local/repo/cobrapy
 2. Follow the official instructions to download and install FFmpeg:
 [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
 
-3. Copy `sample.env` to `.env` at the repository root and populate it with your service credentials. The backend and UI components both consume environment variables from this shared file.
+3. Copy `sample.env` to `.env` at the repository root and populate it with your service credentials. The backend and UI components both consume environment variables from this shared file. Run `python scripts/apply_database_url.py` to materialize the local `DATABASE_URL` entry using the shared values in `config/database_urls.json`; the same configuration file provides the cloud connection string used by the container setup and deployment scripts.
 
 4. Start the FastAPI backend on port 8000:
 

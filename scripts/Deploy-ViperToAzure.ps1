@@ -25,7 +25,9 @@ param(
     [string]$EnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) ".env"),
     [switch]$SkipEnvFile,
     [string]$AzureEnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "azure/.env"),
-    [switch]$SkipAzureEnvFile
+    [switch]$SkipAzureEnvFile,
+    [string]$DatabaseConfigPath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "config/database_urls.json"),
+    [string]$CloudDatabaseUrl
 )
 
 Set-StrictMode -Version Latest
@@ -236,11 +238,49 @@ function Set-EnvVarValue {
     $Collection.Value = $items
 }
 
+function Get-DatabaseUrlFromConfig {
+    param(
+        [Parameter(Mandatory)][string]$ConfigPath,
+        [Parameter(Mandatory)][string]$Key
+    )
+
+    if (-not (Test-Path $ConfigPath)) {
+        throw "Database configuration file '$ConfigPath' was not found."
+    }
+
+    try {
+        $config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Database configuration file '$ConfigPath' is not valid JSON: $($_.Exception.Message)"
+    }
+
+    $property = $config.PSObject.Properties[$Key]
+    if (-not $property) {
+        throw "Database configuration '$ConfigPath' does not define a '$Key' entry."
+    }
+
+    $value = [string]$property.Value
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Database configuration '$ConfigPath' entry '$Key' must be a non-empty string."
+    }
+
+    return $value
+}
+
 Assert-CommandExists -Name "az"
 Assert-CommandExists -Name "docker"
 
 $projectRootPath = (Resolve-Path $ProjectRoot).Path
 Set-Location $projectRootPath
+
+$databaseConfigPathToUse = $null
+if ($DatabaseConfigPath) {
+    if (Test-Path $DatabaseConfigPath) {
+        $databaseConfigPathToUse = (Resolve-Path $DatabaseConfigPath).Path
+    } elseif (-not $CloudDatabaseUrl) {
+        throw "Database configuration file '$DatabaseConfigPath' was not found."
+    }
+}
 
 Write-Host "Building backend Docker image '$BackendImageName'." -ForegroundColor Cyan
 Invoke-CheckedDocker -Arguments @("build", "-f", "Dockerfile.backend", "-t", $BackendImageName, ".")
@@ -348,8 +388,19 @@ Set-EnvVarValue -Collection ([ref]$backendEnvVars) -Name "AZURE_SEARCH_ENDPOINT"
 Set-EnvVarValue -Collection ([ref]$backendEnvVars) -Name "AZURE_SEARCH_INDEX_NAME" -Value $SearchIndexName
 Set-EnvVarValue -Collection ([ref]$backendEnvVars) -Name "AZURE_COSMOS_ENDPOINT" -Value $cosmosEndpoint
 
+# Azure-hosted workloads use the production Viper database regardless of local settings.
+if ([string]::IsNullOrWhiteSpace($CloudDatabaseUrl)) {
+    if (-not $databaseConfigPathToUse) {
+        throw "Unable to resolve the cloud database URL. Provide -CloudDatabaseUrl or ensure '$DatabaseConfigPath' exists."
+    }
+    $CloudDatabaseUrl = Get-DatabaseUrlFromConfig -ConfigPath $databaseConfigPathToUse -Key "cloud"
+}
+$cloudDatabaseUrl = $CloudDatabaseUrl.Trim()
+Set-EnvVarValue -Collection ([ref]$backendEnvVars) -Name "DATABASE_URL" -Value $cloudDatabaseUrl
+
 Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "SEARCH_ENDPOINT" -Value $searchEndpoint
 Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "INDEX_NAME" -Value $SearchIndexName
+Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "DATABASE_URL" -Value $cloudDatabaseUrl
 
 $azureStorageNameParam = $azureParameterValues['VIPER_AZURE_STORAGE_ACCOUNT_NAME']
 if ($azureStorageNameParam) {
