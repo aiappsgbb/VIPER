@@ -187,7 +187,6 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 }
 
 var containerAppsSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
-var containerAppsWorkloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsWorkloadSubnetName)
 var privateEndpointSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, privateEndpointSubnetName)
 
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -213,7 +212,6 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
         workloadProfileType: containerAppsWorkloadProfileType
         minimumCount: containerAppsWorkloadMinimumCount
         maximumCount: containerAppsWorkloadMaximumCount
-        subnetId: containerAppsWorkloadSubnetId
       })
     ]
   }
