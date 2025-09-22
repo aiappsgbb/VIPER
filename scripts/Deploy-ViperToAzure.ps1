@@ -27,7 +27,8 @@ param(
     [string]$AzureEnvFilePath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "azure/.env"),
     [switch]$SkipAzureEnvFile,
     [string]$DatabaseConfigPath = (Join-Path ((Resolve-Path "$PSScriptRoot/.." ).Path) "config/database_urls.json"),
-    [string]$CloudDatabaseUrl
+    [string]$CloudDatabaseUrl,
+    [string]$TenantId = "16b3c013-d300-468d-ac64-7eda0820b6d3"
 )
 
 Set-StrictMode -Version Latest
@@ -288,10 +289,31 @@ Invoke-CheckedDocker -Arguments @("build", "-f", "Dockerfile.backend", "-t", $Ba
 Write-Host "Building frontend Docker image '$FrontendImageName'." -ForegroundColor Cyan
 Invoke-CheckedDocker -Arguments @("build", "-f", "Dockerfile.frontend", "-t", $FrontendImageName, ".")
 
-& az account show *> $null
-if ($LASTEXITCODE -ne 0) {
+$requiresLogin = $true
+$accountShowResult = & az account show --output json 2>$null
+if ($LASTEXITCODE -eq 0) {
+    if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+        $accountDetails = $null
+        try {
+            $accountDetails = $accountShowResult | ConvertFrom-Json
+        } catch {
+            $accountDetails = $null
+        }
+        if ($accountDetails -and $accountDetails.tenantId -eq $TenantId) {
+            $requiresLogin = $false
+        }
+    } else {
+        $requiresLogin = $false
+    }
+}
+
+if ($requiresLogin) {
     Write-Host "Authenticating with Azure..." -ForegroundColor Cyan
-    Invoke-CheckedAz -Arguments @("login") | Out-Null
+    $loginArguments = @("login")
+    if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+        $loginArguments += @("--tenant", $TenantId)
+    }
+    Invoke-CheckedAz -Arguments $loginArguments | Out-Null
 }
 Invoke-CheckedAz -Arguments @("account", "set", "--subscription", $SubscriptionId) | Out-Null
 
