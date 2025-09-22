@@ -130,9 +130,14 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         name: containerAppsSubnetName
         properties: {
           addressPrefix: containerAppsSubnetPrefix
-          // Container Apps automatically delegates the subnet during environment provisioning.
-          // Pre-delegating the subnet causes the managed environment deployment to fail with
-          // ManagedEnvironmentSubnetIsDelegated when Azure attempts to configure the agent pool.
+          delegations: [
+            {
+              name: 'container-apps-delegation'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
       {
@@ -164,6 +169,9 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
       infrastructureSubnetId: containerAppsSubnetId
     }
   }
+  dependsOn: [
+    virtualNetwork
+  ]
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = if (createStorageAccount) {
