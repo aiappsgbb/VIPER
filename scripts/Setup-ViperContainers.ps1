@@ -103,7 +103,7 @@ function Format-EnvVarLine {
     param([Parameter(Mandatory)][pscustomobject]$Entry)
 
     $escapedValue = $Entry.value -replace '"', '\"'
-    return "{0}=\"{1}\"" -f $Entry.name, $escapedValue
+    return '{0}="{1}"' -f $Entry.name, $escapedValue
 }
 
 function New-TempEnvFile {
