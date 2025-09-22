@@ -3692,6 +3692,9 @@ export default function DashboardView({
                 className={`rounded-lg border border-slate-200${
                   shouldLimitSearchResultsHeight ? " max-h-[30rem]" : ""
                 }`}
+                viewportClassName={`h-auto${
+                  shouldLimitSearchResultsHeight ? " max-h-[30rem]" : ""
+                }`}
               >
                 <div className="divide-y divide-slate-200">
 
@@ -3989,7 +3992,10 @@ export default function DashboardView({
                             </div>
                             <CollapsibleContent className="space-y-3 pt-3">
                               {detailItems.length ? (
-                                <ScrollArea className="max-h-48 pr-2">
+                                <ScrollArea
+                                  className="max-h-48 pr-2"
+                                  viewportClassName="h-auto max-h-48"
+                                >
                                   <dl className="space-y-3 text-sm text-slate-600">
                                     {detailItems.map((item, detailIndex) => (
                                       <div className="space-y-1" key={`${resultKey}-detail-${detailIndex}`}>
