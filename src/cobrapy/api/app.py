@@ -222,17 +222,74 @@ def _create_client(request: BaseAnalysisRequest) -> VideoClient:
     return client
 
 
+def _sequence_has_items(value: Any) -> bool:
+    if isinstance(value, (str, bytes)):
+        return False
+    return isinstance(value, Sequence) and len(value) > 0
+
+
+def _extract_transcription_field(transcription: Any, field: str) -> Any:
+    if transcription is None:
+        return None
+    if isinstance(transcription, dict):
+        return transcription.get(field)
+    return getattr(transcription, field, None)
+
+
+def _has_audio_transcription(manifest: VideoManifest) -> bool:
+    transcription = getattr(manifest, "audio_transcription", None)
+    if transcription is None:
+        return False
+
+    text = _extract_transcription_field(transcription, "text")
+    if isinstance(text, str) and text.strip():
+        return True
+
+    words = _extract_transcription_field(transcription, "words")
+    if _sequence_has_items(words):
+        return True
+
+    segments = _extract_transcription_field(transcription, "segments")
+    if _sequence_has_items(segments):
+        return True
+
+    return False
+
+
+def _should_force_preprocess_for_transcripts(
+    manifest: VideoManifest, request: BaseAnalysisRequest
+) -> bool:
+    if not request.generate_transcripts:
+        return False
+
+    generate_flag = getattr(
+        manifest.processing_params, "generate_transcript_flag", None
+    )
+    has_transcription_flag = bool(generate_flag)
+    has_transcription_data = _has_audio_transcription(manifest)
+
+    return not (has_transcription_flag and has_transcription_data)
+
+
 def _run_preprocess(client: VideoClient, request: BaseAnalysisRequest) -> None:
     if request.skip_preprocess:
-        if client.manifest.video_manifest_path:
-            logger.info(
-                "Skipping preprocessing for %s because an existing manifest was provided.",
-                client.manifest.video_manifest_path,
+        manifest_path = client.manifest.video_manifest_path
+        if manifest_path:
+            if _should_force_preprocess_for_transcripts(client.manifest, request):
+                logger.info(
+                    "Skip preprocess requested but transcripts are required; preprocessing will run. manifest=%s",
+                    manifest_path,
+                )
+            else:
+                logger.info(
+                    "Skipping preprocessing for %s because an existing manifest was provided.",
+                    manifest_path,
+                )
+                return
+        else:
+            logger.warning(
+                "Skip preprocess requested but no manifest path found; preprocessing will run.",
             )
-            return
-        logger.warning(
-            "Skip preprocess requested but no manifest path found; preprocessing will run.",
-        )
 
     fps_value = _coerce_positive_float(request.fps)
     fallback_source = None

@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -20,7 +21,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, Download, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
@@ -41,13 +49,13 @@ function formatStatus(status) {
   const normalized = (status ?? "QUEUED").toUpperCase();
   switch (normalized) {
     case "COMPLETED":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-400/50";
     case "FAILED":
-      return "bg-red-100 text-red-700";
+      return "bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-400/50";
     case "PROCESSING":
-      return "bg-blue-100 text-blue-700";
+      return "bg-sky-500/10 text-sky-600 ring-1 ring-inset ring-sky-400/50";
     default:
-      return "bg-slate-100 text-slate-600";
+      return "bg-slate-500/10 text-slate-600 ring-1 ring-inset ring-slate-400/50";
   }
 }
 
@@ -1333,6 +1341,7 @@ export default function DashboardView({
   const [activeContentFilterId, setActiveContentFilterId] = useState(
     selectedContent?.id ?? "",
   );
+  const [isInsightsCollapsed, setIsInsightsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -2699,7 +2708,7 @@ export default function DashboardView({
   if (!selectedContent) {
     return (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-12">
-        <Card>
+        <Card className="border border-slate-200/70 bg-white/85 shadow-xl shadow-slate-900/10 backdrop-blur-sm">
           <CardHeader>
             <CardTitle>No videos yet</CardTitle>
             <CardDescription>
@@ -2718,14 +2727,46 @@ export default function DashboardView({
     currentActionSummaryRun?.storageArtifacts,
   );
   const chapterAnalysisArtifactsLabel = summarizeArtifacts(chapterAnalysisData?.storageArtifacts);
+  const insightsToggleLabel = isInsightsCollapsed
+    ? "Show insights panel"
+    : "Hide insights panel";
 
   return (
     <>
+
       <div className="mx-auto w-full max-w-7xl px-6 py-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1.5fr)]">
+        <div className="flex justify-end pb-4">
+          <Button
+            aria-label={insightsToggleLabel}
+            aria-pressed={!isInsightsCollapsed}
+            className="text-slate-600 hover:text-slate-900"
+            onClick={() => setIsInsightsCollapsed((previous) => !previous)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {isInsightsCollapsed ? (
+              <PanelRightOpen className="mr-2 h-4 w-4" />
+            ) : (
+              <PanelRightClose className="mr-2 h-4 w-4" />
+            )}
+            <span className="text-sm font-medium">
+              {isInsightsCollapsed ? "Show insights" : "Hide insights"}
+            </span>
+          </Button>
+        </div>
+        <div
+          className={clsx(
+            "grid gap-6",
+            isInsightsCollapsed
+              ? "lg:grid-cols-1"
+              : "lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1.5fr)]",
+          )}
+        >
+
           <div className="space-y-6">
-            <Card className="overflow-hidden">
-              <CardHeader>
+            <Card className="overflow-hidden border border-slate-200/70 bg-white/90 shadow-2xl shadow-slate-900/10 backdrop-blur-sm">
+              <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-500">
@@ -2806,7 +2847,7 @@ export default function DashboardView({
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-              <div className="aspect-video overflow-hidden rounded-xl bg-black/80">
+              <div className="aspect-video overflow-hidden rounded-2xl border border-slate-900/50 bg-slate-950/80 shadow-xl shadow-slate-900/60">
                 {videoSource ? (
                   <ReactPlayer
                     controls
@@ -2824,11 +2865,11 @@ export default function DashboardView({
                   </div>
                 )}
               </div>
-              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-900/95 text-slate-100 shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+              <div className="overflow-hidden rounded-2xl border border-slate-800/70 bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-slate-100 shadow-xl shadow-slate-900/40">
+                <div className="flex items-center justify-between border-b border-slate-700/70 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200">
                   <span>Live scene summary</span>
                   {currentTimestampLabel ? (
-                    <span className="text-slate-300">{currentTimestampLabel}</span>
+                    <span className="text-slate-200/80">{currentTimestampLabel}</span>
                   ) : null}
                 </div>
                 {currentActionSummaryEntry ? (
@@ -2861,7 +2902,7 @@ export default function DashboardView({
                 )}
               </div>
               
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-white/60 p-4">
+              <div className="space-y-3 rounded-2xl border border-sky-100/70 bg-gradient-to-br from-white/90 via-sky-50/70 to-indigo-50/60 p-4 shadow">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-slate-700">Transcription</p>
@@ -2893,8 +2934,8 @@ export default function DashboardView({
                       .
                     </p>
                   ) : transcriptSegmentCount > 0 ? (
-                    <ScrollArea className="max-h-64 rounded-md border border-slate-200 bg-white/50">
-                      <div className="divide-y divide-slate-200">
+                    <ScrollArea className="max-h-64 rounded-xl border border-slate-200/80 bg-white/70 shadow-inner">
+                      <div className="divide-y divide-slate-200/80">
                         {transcriptSegments.map((segment, index) => (
                           <button
                             className="flex w-full items-start gap-3 p-3 text-left transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2920,7 +2961,7 @@ export default function DashboardView({
                       </div>
                     </ScrollArea>
                   ) : transcriptText ? (
-                    <p className="whitespace-pre-line rounded-md bg-slate-100/70 p-3 text-sm text-slate-700">
+                    <p className="whitespace-pre-line rounded-xl bg-white/80 p-3 text-sm text-slate-700 shadow-inner">
                       {transcriptText}
                     </p>
                   ) : (
@@ -2934,14 +2975,14 @@ export default function DashboardView({
                   </p>
                 )}
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow">
                 <p className="font-medium text-slate-700">Uploaded by</p>
                 <p>{selectedContent.uploadedBy?.name ?? selectedContent.uploadedBy?.email ?? "Unknown"}</p>
                 <p className="text-xs text-slate-400">
                   Created {new Date(selectedContent.createdAt).toLocaleString()}
                 </p>
               </div>
-              <div className="space-y-4 rounded-lg border border-slate-200 p-4">
+              <div className="space-y-4 rounded-2xl border border-sky-100/80 bg-white/80 p-4 shadow">
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Run analyses</p>
                   <p className="text-xs text-slate-500">
@@ -2959,7 +3000,7 @@ export default function DashboardView({
                         onOpenChange={handleFieldBuilderOpenChange}
                         open={isFieldBuilderOpen}
                       >
-                        <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-2 rounded-xl border border-sky-100/70 bg-white/85 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                           <div className="space-y-1">
                             <p className="text-xs font-semibold text-slate-600">Fields to capture</p>
                             <p className="text-xs text-slate-500">
@@ -2987,7 +3028,7 @@ export default function DashboardView({
                               <div className="space-y-3 pb-2">
                                 {actionSummaryFields.map((field, index) => (
                                   <div
-                                    className="space-y-3 rounded-md border border-slate-200 bg-white p-3"
+                                    className="space-y-3 rounded-xl border border-sky-100/70 bg-white/90 p-3 shadow-sm"
                                     key={`${field.name || "field"}-${index}`}
                                   >
                                     <div className="flex items-start gap-3">
@@ -2995,7 +3036,7 @@ export default function DashboardView({
                                         <label className="text-xs font-medium text-slate-600">
                                           Field name
                                           <Input
-                                            className="mt-1"
+                                            className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                             onChange={(event) =>
                                               handleUpdateActionSummaryField(index, "name", event.target.value)
                                             }
@@ -3019,7 +3060,7 @@ export default function DashboardView({
                                       <label className="text-xs font-medium text-slate-600">
                                         Field description
                                         <Textarea
-                                          className="mt-1"
+                                          className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                           onChange={(event) =>
                                             handleUpdateActionSummaryField(index, "description", event.target.value)
                                           }
@@ -3061,7 +3102,7 @@ export default function DashboardView({
                         onOpenChange={handleSettingsOpenChange}
                         open={isActionSummarySettingsOpen}
                       >
-                        <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-2 rounded-xl border border-sky-100/70 bg-white/85 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                           <div className="space-y-1">
                             <p className="text-xs font-semibold text-slate-600">Processing settings</p>
                             <p className="text-xs text-slate-500">
@@ -3090,7 +3131,7 @@ export default function DashboardView({
                                   <label className="text-xs font-medium text-slate-600">
                                     Segment length (seconds)
                                     <Input
-                                      className="mt-1"
+                                      className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                       min="1"
                                       onChange={(event) =>
                                         setDraftActionSummaryConfig((current) => ({
@@ -3105,7 +3146,7 @@ export default function DashboardView({
                                   <label className="text-xs font-medium text-slate-600">
                                     Frames per second
                                     <Input
-                                      className="mt-1"
+                                      className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                       min="0"
                                       onChange={(event) =>
                                         setDraftActionSummaryConfig((current) => ({
@@ -3121,7 +3162,7 @@ export default function DashboardView({
                                   <label className="text-xs font-medium text-slate-600">
                                     Max workers
                                     <Input
-                                      className="mt-1"
+                                      className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                       min="1"
                                       onChange={(event) =>
                                         setDraftActionSummaryConfig((current) => ({
@@ -3137,7 +3178,7 @@ export default function DashboardView({
                                   <label className="text-xs font-medium text-slate-600">
                                     Output directory
                                     <Input
-                                      className="mt-1"
+                                      className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                       onChange={(event) =>
                                         setDraftActionSummaryConfig((current) => ({
                                           ...current,
@@ -3154,7 +3195,7 @@ export default function DashboardView({
                                   <label className="text-xs font-medium text-slate-600">
                                     Analysis lens
                                     <Textarea
-                                      className="mt-1"
+                                      className="mt-1 border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                                       onChange={(event) =>
                                         setDraftActionSummaryConfig((current) => ({
                                           ...current,
@@ -3174,13 +3215,13 @@ export default function DashboardView({
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   {ACTION_SUMMARY_TOGGLE_FIELDS.map(({ key, label }) => (
                                     <label
-                                      className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white p-3 text-xs font-medium text-slate-600"
+                                      className="flex items-center justify-between gap-2 rounded-xl border border-sky-100/70 bg-white/90 p-3 text-xs font-medium text-slate-600 shadow-sm"
                                       key={key}
                                     >
                                       <span>{label}</span>
                                       <input
                                         checked={Boolean(draftActionSummaryConfig[key])}
-                                        className="h-4 w-4 rounded border-slate-300 text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-400"
                                         onChange={(event) =>
                                           setDraftActionSummaryConfig((current) => ({
                                             ...current,
@@ -3246,8 +3287,8 @@ export default function DashboardView({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="border border-slate-200/70 bg-white/85 shadow-xl shadow-slate-900/10 backdrop-blur-sm">
+            <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
                   <CardTitle>Action summary results</CardTitle>
@@ -3302,7 +3343,7 @@ export default function DashboardView({
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-2xl border border-sky-100/70 bg-gradient-to-br from-white/90 via-sky-50/70 to-indigo-50/60 p-3 text-xs text-slate-600 shadow sm:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-700">Last run</p>
                   <p>
@@ -3353,10 +3394,10 @@ export default function DashboardView({
                 ) : null}
               </div>
               {actionSummaryEntries.length ? (
-                <ScrollArea className="max-h-80 rounded-lg border border-slate-200">
-                  <div className="divide-y divide-slate-200">
+                <ScrollArea className="max-h-80 rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
+                  <div className="divide-y divide-slate-200/80">
                     {actionSummaryEntries.map((entry, index) => (
-                      <div className="space-y-2 p-4" key={entry.id ?? `action-${index}`}>
+                      <div className="space-y-2 rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-inset ring-slate-200/60" key={entry.id ?? `action-${index}`}>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="space-y-1">
                             <p className="text-sm font-medium text-slate-800">
@@ -3399,7 +3440,7 @@ export default function DashboardView({
                   </div>
                 </ScrollArea>
               ) : actionSummaryAnalysis ? (
-                <pre className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <pre className="max-h-72 overflow-auto rounded-2xl border border-slate-200/80 bg-white/80 p-3 text-xs text-slate-600 shadow-inner">
                   {JSON.stringify(actionSummaryAnalysis, null, 2)}
                 </pre>
               ) : (
@@ -3410,15 +3451,15 @@ export default function DashboardView({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="border border-slate-200/70 bg-white/85 shadow-xl shadow-slate-900/10 backdrop-blur-sm">
+            <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
               <CardTitle>Chapter analysis results</CardTitle>
               <CardDescription>
                 Explore the automatically generated chapters to navigate the video.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-2xl border border-sky-100/70 bg-gradient-to-br from-white/90 via-sky-50/70 to-indigo-50/60 p-3 text-xs text-slate-600 shadow sm:grid-cols-2">
                 <div>
                   <p className="font-medium text-slate-700">Last run</p>
                   <p>{formatDateTime(chapterAnalysisData?.lastRunAt)}</p>
@@ -3441,8 +3482,8 @@ export default function DashboardView({
                 ) : null}
               </div>
               {chapterAnalysisEntries.length ? (
-                <ScrollArea className="max-h-80 rounded-lg border border-slate-200">
-                  <div className="divide-y divide-slate-200">
+                <ScrollArea className="max-h-80 rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
+                  <div className="divide-y divide-slate-200/80">
                     {chapterAnalysisEntries.map((entry, index) => (
                       <div className="space-y-2 p-4" key={entry.id ?? `chapter-${index}`}>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -3471,7 +3512,7 @@ export default function DashboardView({
                   </div>
                 </ScrollArea>
               ) : chapterAnalysisAnalysis ? (
-                <pre className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <pre className="max-h-72 overflow-auto rounded-2xl border border-slate-200/80 bg-white/80 p-3 text-xs text-slate-600 shadow-inner">
                   {JSON.stringify(chapterAnalysisAnalysis, null, 2)}
                 </pre>
               ) : (
@@ -3483,9 +3524,11 @@ export default function DashboardView({
           </Card>
         </div>
 
-        <div className="space-y-6 lg:sticky lg:top-6">
+        {!isInsightsCollapsed ? (
+          <div className="space-y-6 lg:sticky lg:top-6">
           <Card>
             <CardHeader>
+
               <CardTitle>AI search</CardTitle>
               <CardDescription>
                 Search the indexed analyses, review the matches, and jump straight to the relevant timestamp.
@@ -3495,6 +3538,7 @@ export default function DashboardView({
             <CardContent className="space-y-4">
               <form className="space-y-3" onSubmit={handleSearch}>
                 <Input
+                  className="border-slate-200/70 bg-white/90 focus-visible:ring-sky-500 focus-visible:ring-offset-slate-100"
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="e.g. Show me when the team boards the aircraft"
                   value={searchQuery}
@@ -3503,7 +3547,7 @@ export default function DashboardView({
                   <label className="text-xs font-semibold text-slate-600">
                     Organization
                     <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      className="mt-1 w-full rounded-md border border-slate-200/80 bg-white/90 px-3 py-2 text-sm shadow-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                       onChange={handleOrganizationChange}
                       value={activeOrganizationId ?? ""}
                     >
@@ -3518,7 +3562,7 @@ export default function DashboardView({
                   <label className="text-xs font-semibold text-slate-600">
                     Collection
                     <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      className="mt-1 w-full rounded-md border border-slate-200/80 bg-white/90 px-3 py-2 text-sm shadow-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                       onChange={handleCollectionChange}
                       value={activeCollectionId ?? ""}
                     >
@@ -3533,7 +3577,7 @@ export default function DashboardView({
                   <label className="text-xs font-semibold text-slate-600">
                     Video
                     <select
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                      className="mt-1 w-full rounded-md border border-slate-200/80 bg-white/90 px-3 py-2 text-sm shadow-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                       onChange={(event) => setActiveContentFilterId(event.target.value)}
                       value={activeContentFilterId}
                     >
@@ -3547,8 +3591,8 @@ export default function DashboardView({
                   </label>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    <p className="font-medium text-slate-600">Scope</p>
+                  <div className="rounded-xl bg-gradient-to-r from-white/85 via-sky-50/60 to-indigo-50/60 px-3 py-2 text-xs text-slate-600 shadow">
+                    <p className="font-medium text-slate-700">Scope</p>
                     <p className="mt-1 leading-relaxed">{searchFilterLabel}</p>
                   </div>
                   <Button disabled={isSearching || !searchQuery.trim()} type="submit">
@@ -3557,12 +3601,14 @@ export default function DashboardView({
                 </div>
               </form>
               {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
+
               <ScrollArea
                 className={`rounded-lg border border-slate-200${
                   shouldLimitSearchResultsHeight ? " max-h-[30rem]" : ""
                 }`}
               >
                 <div className="divide-y divide-slate-200">
+
                   {searchResults.length === 0 ? (
                     <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
                   ) : (
@@ -3827,7 +3873,7 @@ export default function DashboardView({
                           : "Jump";
 
                       return (
-                        <div className="p-4" key={resultKey}>
+                        <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm" key={resultKey}>
                           <Collapsible
                             open={openSearchResultId === resultKey}
                             onOpenChange={(isOpen) =>
@@ -3835,14 +3881,14 @@ export default function DashboardView({
                             }
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <CollapsibleTrigger className="group flex flex-1 items-start justify-between gap-3 rounded-md px-0 py-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+                              <CollapsibleTrigger className="group flex flex-1 items-start justify-between gap-3 rounded-xl px-0 py-0 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
                                 <div className="space-y-1">
                                   <p className="text-sm font-medium text-slate-800">{summaryPreview}</p>
                                   {intervalLabel ? (
                                     <p className="text-xs text-slate-500">{intervalLabel}</p>
                                   ) : null}
                                 </div>
-                                <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                                <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-sky-600 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                               </CollapsibleTrigger>
                               {timestamp != null ? (
                                 <Button
@@ -3890,8 +3936,8 @@ export default function DashboardView({
               </ScrollArea>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
+          <Card className="border border-slate-200/70 bg-white/90 shadow-xl shadow-slate-900/10 backdrop-blur-sm">
+            <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
               <CardTitle>Collection videos</CardTitle>
               <CardDescription>
                 Browse the videos that you have access to in this collection.
@@ -3902,10 +3948,10 @@ export default function DashboardView({
                 {activeCollection?.contents?.length ? (
                   activeCollection.contents.map((content) => (
                     <button
-                      className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition hover:border-slate-400 ${
+                      className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                         content.id === selectedContent.id
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200"
+                          ? "border-transparent bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-lg ring-1 ring-sky-400/40"
+                          : "border-slate-200/80 bg-white/80 text-slate-700 hover:border-sky-200 hover:bg-sky-50/50 hover:shadow"
                       }`}
                       key={content.id}
                       onClick={() => handleVideoSelect(content.id)}
@@ -3923,7 +3969,8 @@ export default function DashboardView({
               </div>
             </CardContent>
           </Card>
-        </div>
+          </div>
+        ) : null}
         </div>
       </div>
       <ChatWidget

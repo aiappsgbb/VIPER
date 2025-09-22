@@ -2,8 +2,7 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import DashboardSidebar from "@/components/dashboard/sidebar";
-import DashboardHeader from "@/components/dashboard/header";
+import DashboardLayoutShell from "@/components/dashboard/layout-shell";
 import {
   canAccessAdmin,
   canCreateCollections,
@@ -201,24 +200,19 @@ export default async function DashboardLayout({ children }) {
   const defaultUploadCollectionId = uploadCollections[0]?.id ?? null;
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="flex min-h-screen">
-        <DashboardSidebar
-          isAdmin={canAccessAdmin(session.user.role)}
-          organizations={sidebarData}
-        />
-        <div className="flex flex-1 flex-col">
-          <DashboardHeader
-            canCreateCollections={canCreateCollections(session.user.role)}
-            canManageCollections={canManageCollections(session.user.role)}
-            defaultCollectionId={defaultUploadCollectionId}
-            managementOrganizations={managementOrganizations}
-            uploadCollections={uploadCollections}
-            user={session.user}
-          />
-          <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
-        </div>
-      </div>
-    </div>
+    <DashboardLayoutShell
+      headerProps={{
+        canCreateCollections: canCreateCollections(session.user.role),
+        canManageCollections: canManageCollections(session.user.role),
+        defaultCollectionId: defaultUploadCollectionId,
+        managementOrganizations,
+        uploadCollections,
+        user: session.user,
+      }}
+      isAdmin={canAccessAdmin(session.user.role)}
+      organizations={sidebarData}
+    >
+      {children}
+    </DashboardLayoutShell>
   );
 }
