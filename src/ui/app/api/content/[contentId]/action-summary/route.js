@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
 import { buildBackendUrl } from "@/lib/backend";
+import { getAnalysisServiceDispatcher } from "@/lib/analysis-service";
 import {
   collectBlobUrls,
   collectSearchDocumentIds,
@@ -996,6 +997,7 @@ export async function POST(request, { params }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestPayload),
+      dispatcher: getAnalysisServiceDispatcher(),
     });
     data = await response.json().catch(() => null);
   } catch (error) {

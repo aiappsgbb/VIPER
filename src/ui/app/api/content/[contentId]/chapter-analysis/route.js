@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildContentAccessWhere } from "@/lib/access";
 import { buildBackendUrl } from "@/lib/backend";
+import { getAnalysisServiceDispatcher } from "@/lib/analysis-service";
 
 function getChapterAnalysisEndpoint() {
   const configured = process.env.CHAPTER_ANALYSIS_ENDPOINT;
@@ -177,6 +178,7 @@ export async function POST(_request, { params }) {
       body: JSON.stringify(
         buildRequestPayload({ content, session, cobraMeta }),
       ),
+      dispatcher: getAnalysisServiceDispatcher(),
     });
     data = await response.json().catch(() => null);
   } catch (error) {
@@ -240,9 +242,15 @@ export async function POST(_request, { params }) {
     cobraMeta.manifestUrl = null;
     cobraMeta.manifestPath = null;
   }
+  const analysisResult =
+    data?.result !== undefined && data?.result !== null
+      ? data.result
+      : data?.analysis ?? null;
+
   cobraMeta.chapterAnalysis = {
     lastRunAt: new Date().toISOString(),
-    analysis: data?.analysis ?? null,
+    status: "COMPLETED",
+    analysis: analysisResult,
     analysisOutputPath: data?.analysis_output_path ?? null,
     storageArtifacts: data?.storage_artifacts ?? null,
     filters: {
@@ -263,7 +271,7 @@ export async function POST(_request, { params }) {
 
   return NextResponse.json(
     {
-      analysis: data?.analysis ?? "ChapterAnalysis",
+      analysis: analysisResult,
       manifestPath: manifestUrlFromResponse ?? cobraMeta.manifestUrl ?? null,
       analysisOutputPath: data?.analysis_output_path ?? null,
       storageArtifacts: data?.storage_artifacts ?? null,
