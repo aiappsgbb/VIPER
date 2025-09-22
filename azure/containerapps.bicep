@@ -28,6 +28,12 @@ param containerAppsSubnetName string = 'apps-infra'
 @description('CIDR block for the Azure Container Apps infrastructure subnet.')
 param containerAppsSubnetPrefix string = '10.100.0.0/23'
 
+@description('Name of the subnet assigned to dedicated Container Apps workloads.')
+param containerAppsWorkloadSubnetName string = 'apps-workload'
+
+@description('CIDR block for the dedicated Container Apps workload subnet.')
+param containerAppsWorkloadSubnetPrefix string = '10.100.3.0/24'
+
 @description('Name of the subnet reserved for private endpoints.')
 param privateEndpointSubnetName string = 'private-endpoints'
 
@@ -42,6 +48,20 @@ param platformReservedDnsIP string = '10.200.0.4'
 
 @description('CIDR notation IP range assigned to the Docker bridge network used by the Container Apps environment.')
 param dockerBridgeCidr string = '172.16.0.0/16'
+
+@description('Name of the dedicated workload profile used by the container apps.')
+param containerAppsWorkloadProfileName string = 'wp-d4'
+
+@description('Dedicated workload profile SKU for the container apps environment.')
+param containerAppsWorkloadProfileType string = 'D4'
+
+@minValue(1)
+@description('Minimum number of replicas for the dedicated workload profile.')
+param containerAppsWorkloadMinimumCount int = 1
+
+@minValue(1)
+@description('Maximum number of replicas for the dedicated workload profile.')
+param containerAppsWorkloadMaximumCount int = 3
 
 @description('Create a new Storage Account when true. Set to false to reference an existing account.')
 param createStorageAccount bool = true
@@ -93,7 +113,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: acrName
 }
 
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsWorkspaceName
   location: location
   sku: {
@@ -150,6 +170,12 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         }
       }
       {
+        name: containerAppsWorkloadSubnetName
+        properties: {
+          addressPrefix: containerAppsWorkloadSubnetPrefix
+        }
+      }
+      {
         name: privateEndpointSubnetName
         properties: {
           addressPrefix: privateEndpointSubnetPrefix
@@ -161,9 +187,10 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 }
 
 var containerAppsSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
+var containerAppsWorkloadSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsWorkloadSubnetName)
 var privateEndpointSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, privateEndpointSubnetName)
 
-resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
+resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: managedEnvironmentName
   location: location
   properties: {
@@ -180,6 +207,15 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
       platformReservedDnsIP: platformReservedDnsIP
       dockerBridgeCidr: dockerBridgeCidr
     }
+    workloadProfiles: [
+      any({
+        name: containerAppsWorkloadProfileName
+        workloadProfileType: containerAppsWorkloadProfileType
+        minimumCount: containerAppsWorkloadMinimumCount
+        maximumCount: containerAppsWorkloadMaximumCount
+        subnetId: containerAppsWorkloadSubnetId
+      })
+    ]
   }
   dependsOn: [
     virtualNetwork
@@ -518,10 +554,11 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
           env: backendEnv
         }
       ]
-      scale: {
+      scale: any({
         minReplicas: 1
         maxReplicas: 1
-      }
+        workloadProfileName: containerAppsWorkloadProfileName
+      })
     }
   }
 }
@@ -557,10 +594,11 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
           env: frontendEnv
         }
       ]
-      scale: {
+      scale: any({
         minReplicas: 1
         maxReplicas: 1
-      }
+        workloadProfileName: containerAppsWorkloadProfileName
+      })
     }
   }
 }
