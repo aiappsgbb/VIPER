@@ -15,7 +15,7 @@ This directory contains infrastructure-as-code assets for deploying the Viper ba
   - A Storage account, Azure AI Search service, and Azure Cosmos DB account (unless existing resources are supplied) with public network access disabled and private endpoints wired into the virtual network.
   - System-assigned managed identities for both container apps. The identities are granted `AcrPull`, `Storage Blob Data Contributor`, `Search Index Data Contributor`, and `Cosmos DB Built-in Data Contributor` so the workloads can manage data without access keys.
 
-Both container apps accept additional environment variables through the `backendEnvVars` and `frontendEnvVars` parameters. These are typically populated by the deployment script from the repository `.env` file. The deployment additionally injects a `VIPER_BACKEND_INTERNAL_URL` variable so workloads that need the Container Apps-only endpoint can access it explicitly.
+Both container apps accept additional environment variables through the `backendEnvVars` and `frontendEnvVars` parameters. These are typically populated by the deployment script from the repository `.env` file. The deployment additionally injects a `VIPER_BACKEND_INTERNAL_URL` variable so workloads that need the Container Apps-only endpoint can access it explicitly. For database access, the script resolves the cloud `DATABASE_URL` from `config/database_urls.json` (or the `-CloudDatabaseUrl` parameter) so publishing to Azure consistently targets the production Viper database regardless of local overrides.
 
 
 ### Azure environment configuration

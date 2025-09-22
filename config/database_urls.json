@@ -1,0 +1,4 @@
+{
+  "local": "postgres://citus:owenvanv9*@c-weekly-report.l23htqj73u2iog.postgres.cosmos.azure.com:5432/weeky-report?sslmode=require",
+  "cloud": "postgres://citus:owenvanv9*@c-viper.zmyk5he6q3lzfz.postgres.cosmos.azure.com:5432/citus?sslmode=require"
+}
