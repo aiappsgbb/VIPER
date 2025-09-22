@@ -239,6 +239,81 @@ function formatSecondsLabel(seconds) {
   return label;
 }
 
+function attemptSeekOnTarget(target, seconds, visited = new Set()) {
+  if (!target || visited.has(target)) {
+    return false;
+  }
+
+  visited.add(target);
+
+  const tryCall = (candidate, methodName, ...args) => {
+    if (!candidate || typeof candidate[methodName] !== "function") {
+      return false;
+    }
+
+    try {
+      candidate[methodName].apply(candidate, args);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  if (tryCall(target, "seekTo", seconds, "seconds") || tryCall(target, "seekTo", seconds)) {
+    return true;
+  }
+
+  if ("currentTime" in target && typeof target.currentTime === "number") {
+    try {
+      target.currentTime = seconds;
+      return true;
+    } catch (error) {
+      // ignore assignment errors
+    }
+  }
+
+  if (tryCall(target, "fastSeek", seconds)) {
+    return true;
+  }
+
+  if (tryCall(target, "seek", seconds)) {
+    return true;
+  }
+
+  if (tryCall(target, "setCurrentTime", seconds)) {
+    return true;
+  }
+
+  const nestedTargets = [];
+
+  if (typeof target.getInternalPlayer === "function") {
+    try {
+      const internal = target.getInternalPlayer();
+      if (internal && internal !== target) {
+        nestedTargets.push(internal);
+      }
+    } catch (error) {
+      // ignore access errors
+    }
+  }
+
+  if (target.player && target.player !== target) {
+    nestedTargets.push(target.player);
+  }
+
+  if (Array.isArray(target.players)) {
+    nestedTargets.push(...target.players.filter((item) => item && item !== target));
+  }
+
+  for (const nested of nestedTargets) {
+    if (attemptSeekOnTarget(nested, seconds, visited)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function hasMeaningfulValue(value) {
   if (value == null) {
     return false;
@@ -1323,6 +1398,7 @@ export default function DashboardView({
 }) {
   const router = useRouter();
   const playerRef = useRef(null);
+  const playerReadyRef = useRef(false);
   const videoPlaybackUrl =
     typeof selectedContent?.videoPlaybackUrl === "string" &&
     selectedContent.videoPlaybackUrl.trim().length
@@ -1414,9 +1490,14 @@ export default function DashboardView({
   }, [collections]);
 
   useEffect(() => {
+    playerReadyRef.current = isPlayerReady;
+  }, [isPlayerReady]);
+
+  useEffect(() => {
     if (!videoSource) {
       playerRef.current = null;
       setIsPlayerReady(false);
+      playerReadyRef.current = false;
       setPendingSeekRequest(null);
     }
   }, [videoSource]);
@@ -2054,56 +2135,29 @@ export default function DashboardView({
     }
   };
 
-  const performSeek = useCallback(
-    (seconds) => {
-      const player = playerRef.current;
-      if (!player) {
-        return false;
-      }
+  const performSeek = useCallback((seconds) => {
+    if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+      return false;
+    }
 
-      let didSeek = false;
+    if (!playerReadyRef.current) {
+      return false;
+    }
 
-      if (typeof player.seekTo === "function") {
-        try {
-          player.seekTo(seconds, "seconds");
-          didSeek = true;
-        } catch (error) {
-          didSeek = false;
-        }
-      }
+    const player = playerRef.current;
+    if (!player) {
+      return false;
+    }
 
-      if (typeof player.getInternalPlayer === "function") {
-        const internalPlayer = player.getInternalPlayer();
-        if (internalPlayer) {
-          if (
-            typeof internalPlayer.currentTime === "number" &&
-            Number.isFinite(internalPlayer.currentTime)
-          ) {
-            try {
-              internalPlayer.currentTime = seconds;
-              didSeek = true;
-            } catch (error) {
-              // ignore assignment errors for players that do not expose currentTime
-            }
-          } else if (typeof internalPlayer.seek === "function") {
-            try {
-              internalPlayer.seek(seconds);
-              didSeek = true;
-            } catch (error) {
-              // ignore seek errors for players that do not expose seek helpers
-            }
-          }
-        }
-      }
+    const normalizedSeconds = Math.max(0, seconds);
+    const didSeek = attemptSeekOnTarget(player, normalizedSeconds);
 
-      if (didSeek) {
-        setCurrentTimestamp(seconds);
-      }
+    if (didSeek) {
+      setCurrentTimestamp(normalizedSeconds);
+    }
 
-      return didSeek;
-    },
-    [],
-  );
+    return didSeek;
+  }, []);
 
   useEffect(() => {
     if (typeof initialStartSeconds === "number") {
@@ -2117,6 +2171,7 @@ export default function DashboardView({
 
   useEffect(() => {
     setIsPlayerReady(false);
+    playerReadyRef.current = false;
     setCurrentTimestamp(0);
   }, [selectedContent?.id]);
 
@@ -2127,17 +2182,18 @@ export default function DashboardView({
 
     let attempts = 0;
     let timeoutId = null;
-    let isActive = true;
+    let isCancelled = false;
 
     const attemptSeek = () => {
-      if (!isActive) {
+      if (isCancelled) {
         return;
       }
 
       const clamped = Math.max(0, pendingSeekRequest.seconds);
-      if (!isPlayerReady && playerRef.current == null) {
+
+      if (!isPlayerReady || playerRef.current == null) {
         attempts += 1;
-        if (attempts < 20) {
+        if (attempts < 40) {
           timeoutId = setTimeout(attemptSeek, 150);
         }
         return;
@@ -2151,7 +2207,7 @@ export default function DashboardView({
       }
 
       attempts += 1;
-      if (attempts < 20) {
+      if (attempts < 40) {
         timeoutId = setTimeout(attemptSeek, 150);
       }
     };
@@ -2159,7 +2215,7 @@ export default function DashboardView({
     attemptSeek();
 
     return () => {
-      isActive = false;
+      isCancelled = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
@@ -2354,6 +2410,7 @@ export default function DashboardView({
   );
 
   const handlePlayerReady = () => {
+    playerReadyRef.current = true;
     setIsPlayerReady(true);
   };
 
