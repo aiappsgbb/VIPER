@@ -34,6 +34,15 @@ param privateEndpointSubnetName string = 'private-endpoints'
 @description('CIDR block for the private endpoint subnet.')
 param privateEndpointSubnetPrefix string = '10.100.2.0/24'
 
+@description('CIDR notation IP range reserved for the Container Apps platform infrastructure. Must not overlap with any other address ranges supplied to the deployment.')
+param platformReservedCidr string = '10.200.0.0/24'
+
+@description('IP address inside platformReservedCidr that is reserved for the Container Apps environment DNS server.')
+param platformReservedDnsIP string = '10.200.0.4'
+
+@description('CIDR notation IP range assigned to the Docker bridge network used by the Container Apps environment.')
+param dockerBridgeCidr string = '172.16.0.0/16'
+
 @description('Create a new Storage Account when true. Set to false to reference an existing account.')
 param createStorageAccount bool = true
 
@@ -167,6 +176,9 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
     }
     vnetConfiguration: {
       infrastructureSubnetId: containerAppsSubnetId
+      platformReservedCidr: platformReservedCidr
+      platformReservedDnsIP: platformReservedDnsIP
+      dockerBridgeCidr: dockerBridgeCidr
     }
   }
   dependsOn: [
