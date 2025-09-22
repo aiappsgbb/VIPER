@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -20,7 +21,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, Download, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import VideoUploadPanel from "@/components/dashboard/video-upload-panel";
 import ChatWidget from "@/components/chat/chat-widget";
 
@@ -1333,6 +1341,7 @@ export default function DashboardView({
   const [activeContentFilterId, setActiveContentFilterId] = useState(
     selectedContent?.id ?? "",
   );
+  const [isInsightsCollapsed, setIsInsightsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -2628,11 +2637,43 @@ export default function DashboardView({
     currentActionSummaryRun?.storageArtifacts,
   );
   const chapterAnalysisArtifactsLabel = summarizeArtifacts(chapterAnalysisData?.storageArtifacts);
+  const insightsToggleLabel = isInsightsCollapsed
+    ? "Show insights panel"
+    : "Hide insights panel";
 
   return (
     <>
-      <div className="relative mx-auto w-full max-w-7xl px-6 py-10 lg:py-12">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1.5fr)]">
+
+      <div className="mx-auto w-full max-w-7xl px-6 py-8">
+        <div className="flex justify-end pb-4">
+          <Button
+            aria-label={insightsToggleLabel}
+            aria-pressed={!isInsightsCollapsed}
+            className="text-slate-600 hover:text-slate-900"
+            onClick={() => setIsInsightsCollapsed((previous) => !previous)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {isInsightsCollapsed ? (
+              <PanelRightOpen className="mr-2 h-4 w-4" />
+            ) : (
+              <PanelRightClose className="mr-2 h-4 w-4" />
+            )}
+            <span className="text-sm font-medium">
+              {isInsightsCollapsed ? "Show insights" : "Hide insights"}
+            </span>
+          </Button>
+        </div>
+        <div
+          className={clsx(
+            "grid gap-6",
+            isInsightsCollapsed
+              ? "lg:grid-cols-1"
+              : "lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1.5fr)]",
+          )}
+        >
+
           <div className="space-y-6">
             <Card className="overflow-hidden border border-slate-200/70 bg-white/90 shadow-2xl shadow-slate-900/10 backdrop-blur-sm">
               <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
@@ -3395,9 +3436,11 @@ export default function DashboardView({
           </Card>
         </div>
 
-        <div className="space-y-6 lg:sticky lg:top-6">
-          <Card className="border border-slate-200/70 bg-white/90 shadow-xl shadow-slate-900/10 backdrop-blur-sm">
-            <CardHeader className="border-b border-white/40 bg-gradient-to-r from-white/80 via-sky-50/60 to-transparent">
+        {!isInsightsCollapsed ? (
+          <div className="space-y-6 lg:sticky lg:top-6">
+          <Card>
+            <CardHeader>
+
               <CardTitle>AI search</CardTitle>
               <CardDescription>
                 Search the indexed analyses, review the matches, and jump straight to the relevant timestamp.
@@ -3830,7 +3873,8 @@ export default function DashboardView({
               </div>
             </CardContent>
           </Card>
-        </div>
+          </div>
+        ) : null}
         </div>
       </div>
       <ChatWidget
