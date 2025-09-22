@@ -8,10 +8,10 @@ param backendImage string
 param frontendImage string
 
 @description('Optional environment variables to inject into the Viper backend container.')
-param backendEnvVars array = []
+param backendEnvVars object = {}
 
 @description('Optional environment variables to inject into the Viper UI frontend container.')
-param frontendEnvVars array = []
+param frontendEnvVars object = {}
 
 @description('Optional override for the Viper UI base URL that points to the Viper backend.')
 param frontendBaseUrl string = ''
@@ -476,30 +476,22 @@ resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDn
 var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
 var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
 
-var backendEnv = [for setting in backendEnvVars: {
-  name: setting.name
-  value: setting.value
+var backendEnv = [for key in union([], keys(backendEnvVars)): {
+  name: key
+  value: string(backendEnvVars[key])
 }]
 
-var frontendCustomEnv = [for setting in frontendEnvVars: {
-  name: setting.name
-  value: setting.value
+var frontendEnvMap = union({
+  VIPER_BASE_URL: resolvedBackendBaseUrl
+  VIPER_BACKEND_INTERNAL_URL: backendInternalUrl
+}, frontendEnvVars)
+
+var frontendEnv = [for key in union([], keys(frontendEnvMap)): {
+  name: key
+  value: string(frontendEnvMap[key])
 }]
 
-var frontendDefaultEnv = [
-  {
-    name: 'VIPER_BASE_URL'
-    value: resolvedBackendBaseUrl
-  }
-  {
-    name: 'VIPER_BACKEND_INTERNAL_URL'
-    value: backendInternalUrl
-  }
-]
-
-var frontendEnv = concat(frontendCustomEnv, frontendDefaultEnv)
-
-var registryServer = acr.properties.loginServer
+var registryServer = '${acrName}.azurecr.io'
 var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchRoleGuid = 'de139f84-1756-47ae-9be6-808fbbe84772'
@@ -510,7 +502,7 @@ var searchRoleDefinitionId = hasSearchService ? subscriptionResourceId('Microsof
 var cosmosRoleDefinitionId = hasCosmosAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cosmosRoleGuid) : ''
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleGuid)
 
-resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
+resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: backendContainerAppName
   location: location
   identity: {
@@ -519,16 +511,21 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
-      activeRevisionsMode: 'Single'
       ingress: {
         external: false
         targetPort: 8000
         transport: 'auto'
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
       }
       registries: [
         {
           server: registryServer
-          identity: 'SystemAssigned'
+          identity: 'system'
         }
       ]
     }
@@ -549,7 +546,7 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
   }
 }
 
-resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
+resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: frontendContainerAppName
   location: location
   identity: {
@@ -558,17 +555,21 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
   properties: {
     managedEnvironmentId: managedEnvironment.id
     configuration: {
-      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: 3000
         transport: 'auto'
-        allowInsecure: false
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
       }
       registries: [
         {
           server: registryServer
-          identity: 'SystemAssigned'
+          identity: 'system'
         }
       ]
     }
