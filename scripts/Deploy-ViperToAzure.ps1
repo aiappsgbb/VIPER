@@ -353,8 +353,8 @@ Invoke-CheckedAz -Arguments @("acr", "create", "--resource-group", $ResourceGrou
 
 Invoke-CheckedAz -Arguments @("acr", "login", "--name", $AcrName) | Out-Null
 
-$backendRegistryImage = "$AcrName.azurecr.io/$BackendImageName:$BackendImageTag"
-$frontendRegistryImage = "$AcrName.azurecr.io/$FrontendImageName:$FrontendImageTag"
+$backendRegistryImage = "$AcrName.azurecr.io/${BackendImageName}:${BackendImageTag}"
+$frontendRegistryImage = "$AcrName.azurecr.io/${FrontendImageName}:${FrontendImageTag}"
 
 Write-Host "Tagging backend image as '$backendRegistryImage'." -ForegroundColor Cyan
 Invoke-CheckedDocker -Arguments @("tag", $BackendImageName, $backendRegistryImage)
