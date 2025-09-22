@@ -472,21 +472,31 @@ class VideoClient:
                         manifest_source["rotation"] = rotation_value
 
             audio_info = file_metadata.get("audio_info") or {}
-            bits_per_sample = audio_info.get("bits_per_sample")
-            if (
-                isinstance(audio_info, dict)
-                and bits_per_sample is not None
-                and bits_per_sample > 0
-            ):
-                manifest_source["audio_found"] = True
+            if isinstance(audio_info, dict):
+                codec_type = audio_info.get("codec_type")
+                channels = _coerce_integer(audio_info.get("channels"))
+                sample_rate = _coerce_integer(audio_info.get("sample_rate"))
 
-                audio_duration = _coerce_fractional_number(audio_info.get("duration"))
-                if audio_duration is not None:
-                    manifest_source["audio_duration"] = audio_duration
+                has_audio_stream = (
+                    codec_type == "audio"
+                    or (channels is not None and channels > 0)
+                    or (sample_rate is not None and sample_rate > 0)
+                )
 
-                audio_fps = _coerce_fractional_number(audio_info.get("avg_frame_rate"))
-                if audio_fps is not None:
-                    manifest_source["audio_fps"] = audio_fps
+                if has_audio_stream:
+                    manifest_source["audio_found"] = True
+
+                    audio_duration = _coerce_fractional_number(
+                        audio_info.get("duration")
+                    )
+                    if audio_duration is not None:
+                        manifest_source["audio_duration"] = audio_duration
+
+                    audio_fps = _coerce_fractional_number(
+                        audio_info.get("avg_frame_rate")
+                    )
+                    if audio_fps is not None:
+                        manifest_source["audio_fps"] = audio_fps
 
             manifest.source_video = manifest.source_video.model_copy(
                 update=manifest_source

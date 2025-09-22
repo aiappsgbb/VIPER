@@ -2140,9 +2140,11 @@ export default function DashboardView({
       return false;
     }
 
+
     if (!playerReadyRef.current) {
       return false;
     }
+
 
     const player = playerRef.current;
     if (!player) {
