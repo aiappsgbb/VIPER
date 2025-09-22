@@ -90,7 +90,9 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   sku: {
     name: 'PerGB2018'
   }
-  retentionInDays: 30
+  properties: {
+    retentionInDays: 30
+  }
 }
 
 var logAnalyticsKeys = listKeys(logAnalytics.id, '2020-08-01')
@@ -113,9 +115,6 @@ var hasStorageAccount = createStorageAccount || !empty(resolvedStorageAccountNam
 var hasSearchService = createSearchService || !empty(resolvedSearchServiceName)
 var hasCosmosAccount = createCosmosAccount || !empty(resolvedCosmosAccountName)
 
-var storageAccountResourceId = hasStorageAccount ? (createStorageAccount ? resourceId('Microsoft.Storage/storageAccounts', resolvedStorageAccountName) : resourceId(storageAccountResourceGroup, 'Microsoft.Storage/storageAccounts', resolvedStorageAccountName)) : ''
-var searchServiceResourceId = hasSearchService ? (createSearchService ? resourceId('Microsoft.Search/searchServices', resolvedSearchServiceName) : resourceId(searchServiceResourceGroup, 'Microsoft.Search/searchServices', resolvedSearchServiceName)) : ''
-var cosmosAccountResourceId = hasCosmosAccount ? (createCosmosAccount ? resourceId('Microsoft.DocumentDB/databaseAccounts', resolvedCosmosAccountName) : resourceId(cosmosAccountResourceGroup, 'Microsoft.DocumentDB/databaseAccounts', resolvedCosmosAccountName)) : ''
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   name: virtualNetworkName
@@ -192,6 +191,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = if (cre
   }
 }
 
+
 resource searchService 'Microsoft.Search/searchServices@2020-08-01' = if (createSearchService) {
   name: resolvedSearchServiceName
   location: location
@@ -202,13 +202,13 @@ resource searchService 'Microsoft.Search/searchServices@2020-08-01' = if (create
     replicaCount: 1
     partitionCount: 1
     hostingMode: 'default'
-    publicNetworkAccess: 'Disabled'
-    disableLocalAuth: false
+    publicNetworkAccess: 'disabled'
     networkRuleSet: {
       ipRules: []
     }
   }
 }
+
 
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = if (createCosmosAccount) {
   name: resolvedCosmosAccountName
@@ -227,7 +227,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = if (
     enableFreeTier: false
     enableAnalyticalStorage: false
     publicNetworkAccess: 'Disabled'
-    multipleWriteLocations: false
+    enableMultipleWriteLocations: false
     disableKeyBasedMetadataWriteAccess: false
     minimalTlsVersion: 'Tls12'
     apiProperties: {
@@ -247,6 +247,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = if (
     capabilities: []
   }
 }
+
 
 resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-04-15' = if (createCosmosAccount) {
   parent: cosmosAccount
@@ -277,12 +278,14 @@ resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
 }
 
 resource storagePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (createStorageAccount) {
-  name: 'privatelink.blob.core.windows.net'
+  name: 'privatelink.blob.${environment().suffixes.storage}'
   location: 'global'
 }
 
 resource storagePrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (createStorageAccount) {
-  name: '${storagePrivateDnsZone.name}/${virtualNetworkName}-blob-link'
+  name: '${virtualNetworkName}-blob-link'
+  parent: storagePrivateDnsZone
+  location: 'global'
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -309,18 +312,18 @@ resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' 
         }
       }
     ]
-    privateDnsZoneGroups: [
+  }
+}
+
+resource storagePrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = if (createStorageAccount) {
+  name: '${resolvedStorageAccountName}-blob-dns'
+  parent: storagePrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
       {
-        name: '${resolvedStorageAccountName}-blob-dns'
+        name: 'blob'
         properties: {
-          privateDnsZoneConfigs: [
-            {
-              name: 'blob'
-              properties: {
-                privateDnsZoneId: storagePrivateDnsZone.id
-              }
-            }
-          ]
+          privateDnsZoneId: storagePrivateDnsZone.id
         }
       }
     ]
@@ -333,7 +336,9 @@ resource searchPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = i
 }
 
 resource searchPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (createSearchService) {
-  name: '${searchPrivateDnsZone.name}/${virtualNetworkName}-search-link'
+  name: '${virtualNetworkName}-search-link'
+  parent: searchPrivateDnsZone
+  location: 'global'
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -360,18 +365,18 @@ resource searchPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' =
         }
       }
     ]
-    privateDnsZoneGroups: [
+  }
+}
+
+resource searchPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = if (createSearchService) {
+  name: '${resolvedSearchServiceName}-dns'
+  parent: searchPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
       {
-        name: '${resolvedSearchServiceName}-dns'
+        name: 'search'
         properties: {
-          privateDnsZoneConfigs: [
-            {
-              name: 'search'
-              properties: {
-                privateDnsZoneId: searchPrivateDnsZone.id
-              }
-            }
-          ]
+          privateDnsZoneId: searchPrivateDnsZone.id
         }
       }
     ]
@@ -384,7 +389,9 @@ resource cosmosPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = i
 }
 
 resource cosmosPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (createCosmosAccount) {
-  name: '${cosmosPrivateDnsZone.name}/${virtualNetworkName}-cosmos-link'
+  name: '${virtualNetworkName}-cosmos-link'
+  parent: cosmosPrivateDnsZone
+  location: 'global'
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -411,18 +418,18 @@ resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' =
         }
       }
     ]
-    privateDnsZoneGroups: [
+  }
+}
+
+resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = if (createCosmosAccount) {
+  name: '${resolvedCosmosAccountName}-sql-dns'
+  parent: cosmosPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
       {
-        name: '${resolvedCosmosAccountName}-sql-dns'
+        name: 'cosmos'
         properties: {
-          privateDnsZoneConfigs: [
-            {
-              name: 'cosmos'
-              properties: {
-                privateDnsZoneId: cosmosPrivateDnsZone.id
-              }
-            }
-          ]
+          privateDnsZoneId: cosmosPrivateDnsZone.id
         }
       }
     ]
@@ -437,22 +444,23 @@ var backendEnv = [for setting in backendEnvVars: {
   value: setting.value
 }]
 
-var frontendEnv = arrayConcat(
-  [for setting in frontendEnvVars: {
-    name: setting.name
-    value: setting.value
-  }],
-  [
-    {
-      name: 'VIPER_BASE_URL'
-      value: resolvedBackendBaseUrl
-    },
-    {
-      name: 'VIPER_BACKEND_INTERNAL_URL'
-      value: backendInternalUrl
-    }
-  ]
-)
+var frontendCustomEnv = [for setting in frontendEnvVars: {
+  name: setting.name
+  value: setting.value
+}]
+
+var frontendDefaultEnv = [
+  {
+    name: 'VIPER_BASE_URL'
+    value: resolvedBackendBaseUrl
+  }
+  {
+    name: 'VIPER_BACKEND_INTERNAL_URL'
+    value: backendInternalUrl
+  }
+]
+
+var frontendEnv = concat(frontendCustomEnv, frontendDefaultEnv)
 
 var registryServer = acr.properties.loginServer
 var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
@@ -543,7 +551,7 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
 }
 
 resource backendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, acrPullRoleGuid, backendApp.identity.principalId)
+  name: guid(resourceGroup().id, backendApp.name, acrPullRoleGuid)
   scope: acr
   properties: {
     principalId: backendApp.identity.principalId
@@ -552,7 +560,7 @@ resource backendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2
 }
 
 resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, acrPullRoleGuid, frontendApp.identity.principalId)
+  name: guid(resourceGroup().id, frontendApp.name, acrPullRoleGuid)
   scope: acr
   properties: {
     principalId: frontendApp.identity.principalId
@@ -560,59 +568,105 @@ resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@
   }
 }
 
-resource backendStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasStorageAccount) {
-  name: guid(storageAccountResourceId, storageRoleGuid, backendApp.identity.principalId)
-  scope: storageAccountResourceId
-  properties: {
+var storageRoleAssignments = hasStorageAccount ? [
+  {
+    name: guid(resolvedStorageAccountName, backendApp.name, storageRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: storageRoleDefinitionId
   }
-}
-
-resource frontendStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasStorageAccount) {
-  name: guid(storageAccountResourceId, storageRoleGuid, frontendApp.identity.principalId)
-  scope: storageAccountResourceId
-  properties: {
+  {
+    name: guid(resolvedStorageAccountName, frontendApp.name, storageRoleGuid)
     principalId: frontendApp.identity.principalId
     roleDefinitionId: storageRoleDefinitionId
   }
-}
+] : []
 
-resource backendSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasSearchService) {
-  name: guid(searchServiceResourceId, searchRoleGuid, backendApp.identity.principalId)
-  scope: searchServiceResourceId
-  properties: {
+var searchRoleAssignments = hasSearchService ? [
+  {
+    name: guid(resolvedSearchServiceName, backendApp.name, searchRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: searchRoleDefinitionId
   }
-}
-
-resource frontendSearchRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasSearchService) {
-  name: guid(searchServiceResourceId, searchRoleGuid, frontendApp.identity.principalId)
-  scope: searchServiceResourceId
-  properties: {
+  {
+    name: guid(resolvedSearchServiceName, frontendApp.name, searchRoleGuid)
     principalId: frontendApp.identity.principalId
     roleDefinitionId: searchRoleDefinitionId
   }
-}
+] : []
 
-resource backendCosmosRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasCosmosAccount) {
-  name: guid(cosmosAccountResourceId, cosmosRoleGuid, backendApp.identity.principalId)
-  scope: cosmosAccountResourceId
-  properties: {
+var cosmosRoleAssignments = hasCosmosAccount ? [
+  {
+    name: guid(resolvedCosmosAccountName, backendApp.name, cosmosRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: cosmosRoleDefinitionId
   }
-}
-
-resource frontendCosmosRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (hasCosmosAccount) {
-  name: guid(cosmosAccountResourceId, cosmosRoleGuid, frontendApp.identity.principalId)
-  scope: cosmosAccountResourceId
-  properties: {
+  {
+    name: guid(resolvedCosmosAccountName, frontendApp.name, cosmosRoleGuid)
     principalId: frontendApp.identity.principalId
     roleDefinitionId: cosmosRoleDefinitionId
   }
+] : []
+
+module storageRoleAssignmentsNew './modules/storageRoleAssignments.bicep' = if (createStorageAccount && hasStorageAccount) {
+  name: 'storageRoleAssignmentsNew'
+  params: {
+    storageAccountName: resolvedStorageAccountName
+    assignments: storageRoleAssignments
+  }
+  dependsOn: [
+    storageAccount
+  ]
 }
+
+module storageRoleAssignmentsExisting './modules/storageRoleAssignments.bicep' = if (!createStorageAccount && hasStorageAccount) {
+  name: 'storageRoleAssignmentsExisting'
+  scope: resourceGroup(storageAccountResourceGroup)
+  params: {
+    storageAccountName: resolvedStorageAccountName
+    assignments: storageRoleAssignments
+  }
+}
+
+module searchRoleAssignmentsNew './modules/searchRoleAssignments.bicep' = if (createSearchService && hasSearchService) {
+  name: 'searchRoleAssignmentsNew'
+  params: {
+    searchServiceName: resolvedSearchServiceName
+    assignments: searchRoleAssignments
+  }
+  dependsOn: [
+    searchService
+  ]
+}
+
+module searchRoleAssignmentsExisting './modules/searchRoleAssignments.bicep' = if (!createSearchService && hasSearchService) {
+  name: 'searchRoleAssignmentsExisting'
+  scope: resourceGroup(searchServiceResourceGroup)
+  params: {
+    searchServiceName: resolvedSearchServiceName
+    assignments: searchRoleAssignments
+  }
+}
+
+module cosmosRoleAssignmentsNew './modules/cosmosRoleAssignments.bicep' = if (createCosmosAccount && hasCosmosAccount) {
+  name: 'cosmosRoleAssignmentsNew'
+  params: {
+    cosmosAccountName: resolvedCosmosAccountName
+    assignments: cosmosRoleAssignments
+  }
+  dependsOn: [
+    cosmosAccount
+  ]
+}
+
+module cosmosRoleAssignmentsExisting './modules/cosmosRoleAssignments.bicep' = if (!createCosmosAccount && hasCosmosAccount) {
+  name: 'cosmosRoleAssignmentsExisting'
+  scope: resourceGroup(cosmosAccountResourceGroup)
+  params: {
+    cosmosAccountName: resolvedCosmosAccountName
+    assignments: cosmosRoleAssignments
+  }
+}
+
 
 output frontendUrl string = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
 output backendInternalUrl string = backendInternalUrl
