@@ -3480,51 +3480,53 @@ export default function DashboardView({
                 ) : null}
               </div>
               {actionSummaryEntries.length ? (
-                <ScrollArea className="max-h-80 rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
-                  <div className="divide-y divide-slate-200/80">
-                    {actionSummaryEntries.map((entry, index) => (
-                      <div className="space-y-2 rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-inset ring-slate-200/60" key={entry.id ?? `action-${index}`}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium text-slate-800">
-                              {entry.summary ?? "Summary unavailable"}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                              {entry.start ? <span>Start: {entry.start}</span> : null}
-                              {entry.end ? <span>End: {entry.end}</span> : null}
-                              {entry.sentiment ? <span>Sentiment: {entry.sentiment}</span> : null}
-                              {entry.theme ? <span>Theme: {entry.theme}</span> : null}
+                <div className="max-h-[60vh]">
+                  <ScrollArea className="h-full rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
+                    <div className="divide-y divide-slate-200/80">
+                      {actionSummaryEntries.map((entry, index) => (
+                        <div className="space-y-2 rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-inset ring-slate-200/60" key={entry.id ?? `action-${index}`}>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-slate-800">
+                                {entry.summary ?? "Summary unavailable"}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                {entry.start ? <span>Start: {entry.start}</span> : null}
+                                {entry.end ? <span>End: {entry.end}</span> : null}
+                                {entry.sentiment ? <span>Sentiment: {entry.sentiment}</span> : null}
+                                {entry.theme ? <span>Theme: {entry.theme}</span> : null}
+                              </div>
+                              {entry.actions ? (
+                                <p className="text-xs text-slate-500">
+                                  <span className="font-medium text-slate-600">Actions:</span> {entry.actions}
+                                </p>
+                              ) : null}
+                              {entry.characters ? (
+                                <p className="text-xs text-slate-500">
+                                  <span className="font-medium text-slate-600">Characters:</span> {entry.characters}
+                                </p>
+                              ) : null}
+                              {entry.keyObjects ? (
+                                <p className="text-xs text-slate-500">
+                                  <span className="font-medium text-slate-600">Key objects:</span> {entry.keyObjects}
+                                </p>
+                              ) : null}
                             </div>
-                            {entry.actions ? (
-                              <p className="text-xs text-slate-500">
-                                <span className="font-medium text-slate-600">Actions:</span> {entry.actions}
-                              </p>
-                            ) : null}
-                            {entry.characters ? (
-                              <p className="text-xs text-slate-500">
-                                <span className="font-medium text-slate-600">Characters:</span> {entry.characters}
-                              </p>
-                            ) : null}
-                            {entry.keyObjects ? (
-                              <p className="text-xs text-slate-500">
-                                <span className="font-medium text-slate-600">Key objects:</span> {entry.keyObjects}
-                              </p>
+                            {entry.startSeconds != null ? (
+                              <Button
+                                onClick={() => handleSeekToTimestamp(entry.startSeconds)}
+                                size="sm"
+                                variant="outline"
+                              >
+                                Jump
+                              </Button>
                             ) : null}
                           </div>
-                          {entry.startSeconds != null ? (
-                            <Button
-                              onClick={() => handleSeekToTimestamp(entry.startSeconds)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              Jump
-                            </Button>
-                          ) : null}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
               ) : actionSummaryAnalysis ? (
                 <pre className="max-h-72 overflow-auto rounded-2xl border border-slate-200/80 bg-white/80 p-3 text-xs text-slate-600 shadow-inner">
                   {JSON.stringify(actionSummaryAnalysis, null, 2)}
