@@ -42,7 +42,7 @@ export async function POST(request) {
     const searchResults = await client.search(query, {
       queryType: "semantic",
       queryLanguage: "en-us",
-      top: 5,
+      top: 10,
       semanticConfiguration: "sem",
       filter,
     });

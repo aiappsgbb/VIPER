@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1330,7 +1330,7 @@ export default function DashboardView({
       : null;
   const videoSource = videoPlaybackUrl;
   const [currentTimestamp, setCurrentTimestamp] = useState(0);
-  const [pendingSeekSeconds, setPendingSeekSeconds] = useState(null);
+  const [pendingSeekRequest, setPendingSeekRequest] = useState(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState(
     selectedContent?.collection?.id ?? collections[0]?.id ?? null,
@@ -1347,6 +1347,7 @@ export default function DashboardView({
   const [searchResults, setSearchResults] = useState([]);
   const [openSearchResultId, setOpenSearchResultId] = useState(null);
   const [searchError, setSearchError] = useState("");
+  const shouldLimitSearchResultsHeight = searchResults.length > 5;
   const [isRunningActionSummary, setIsRunningActionSummary] = useState(false);
   const [isRunningChapterAnalysis, setIsRunningChapterAnalysis] = useState(false);
   const [actionSummaryMessage, setActionSummaryMessage] = useState("");
@@ -1416,7 +1417,7 @@ export default function DashboardView({
     if (!videoSource) {
       playerRef.current = null;
       setIsPlayerReady(false);
-      setPendingSeekSeconds(null);
+      setPendingSeekRequest(null);
     }
   }, [videoSource]);
 
@@ -2055,31 +2056,64 @@ export default function DashboardView({
 
   useEffect(() => {
     if (typeof initialStartSeconds === "number") {
-      setCurrentTimestamp(initialStartSeconds);
-      setPendingSeekSeconds(initialStartSeconds);
+      const clamped = Math.max(0, initialStartSeconds);
+      setPendingSeekRequest({ seconds: clamped, token: Date.now() });
     } else {
       setCurrentTimestamp(0);
-      setPendingSeekSeconds(null);
+      setPendingSeekRequest(null);
     }
   }, [selectedContent?.id, initialStartSeconds]);
 
   useEffect(() => {
     setIsPlayerReady(false);
+    setCurrentTimestamp(0);
   }, [selectedContent?.id]);
 
   useEffect(() => {
-    if (!isPlayerReady || pendingSeekSeconds == null) {
+    if (pendingSeekRequest == null) {
       return;
     }
 
-    const clamped = Math.max(0, pendingSeekSeconds);
-    const player = playerRef.current;
-    if (player && typeof player.seekTo === "function") {
-      player.seekTo(clamped, "seconds");
-      setCurrentTimestamp(clamped);
-      setPendingSeekSeconds(null);
-    }
-  }, [isPlayerReady, pendingSeekSeconds]);
+    let attempts = 0;
+    let timeoutId = null;
+    let isActive = true;
+
+    const attemptSeek = () => {
+      if (!isActive) {
+        return;
+      }
+
+      const clamped = Math.max(0, pendingSeekRequest.seconds);
+      if (!isPlayerReady && playerRef.current == null) {
+        attempts += 1;
+        if (attempts < 20) {
+          timeoutId = setTimeout(attemptSeek, 150);
+        }
+        return;
+      }
+
+      const didSeek = performSeek(clamped);
+
+      if (didSeek) {
+        setPendingSeekRequest(null);
+        return;
+      }
+
+      attempts += 1;
+      if (attempts < 20) {
+        timeoutId = setTimeout(attemptSeek, 150);
+      }
+    };
+
+    attemptSeek();
+
+    return () => {
+      isActive = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [pendingSeekRequest, performSeek, isPlayerReady]);
 
   useEffect(() => {
     if (!activeCollectionId || activeContentFilterId === "") {
@@ -2247,21 +2281,77 @@ export default function DashboardView({
     });
   };
 
-  const handleSeekToTimestamp = (timestamp) => {
-    if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
-      return;
-    }
+  const performSeek = useCallback(
+    (seconds) => {
+      const player = playerRef.current;
+      if (!player) {
+        return false;
+      }
 
-    const clamped = Math.max(0, timestamp);
-    const player = playerRef.current;
-    if (player && typeof player.seekTo === "function" && isPlayerReady) {
-      player.seekTo(clamped, "seconds");
-      setCurrentTimestamp(clamped);
-      setPendingSeekSeconds(null);
-    } else {
-      setPendingSeekSeconds(clamped);
-    }
-  };
+      let didSeek = false;
+
+      if (typeof player.seekTo === "function") {
+        try {
+          player.seekTo(seconds, "seconds");
+          didSeek = true;
+        } catch (error) {
+          didSeek = false;
+        }
+      }
+
+      if (typeof player.getInternalPlayer === "function") {
+        const internalPlayer = player.getInternalPlayer();
+        if (internalPlayer) {
+          if (
+            typeof internalPlayer.currentTime === "number" &&
+            Number.isFinite(internalPlayer.currentTime)
+          ) {
+            try {
+              internalPlayer.currentTime = seconds;
+              didSeek = true;
+            } catch (error) {
+              // ignore assignment errors for players that do not expose currentTime
+            }
+          } else if (typeof internalPlayer.seek === "function") {
+            try {
+              internalPlayer.seek(seconds);
+              didSeek = true;
+            } catch (error) {
+              // ignore seek errors for players that do not expose seek helpers
+            }
+          }
+        }
+      }
+
+      if (didSeek) {
+        setCurrentTimestamp(seconds);
+      }
+
+      return didSeek;
+    },
+    [],
+  );
+
+  const handleSeekToTimestamp = useCallback(
+    (timestamp) => {
+      if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
+        return;
+      }
+
+      const clamped = Math.max(0, timestamp);
+      setPendingSeekRequest({ seconds: clamped, token: Date.now() });
+
+      if (!isPlayerReady) {
+        return;
+      }
+
+      const didSeek = performSeek(clamped);
+      if (didSeek) {
+        setPendingSeekRequest(null);
+      }
+    },
+    [isPlayerReady, performSeek],
+  );
 
   const handlePlayerReady = () => {
     setIsPlayerReady(true);
@@ -2762,12 +2852,10 @@ export default function DashboardView({
                   <ReactPlayer
                     controls
                     height="100%"
-                    ref={(player) => {
-                      playerRef.current = player ?? null;
-                    }}
                     onReady={handlePlayerReady}
                     onProgress={handlePlayerProgress}
                     onSeek={handlePlayerSeek}
+                    ref={playerRef}
                     url={videoSource}
                     width="100%"
                   />
@@ -3513,8 +3601,14 @@ export default function DashboardView({
                 </div>
               </form>
               {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
-              <ScrollArea className="max-h-[60vh] rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
-                <div className="divide-y divide-slate-200/80">
+
+              <ScrollArea
+                className={`rounded-lg border border-slate-200${
+                  shouldLimitSearchResultsHeight ? " max-h-[30rem]" : ""
+                }`}
+              >
+                <div className="divide-y divide-slate-200">
+
                   {searchResults.length === 0 ? (
                     <p className="p-4 text-sm text-slate-500">Enter a query to view results.</p>
                   ) : (
@@ -3571,6 +3665,7 @@ export default function DashboardView({
                         "startSeconds",
                         "startTimestamp",
                         "start_timestamp",
+                        "start_time",
                         "startTime",
                         "start",
                         "startFrame",
@@ -3580,6 +3675,7 @@ export default function DashboardView({
                         "endSeconds",
                         "endTimestamp",
                         "end_timestamp",
+                        "end_time",
                         "endTime",
                         "end",
                         "endFrame",
