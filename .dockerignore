@@ -1,0 +1,27 @@
+# General ignores for Docker build context
+.git
+.gitignore
+.env
+.env.*
+**/__pycache__
+*.py[cod]
+*.pyo
+*.pyc
+*.pyd
+*.so
+*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+
+# Node and frontend artifacts that can bloat the context
+node_modules
+**/node_modules
+src/ui/.next
+src/ui/out
+src/ui/.turbo
+src/ui/.vercel
+
+# Local development artifacts
+.DS_Store
+.vscode
+.idea
