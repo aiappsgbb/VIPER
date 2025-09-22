@@ -424,18 +424,43 @@ Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "SEARCH_ENDPOINT" -Val
 Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "INDEX_NAME" -Value $SearchIndexName
 Set-EnvVarValue -Collection ([ref]$frontendEnvVars) -Name "DATABASE_URL" -Value $cloudDatabaseUrl
 
+$createStorageAccount = $true
+$createSearchService = $true
+$createCosmosAccount = $true
+
+$storageAccountResourceGroup = $ResourceGroupName
+$searchServiceResourceGroup = $ResourceGroupName
+$cosmosAccountResourceGroup = $ResourceGroupName
+
 $azureStorageNameParam = $azureParameterValues['VIPER_AZURE_STORAGE_ACCOUNT_NAME']
-if ($azureStorageNameParam) {
+if (-not [string]::IsNullOrWhiteSpace($azureStorageNameParam)) {
     # Preserve compatibility for scenarios where callers provide an existing account.
-    $StorageAccountName = $azureStorageNameParam
+    $StorageAccountName = $azureStorageNameParam.Trim()
+    $createStorageAccount = $false
 }
+$azureStorageResourceGroupParam = $azureParameterValues['VIPER_AZURE_STORAGE_RESOURCE_GROUP']
+if (-not [string]::IsNullOrWhiteSpace($azureStorageResourceGroupParam)) {
+    $storageAccountResourceGroup = $azureStorageResourceGroupParam.Trim()
+}
+
 $azureSearchServiceNameParam = $azureParameterValues['VIPER_AZURE_SEARCH_SERVICE_NAME']
-if ($azureSearchServiceNameParam) {
-    $SearchServiceName = $azureSearchServiceNameParam
+if (-not [string]::IsNullOrWhiteSpace($azureSearchServiceNameParam)) {
+    $SearchServiceName = $azureSearchServiceNameParam.Trim()
+    $createSearchService = $false
 }
+$azureSearchResourceGroupParam = $azureParameterValues['VIPER_AZURE_SEARCH_RESOURCE_GROUP']
+if (-not [string]::IsNullOrWhiteSpace($azureSearchResourceGroupParam)) {
+    $searchServiceResourceGroup = $azureSearchResourceGroupParam.Trim()
+}
+
 $azureCosmosNameParam = $azureParameterValues['VIPER_AZURE_COSMOS_ACCOUNT_NAME']
-if ($azureCosmosNameParam) {
-    $CosmosAccountName = $azureCosmosNameParam
+if (-not [string]::IsNullOrWhiteSpace($azureCosmosNameParam)) {
+    $CosmosAccountName = $azureCosmosNameParam.Trim()
+    $createCosmosAccount = $false
+}
+$azureCosmosResourceGroupParam = $azureParameterValues['VIPER_AZURE_COSMOS_RESOURCE_GROUP']
+if (-not [string]::IsNullOrWhiteSpace($azureCosmosResourceGroupParam)) {
+    $cosmosAccountResourceGroup = $azureCosmosResourceGroupParam.Trim()
 }
 
 $tempFiles = @()
@@ -471,11 +496,17 @@ $parameterValues = @(
     "backendImage=$backendRegistryImage",
     "frontendImage=$frontendRegistryImage",
     "virtualNetworkName=$VirtualNetworkName",
+    "createStorageAccount=$($createStorageAccount.ToString().ToLower())",
     "storageAccountName=$StorageAccountName",
+    "storageAccountResourceGroup=$storageAccountResourceGroup",
+    "createSearchService=$($createSearchService.ToString().ToLower())",
     "searchServiceName=$SearchServiceName",
+    "searchServiceResourceGroup=$searchServiceResourceGroup",
+    "createCosmosAccount=$($createCosmosAccount.ToString().ToLower())",
     "cosmosAccountName=$CosmosAccountName",
     "cosmosDatabaseName=$CosmosDatabaseName",
-    "cosmosContainerName=$CosmosContainerName"
+    "cosmosContainerName=$CosmosContainerName",
+    "cosmosAccountResourceGroup=$cosmosAccountResourceGroup"
 )
 
 if ($backendEnvFile) {
@@ -532,7 +563,7 @@ Write-Host "Ensuring Azure AI Search index '$SearchIndexName'." -ForegroundColor
 $adminKey = Invoke-CheckedAz -Arguments @(
     "search", "admin-key", "show",
     "--service-name", $SearchServiceName,
-    "--resource-group", $ResourceGroupName,
+    "--resource-group", $searchServiceResourceGroup,
     "--query", "primaryKey",
     "-o", "tsv"
 )
@@ -613,7 +644,7 @@ Write-Host "Configuring Azure AI Search query key." -ForegroundColor Cyan
 $queryKeysRaw = Invoke-CheckedAz -Arguments @(
     "search", "query-key", "list",
     "--service-name", $SearchServiceName,
-    "--resource-group", $ResourceGroupName
+    "--resource-group", $searchServiceResourceGroup
 )
 $queryKeys = @()
 if ($queryKeysRaw) {
@@ -629,7 +660,7 @@ if (-not $queryKeyRecord) {
     $queryKeyRecord = Invoke-CheckedAz -Arguments @(
         "search", "query-key", "create",
         "--service-name", $SearchServiceName,
-        "--resource-group", $ResourceGroupName,
+        "--resource-group", $searchServiceResourceGroup,
         "--name", $targetQueryKeyName
     ) | ConvertFrom-Json
 }
