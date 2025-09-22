@@ -25,7 +25,7 @@ RUN poetry config virtualenvs.create false \
 
 # Copy application code
 COPY README.md ./README.md
-COPY src ./src
+COPY src/cobrapy ./src/cobrapy
 COPY samples ./samples
 COPY sample.env ./sample.env
 
