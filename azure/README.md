@@ -12,7 +12,7 @@ This directory contains infrastructure-as-code assets for deploying the Viper ba
   - Two container apps (backend and frontend) that pull images from an Azure Container Registry (ACR).
   - Private ingress for the backend and HTTPS-only public ingress for the frontend. The template automatically injects secure defaults for the UI so it communicates with the backend over the Container Apps internal domain via TLS.
 - A virtual network with dedicated subnets for Container Apps infrastructure, dedicated workload profiles, and private endpoints.
-- Configures a dedicated Container Apps workload profile bound to the non-delegated workload subnet so dedicated SKUs can be used without subnet delegation conflicts.
+- Configures a dedicated Container Apps workload profile so dedicated SKUs can be used without subnet delegation conflicts.
 - Reserved address ranges for the Container Apps platform infrastructure and Docker bridge network with overridable defaults
   so deployments succeed even when the environment is isolated in a virtual network.
 - A Storage account, Azure AI Search service, and Azure Cosmos DB account (unless existing resources are supplied) with public network access disabled and private endpoints wired into the virtual network.
