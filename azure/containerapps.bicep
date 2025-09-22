@@ -486,7 +486,7 @@ resource backendApp 'Microsoft.App/containerApps@2023-05-01' = {
       ingress: {
         external: false
         targetPort: 8000
-        transport: 'https'
+        transport: 'auto'
       }
       registries: [
         {
@@ -524,7 +524,7 @@ resource frontendApp 'Microsoft.App/containerApps@2023-05-01' = {
       ingress: {
         external: true
         targetPort: 3000
-        transport: 'https'
+        transport: 'auto'
         allowInsecure: false
       }
       registries: [
