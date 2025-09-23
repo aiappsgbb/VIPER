@@ -23,6 +23,11 @@ enum MembershipRole {
   VIEWER
 }
 
+enum CollectionVisibility {
+  PRIVATE
+  PUBLIC
+}
+
 enum JobStatus {
   QUEUED
   PROCESSING
@@ -70,12 +75,13 @@ model OrganizationMembership {
 }
 
 model Collection {
-  id             String   @id @default(uuid()) @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
   name           String
   description    String?
-  organizationId String   @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  organizationId String               @db.Uuid
+  visibility     CollectionVisibility @default(PRIVATE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   organization Organization           @relation(fields: [organizationId], references: [id])
   contents     Content[]

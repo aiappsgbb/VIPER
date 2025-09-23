@@ -10,6 +10,8 @@ import {
 } from "@/lib/rbac";
 import { userCanManageOrganization } from "@/lib/access";
 
+const visibilitySchema = z.enum(["PRIVATE", "PUBLIC"]);
+
 const createCollectionSchema = z.object({
   name: z.string().trim().min(2, "Collection name is required"),
   description: z
@@ -19,6 +21,7 @@ const createCollectionSchema = z.object({
     .optional()
     .nullable(),
   organizationId: z.string().uuid("Organization is required"),
+  visibility: visibilitySchema.default("PRIVATE"),
 });
 
 export async function POST(request) {
@@ -42,7 +45,7 @@ export async function POST(request) {
     );
   }
 
-  const { name, description, organizationId } = parsed.data;
+  const { name, description, organizationId, visibility } = parsed.data;
 
   if (!canViewAllContent(session.user.role)) {
     const allowed = await userCanManageOrganization(session.user, organizationId);
@@ -59,6 +62,7 @@ export async function POST(request) {
       name: name.trim(),
       description: description?.trim() || null,
       organizationId,
+      visibility,
     },
     include: {
       organization: true,

@@ -24,6 +24,7 @@ function serializeOrganization(organization) {
       id: collection.id,
       name: collection.name,
       description: collection.description ?? "",
+      visibility: collection.visibility,
     })),
   };
 }
@@ -103,6 +104,7 @@ export default async function AdminPage() {
           id: true,
           name: true,
           description: true,
+          visibility: true,
         },
       },
     },

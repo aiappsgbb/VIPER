@@ -43,6 +43,16 @@ export default async function DashboardPage({ searchParams }) {
               },
             },
           },
+          {
+            visibility: "PUBLIC",
+            organization: {
+              memberships: {
+                some: {
+                  userId: session.user.id,
+                },
+              },
+            },
+          },
         ],
       };
 
