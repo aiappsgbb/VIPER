@@ -6,6 +6,8 @@ import prisma from "@/lib/prisma";
 import { canManageCollections, canViewAllContent } from "@/lib/rbac";
 import { userCanManageCollection } from "@/lib/access";
 
+const visibilitySchema = z.enum(["PRIVATE", "PUBLIC"]);
+
 const updateCollectionSchema = z
   .object({
     name: z.string().trim().min(2, "Collection name is required").optional(),
@@ -14,9 +16,10 @@ const updateCollectionSchema = z
       .trim()
       .max(2000, "Description must be 2000 characters or fewer")
       .optional(),
+    visibility: visibilitySchema.optional(),
   })
-  .refine((data) => data.name != null || data.description != null, {
-    message: "Provide a name or description to update.",
+  .refine((data) => data.name != null || data.description != null || data.visibility != null, {
+    message: "Provide a name, description, or visibility to update.",
   });
 
 export async function PATCH(request, { params }) {
@@ -63,9 +66,13 @@ export async function PATCH(request, { params }) {
     updates.description = trimmed.length ? trimmed : null;
   }
 
+  if (parsed.data.visibility != null) {
+    updates.visibility = parsed.data.visibility;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(
-      { error: "Provide a name or description to update." },
+      { error: "Provide a name, description, or visibility to update." },
       { status: 400 },
     );
   }

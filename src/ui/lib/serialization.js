@@ -24,6 +24,7 @@ export async function serializeCollection(collection) {
   return {
     ...collection,
     description: collection.description ?? null,
+    visibility: collection.visibility ?? "PRIVATE",
     createdAt: collection.createdAt.toISOString(),
     updatedAt: collection.updatedAt.toISOString(),
     organization: collection.organization,

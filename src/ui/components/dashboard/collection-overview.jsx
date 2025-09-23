@@ -427,6 +427,14 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
                   <p>{collection.organization?.name ?? "Unassigned"}</p>
                 </div>
                 <div>
+                  <p className="font-medium text-slate-700">Visibility</p>
+                  <p>
+                    {collection.visibility === "PUBLIC"
+                      ? "Public to everyone in the organization"
+                      : "Private to invited collaborators"}
+                  </p>
+                </div>
+                <div>
                   <p className="font-medium text-slate-700">Videos</p>
                   <p>{videoCount ? `${videoCount} available` : "No videos uploaded yet"}</p>
                 </div>

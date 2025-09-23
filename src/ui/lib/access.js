@@ -109,6 +109,17 @@ export function buildCollectionAccessWhere(user, collectionId) {
     return where;
   }
 
+  const publicCollectionClause = {
+    visibility: "PUBLIC",
+    organization: {
+      memberships: {
+        some: {
+          userId: user.id,
+        },
+      },
+    },
+  };
+
   where.OR = [
     {
       memberships: {
@@ -127,6 +138,7 @@ export function buildCollectionAccessWhere(user, collectionId) {
         },
       },
     },
+    publicCollectionClause,
   ];
 
   return where;
@@ -138,6 +150,19 @@ export function buildContentAccessWhere(user, contentId) {
   if (canViewAllContent(user.role)) {
     return where;
   }
+
+  const publicCollectionClause = {
+    collection: {
+      visibility: "PUBLIC",
+      organization: {
+        memberships: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    },
+  };
 
   where.OR = [
     {
@@ -159,6 +184,7 @@ export function buildContentAccessWhere(user, contentId) {
         },
       },
     },
+    publicCollectionClause,
   ];
 
   return where;

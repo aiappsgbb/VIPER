@@ -61,6 +61,16 @@ async function getSidebarData(user) {
               },
             },
           },
+          {
+            visibility: "PUBLIC",
+            organization: {
+              memberships: {
+                some: {
+                  userId: user.id,
+                },
+              },
+            },
+          },
         ],
       };
 
@@ -97,6 +107,7 @@ async function getSidebarData(user) {
     collections: organization.collections.map((collection) => ({
       id: collection.id,
       name: collection.name,
+      visibility: collection.visibility,
       contents: collection.contents,
     })),
   }));
@@ -135,6 +146,16 @@ export default async function DashboardLayout({ children }) {
               },
             },
           },
+          {
+            visibility: "PUBLIC",
+            organization: {
+              memberships: {
+                some: {
+                  userId: session.user.id,
+                },
+              },
+            },
+          },
         ],
       };
 
@@ -144,6 +165,7 @@ export default async function DashboardLayout({ children }) {
       id: true,
       name: true,
       description: true,
+      visibility: true,
       organization: {
         select: {
           id: true,

@@ -93,6 +93,7 @@ export default function AdminPanel({
           description: collection.description ?? "",
           organizationId: organization.id,
           organizationName: organization.name,
+          visibility: collection.visibility ?? "PRIVATE",
         })),
       ),
     [organizations],
@@ -121,6 +122,7 @@ export default function AdminPanel({
       id: collection.id,
       name: collection.name,
       description: collection.description ?? "",
+      visibility: collection.visibility ?? "PRIVATE",
     })),
   );
   useEffect(() => {
@@ -129,6 +131,7 @@ export default function AdminPanel({
         id: collection.id,
         name: collection.name,
         description: collection.description ?? "",
+        visibility: collection.visibility ?? "PRIVATE",
       })),
     );
   }, [collectionSummaries]);
@@ -139,6 +142,7 @@ export default function AdminPanel({
   const [newCollectionOrgId, setNewCollectionOrgId] = useState(organizations[0]?.id ?? "");
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
+  const [newCollectionVisibility, setNewCollectionVisibility] = useState("PRIVATE");
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
 
   useEffect(() => {
@@ -418,6 +422,7 @@ export default function AdminPanel({
           organizationId: newCollectionOrgId,
           name: newCollectionName.trim(),
           description: newCollectionDescription.trim() || null,
+          visibility: newCollectionVisibility,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -430,6 +435,7 @@ export default function AdminPanel({
       setCollectionMessageTone("success");
       setNewCollectionName("");
       setNewCollectionDescription("");
+      setNewCollectionVisibility("PRIVATE");
       router.refresh();
     } catch (createError) {
       setCollectionError(createError.message ?? "Unable to create collection");
@@ -457,6 +463,7 @@ export default function AdminPanel({
         body: JSON.stringify({
           name: draft.name.trim(),
           description: draft.description.trim(),
+          visibility: draft.visibility,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -830,7 +837,7 @@ export default function AdminPanel({
         <CardContent className="space-y-6">
           {permissions.canManageCollections && permissions.canCreateCollections ? (
             <form className="space-y-3" onSubmit={handleCreateCollection}>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 <div className="md:col-span-1">
                   <label className="text-sm font-medium text-slate-600" htmlFor="new-collection-organization">
                     Organization
@@ -861,6 +868,20 @@ export default function AdminPanel({
                   />
                 </div>
                 <div className="md:col-span-1">
+                  <label className="text-sm font-medium text-slate-600" htmlFor="new-collection-visibility">
+                    Visibility
+                  </label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    id="new-collection-visibility"
+                    onChange={(event) => setNewCollectionVisibility(event.target.value)}
+                    value={newCollectionVisibility}
+                  >
+                    <option value="PRIVATE">Private (only invited members)</option>
+                    <option value="PUBLIC">Public (anyone in the organization)</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
                   <label className="text-sm font-medium text-slate-600" htmlFor="new-collection-description">
                     Description (optional)
                   </label>
@@ -892,7 +913,7 @@ export default function AdminPanel({
                 const isSaving = Boolean(savingCollections[collection.id]);
                 return (
                   <div className="space-y-3 rounded-md border border-slate-200 p-4" key={collection.id}>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <div>
                         <label className="text-sm font-medium text-slate-600" htmlFor={`collection-name-${collection.id}`}>
                           Name
@@ -915,6 +936,29 @@ export default function AdminPanel({
                       <div>
                         <p className="text-sm font-medium text-slate-600">Organization</p>
                         <p className="text-sm text-slate-500">{collection.organizationName}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-600" htmlFor={`collection-visibility-${collection.id}`}>
+                          Visibility
+                        </label>
+                        <select
+                          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                          disabled={!permissions.canManageCollections}
+                          id={`collection-visibility-${collection.id}`}
+                          onChange={(event) =>
+                            setCollectionDrafts((current) =>
+                              current.map((item) =>
+                                item.id === collection.id
+                                  ? { ...item, visibility: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                          value={draft?.visibility ?? "PRIVATE"}
+                        >
+                          <option value="PRIVATE">Private (only invited members)</option>
+                          <option value="PUBLIC">Public (anyone in the organization)</option>
+                        </select>
                       </div>
                     </div>
                     <div>

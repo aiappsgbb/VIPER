@@ -39,6 +39,7 @@ export default function VideoUploadPanel({
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [newCollectionOrgId, setNewCollectionOrgId] = useState("");
+  const [newCollectionVisibility, setNewCollectionVisibility] = useState("PRIVATE");
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [collectionMessage, setCollectionMessage] = useState("");
   const [collectionMessageTone, setCollectionMessageTone] = useState("info");
@@ -104,6 +105,7 @@ export default function VideoUploadPanel({
   const resetCollectionForm = () => {
     setNewCollectionName("");
     setNewCollectionDescription("");
+    setNewCollectionVisibility("PRIVATE");
     setCollectionError("");
   };
 
@@ -200,6 +202,7 @@ export default function VideoUploadPanel({
           name: newCollectionName.trim(),
           description: newCollectionDescription.trim() || null,
           organizationId: newCollectionOrgId,
+          visibility: newCollectionVisibility,
         }),
       });
 
@@ -290,6 +293,20 @@ export default function VideoUploadPanel({
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-600" htmlFor="new-collection-visibility">
+                          Visibility
+                        </label>
+                        <select
+                          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                          id="new-collection-visibility"
+                          onChange={(event) => setNewCollectionVisibility(event.target.value)}
+                          value={newCollectionVisibility}
+                        >
+                          <option value="PRIVATE">Private (only invited members)</option>
+                          <option value="PUBLIC">Public (anyone in the organization)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-600" htmlFor="new-collection-description">
                           Description (optional)
                         </label>
@@ -323,7 +340,8 @@ export default function VideoUploadPanel({
               <option value="">Select a collection</option>
               {collections.map((collection) => (
                 <option key={collection.id} value={collection.id}>
-                  {collection.organization.name} • {collection.name}
+                  {collection.organization.name} • {collection.name} (
+                  {collection.visibility === "PUBLIC" ? "Public" : "Private"})
                 </option>
               ))}
             </select>
