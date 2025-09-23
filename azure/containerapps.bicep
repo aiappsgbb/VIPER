@@ -476,9 +476,9 @@ resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDn
 var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
 var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
 
-var backendEnv = [for (key, value) in backendEnvVars: {
-  name: key
-  value: string(value)
+var backendEnv = [for envVar in items(backendEnvVars): {
+  name: envVar.key
+  value: string(envVar.value)
 }]
 
 var frontendBaseEnv = [
@@ -492,9 +492,9 @@ var frontendBaseEnv = [
   }
 ]
 
-var frontendAdditionalEnv = [for (key, value) in frontendEnvVars: {
-  name: key
-  value: string(value)
+var frontendAdditionalEnv = [for envVar in items(frontendEnvVars): {
+  name: envVar.key
+  value: string(envVar.value)
 }]
 
 var frontendEnv = concat(frontendBaseEnv, frontendAdditionalEnv)
