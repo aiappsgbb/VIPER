@@ -12,7 +12,8 @@ This directory contains infrastructure-as-code assets for deploying the Viper ba
   - Two container apps (backend and frontend) that pull images from an Azure Container Registry (ACR).
   - Private ingress for the backend and HTTPS-only public ingress for the frontend. The template automatically injects secure defaults for the UI so it communicates with the backend over the Container Apps internal domain via TLS.
 - A virtual network with dedicated subnets for Container Apps infrastructure, dedicated workload profiles, and private endpoints.
-- Configures a dedicated Container Apps workload profile so dedicated SKUs can be used without subnet delegation conflicts.
+- Configures a dedicated Container Apps workload profile so dedicated SKUs can be used without subnet delegation conflicts. You can disable the dedicated profile to run on the Consumption plan when premium capacity is not required.
+- Supports bring-your-own networking scenarios. Set `createVirtualNetwork` to `false` and provide the subnet resource IDs to deploy into an existing network without redeclaring subnets that are already delegated.
 - Reserved address ranges for the Container Apps platform infrastructure and Docker bridge network with overridable defaults
   so deployments succeed even when the environment is isolated in a virtual network.
 - A Storage account, Azure AI Search service, and Azure Cosmos DB account (unless existing resources are supplied) with public network access disabled and private endpoints wired into the virtual network.
@@ -53,7 +54,7 @@ Leaving entries blank skips the associated role assignment. When a resource grou
 ### Customisation options
 
 
-The deployment script accepts optional parameters for the ACR name, Container Apps environment name, container app names, image tags, virtual network name, the Azure AD tenant, and the Azure resource names that will be created. These default to deterministic names derived from the resource group when omitted. Use `-SkipEnvFile` if you do not want to send `.env` values to Azure, and `-SkipAzureEnvFile` if you prefer to control the managed identity parameters manually or bind to existing resources.
+The deployment script accepts optional parameters for the ACR name, Container Apps environment name, container app names, image tags, virtual network name, the Azure AD tenant, and the Azure resource names that will be created. These default to deterministic names derived from the resource group when omitted. Use `-SkipEnvFile` if you do not want to send `.env` values to Azure, and `-SkipAzureEnvFile` if you prefer to control the managed identity parameters manually or bind to existing resources. When reusing existing networking, set `-CreateVirtualNetwork $false` and pass the subnet IDs via the script parameters so the template can attach private endpoints without reconfiguring the VNet.
 
 To override the URL that the frontend uses to reach the backend in Azure, set `VIPER_BASE_URL` in your `.env` before running the deployment script. Otherwise the template will generate the secure internal URL based on the Container Apps environment domain.
 

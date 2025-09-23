@@ -19,6 +19,18 @@ param frontendBaseUrl string = ''
 @description('Name of the virtual network that hosts the Container Apps environment and private endpoints.')
 param virtualNetworkName string
 
+@description('Resource group for the virtual network when reusing an existing network.')
+param virtualNetworkResourceGroup string = resourceGroup().name
+
+@description('Create the virtual network and subnets when true. Set to false to reference existing subnets by resource ID.')
+param createVirtualNetwork bool = true
+
+@description('Resource ID of the Container Apps infrastructure subnet when referencing an existing virtual network.')
+param containerAppsSubnetResourceId string = ''
+
+@description('Resource ID of the subnet reserved for private endpoints when referencing an existing virtual network.')
+param privateEndpointSubnetResourceId string = ''
+
 @description('Address prefix allocated to the virtual network.')
 param virtualNetworkAddressPrefix string = '10.100.0.0/16'
 
@@ -53,6 +65,9 @@ param containerAppsWorkloadMinimumCount int = 1
 @minValue(1)
 @description('Maximum number of replicas for the dedicated workload profile.')
 param containerAppsWorkloadMaximumCount int = 3
+
+@description('Enable a dedicated Container Apps workload profile. When false, the apps run on the Consumption workload profile.')
+param enableDedicatedWorkloadProfile bool = true
 
 @description('Create a new Storage Account when true. Set to false to reference an existing account.')
 param createStorageAccount bool = true
@@ -134,9 +149,19 @@ var resolvedCosmosAccountName = toLower(createCosmosAccount ? (empty(cosmosAccou
 var hasStorageAccount = createStorageAccount || !empty(resolvedStorageAccountName)
 var hasSearchService = createSearchService || !empty(resolvedSearchServiceName)
 var hasCosmosAccount = createCosmosAccount || !empty(resolvedCosmosAccountName)
+var requiresPrivateEndpointSubnet = createStorageAccount || createSearchService || createCosmosAccount
 
+assert containerAppsSubnetProvided = createVirtualNetwork || !empty(containerAppsSubnetResourceId): 'Provide containerAppsSubnetResourceId when createVirtualNetwork is false.'
+assert privateEndpointSubnetProvided = createVirtualNetwork || !requiresPrivateEndpointSubnet || !empty(privateEndpointSubnetResourceId): 'Provide privateEndpointSubnetResourceId when createVirtualNetwork is false and private endpoints are being created.'
 
-resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+var virtualNetworkId = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks', virtualNetworkName)
+var containerAppsSubnetIdGenerated = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
+var privateEndpointSubnetIdGenerated = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, privateEndpointSubnetName)
+
+var resolvedContainerAppsSubnetId = createVirtualNetwork ? containerAppsSubnetIdGenerated : containerAppsSubnetResourceId
+var resolvedPrivateEndpointSubnetId = createVirtualNetwork ? privateEndpointSubnetIdGenerated : privateEndpointSubnetResourceId
+
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = if (createVirtualNetwork) {
   name: virtualNetworkName
   location: location
   properties: {
@@ -177,9 +202,6 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   }
 }
 
-var containerAppsSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
-var privateEndpointSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, privateEndpointSubnetName)
-
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: managedEnvironmentName
   location: location
@@ -192,19 +214,19 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       }
     }
     vnetConfiguration: {
-      infrastructureSubnetId: containerAppsSubnetId
+      infrastructureSubnetId: resolvedContainerAppsSubnetId
     }
     workloadProfiles: [
-      any({
+      if (enableDedicatedWorkloadProfile) {
         name: containerAppsWorkloadProfileName
         workloadProfileType: containerAppsWorkloadProfileType
         minimumCount: containerAppsWorkloadMinimumCount
         maximumCount: containerAppsWorkloadMaximumCount
-      })
+      }
     ]
   }
   dependsOn: [
-    virtualNetwork
+    if (createVirtualNetwork) virtualNetwork
   ]
 }
 
@@ -240,9 +262,6 @@ resource searchService 'Microsoft.Search/searchServices@2020-08-01' = if (create
     partitionCount: 1
     hostingMode: 'default'
     publicNetworkAccess: 'disabled'
-    networkRuleSet: {
-      ipRules: []
-    }
   }
 }
 
@@ -326,7 +345,7 @@ resource storagePrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetwork
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: virtualNetwork.id
+      id: virtualNetworkId
     }
   }
 }
@@ -336,7 +355,7 @@ resource storagePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' 
   location: location
   properties: {
     subnet: {
-      id: privateEndpointSubnetId
+      id: resolvedPrivateEndpointSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -379,7 +398,7 @@ resource searchPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: virtualNetwork.id
+      id: virtualNetworkId
     }
   }
 }
@@ -389,7 +408,7 @@ resource searchPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' =
   location: location
   properties: {
     subnet: {
-      id: privateEndpointSubnetId
+      id: resolvedPrivateEndpointSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -432,7 +451,7 @@ resource cosmosPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
   properties: {
     registrationEnabled: false
     virtualNetwork: {
-      id: virtualNetwork.id
+      id: virtualNetworkId
     }
   }
 }
@@ -442,7 +461,7 @@ resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' =
   location: location
   properties: {
     subnet: {
-      id: privateEndpointSubnetId
+      id: resolvedPrivateEndpointSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -509,6 +528,7 @@ var storageRoleDefinitionId = hasStorageAccount ? subscriptionResourceId('Micros
 var searchRoleDefinitionId = hasSearchService ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid) : ''
 var cosmosRoleDefinitionId = hasCosmosAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cosmosRoleGuid) : ''
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleGuid)
+var containerAppWorkloadProfile = enableDedicatedWorkloadProfile ? containerAppsWorkloadProfileName : 'Consumption'
 
 resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: backendContainerAppName
@@ -518,6 +538,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
   properties: {
     managedEnvironmentId: managedEnvironment.id
+    workloadProfileName: containerAppWorkloadProfile
     configuration: {
       ingress: {
         external: false
@@ -549,7 +570,6 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
         minReplicas: 1
         maxReplicas: 1
       }
-      workloadProfileName: containerAppsWorkloadProfileName
     }
   }
 }
@@ -562,6 +582,7 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
   properties: {
     managedEnvironmentId: managedEnvironment.id
+    workloadProfileName: containerAppWorkloadProfile
     configuration: {
       ingress: {
         external: true
@@ -593,7 +614,6 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
         minReplicas: 1
         maxReplicas: 1
       }
-      workloadProfileName: containerAppsWorkloadProfileName
     }
   }
 }
