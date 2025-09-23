@@ -642,6 +642,8 @@ const DEFAULT_ACTION_SUMMARY_FIELDS = [
   },
 ];
 
+const ACTION_SUMMARY_PREVIEW_COUNT = 3;
+
 function mapTemplateToFields(template) {
   if (!Array.isArray(template)) {
     return DEFAULT_ACTION_SUMMARY_FIELDS.map((field) => ({ ...field }));
@@ -1602,6 +1604,64 @@ function summarizeArtifacts(artifacts) {
   return String(artifacts);
 }
 
+function ActionSummaryEntryCard({ entry, onJump }) {
+  const {
+    summary,
+    start,
+    end,
+    sentiment,
+    theme,
+    actions,
+    characters,
+    keyObjects,
+    startSeconds,
+  } = entry ?? {};
+
+  const handleJump = () => {
+    if (typeof startSeconds === "number" && Number.isFinite(startSeconds)) {
+      onJump?.(startSeconds);
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-inset ring-slate-200/60">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-slate-800">
+            {summary ?? "Summary unavailable"}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+            {start ? <span>Start: {start}</span> : null}
+            {end ? <span>End: {end}</span> : null}
+            {sentiment ? <span>Sentiment: {sentiment}</span> : null}
+            {theme ? <span>Theme: {theme}</span> : null}
+          </div>
+          {actions ? (
+            <p className="text-xs text-slate-500">
+              <span className="font-medium text-slate-600">Actions:</span> {actions}
+            </p>
+          ) : null}
+          {characters ? (
+            <p className="text-xs text-slate-500">
+              <span className="font-medium text-slate-600">Characters:</span> {characters}
+            </p>
+          ) : null}
+          {keyObjects ? (
+            <p className="text-xs text-slate-500">
+              <span className="font-medium text-slate-600">Key objects:</span> {keyObjects}
+            </p>
+          ) : null}
+        </div>
+        {typeof startSeconds === "number" && Number.isFinite(startSeconds) ? (
+          <Button onClick={handleJump} size="sm" variant="outline">
+            Jump
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardView({
   collections,
   selectedContent,
@@ -1810,6 +1870,14 @@ export default function DashboardView({
   const actionSummaryEntries = useMemo(
     () => normalizeActionSummaryEntries(actionSummaryAnalysis),
     [actionSummaryAnalysis],
+  );
+  const actionSummaryPreviewEntries = useMemo(
+    () => actionSummaryEntries.slice(0, ACTION_SUMMARY_PREVIEW_COUNT),
+    [actionSummaryEntries],
+  );
+  const actionSummaryOverflowEntries = useMemo(
+    () => actionSummaryEntries.slice(ACTION_SUMMARY_PREVIEW_COUNT),
+    [actionSummaryEntries],
   );
   const chapterAnalysisEntries = useMemo(
     () => normalizeChapterAnalysisEntries(chapterAnalysisAnalysis),
@@ -3739,52 +3807,40 @@ export default function DashboardView({
                 ) : null}
               </div>
               {actionSummaryEntries.length ? (
-                <div className="max-h-[60vh]">
-                  <ScrollArea className="h-full rounded-2xl border border-slate-200/80 bg-white/70 shadow-inner">
-                    <div className="divide-y divide-slate-200/80">
-                      {actionSummaryEntries.map((entry, index) => (
-                        <div className="space-y-2 rounded-xl bg-white/80 p-4 shadow-sm ring-1 ring-inset ring-slate-200/60" key={entry.id ?? `action-${index}`}>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium text-slate-800">
-                                {entry.summary ?? "Summary unavailable"}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                                {entry.start ? <span>Start: {entry.start}</span> : null}
-                                {entry.end ? <span>End: {entry.end}</span> : null}
-                                {entry.sentiment ? <span>Sentiment: {entry.sentiment}</span> : null}
-                                {entry.theme ? <span>Theme: {entry.theme}</span> : null}
-                              </div>
-                              {entry.actions ? (
-                                <p className="text-xs text-slate-500">
-                                  <span className="font-medium text-slate-600">Actions:</span> {entry.actions}
-                                </p>
-                              ) : null}
-                              {entry.characters ? (
-                                <p className="text-xs text-slate-500">
-                                  <span className="font-medium text-slate-600">Characters:</span> {entry.characters}
-                                </p>
-                              ) : null}
-                              {entry.keyObjects ? (
-                                <p className="text-xs text-slate-500">
-                                  <span className="font-medium text-slate-600">Key objects:</span> {entry.keyObjects}
-                                </p>
-                              ) : null}
-                            </div>
-                            {entry.startSeconds != null ? (
-                              <Button
-                                onClick={() => handleSeekToTimestamp(entry.startSeconds)}
-                                size="sm"
-                                variant="outline"
-                              >
-                                Jump
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
+                <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-3 shadow-inner">
+                  <div className="space-y-3">
+                    {actionSummaryPreviewEntries.map((entry, index) => (
+                      <ActionSummaryEntryCard
+                        entry={entry}
+                        key={entry.id ?? `action-${index}`}
+                        onJump={handleSeekToTimestamp}
+                      />
+                    ))}
+                  </div>
+                  {actionSummaryOverflowEntries.length ? (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Full action summary
+                      </p>
+                      <div className="rounded-xl border border-slate-200/70 bg-white/80 p-2">
+                        <ScrollArea
+                          className="max-h-[40vh]"
+                          viewportProps={{ className: "space-y-3 pr-2" }}
+                        >
+                          {actionSummaryOverflowEntries.map((entry, index) => (
+                            <ActionSummaryEntryCard
+                              entry={entry}
+                              key={
+                                entry.id ??
+                                `action-${index + actionSummaryPreviewEntries.length}`
+                              }
+                              onJump={handleSeekToTimestamp}
+                            />
+                          ))}
+                        </ScrollArea>
+                      </div>
                     </div>
-                  </ScrollArea>
+                  ) : null}
                 </div>
               ) : actionSummaryAnalysis ? (
                 <pre className="max-h-72 overflow-auto rounded-2xl border border-slate-200/80 bg-white/80 p-3 text-xs text-slate-600 shadow-inner">
