@@ -422,50 +422,199 @@ function buildProcessingMetadata({ storageUrl, uploadMetadata }) {
   return metadata;
 }
 
-export async function POST(request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id || !canUploadContent(session.user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+function coerceBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
   }
 
-  const formData = await request.formData();
-  const file = formData.get("file");
-  const collectionId = formData.get("collectionId");
-  const title = (formData.get("title") ?? "").toString().trim();
-  const description = (formData.get("description") ?? "").toString().trim();
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized.length) {
+      return null;
+    }
 
-  if (!file || typeof file === "string") {
-    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    if (["true", "1", "yes", "y", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "n", "off"].includes(normalized)) {
+      return false;
+    }
+
+    return null;
   }
 
-  if (!collectionId || typeof collectionId !== "string") {
-    return NextResponse.json({ error: "Collection is required" }, { status: 400 });
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) {
+      return null;
+    }
+
+    return value !== 0;
   }
 
-  const collection = await prisma.collection.findFirst({
-    where: buildCollectionAccessWhere(session.user, collectionId),
-    include: {
-      organization: true,
-    },
+  return null;
+}
+
+function isUploadFile(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof value.arrayBuffer === "function" &&
+    typeof value.name === "string"
+  );
+}
+
+function parseBatchMetadata(formData, files) {
+  const metadataRaw = formData.get("metadata");
+  let parsedMetadata = null;
+
+  if (typeof metadataRaw === "string" && metadataRaw.trim().length) {
+    try {
+      const parsed = JSON.parse(metadataRaw);
+      if (Array.isArray(parsed)) {
+        parsedMetadata = parsed;
+      }
+    } catch (error) {
+      console.warn("[upload] Failed to parse batch metadata payload", error);
+    }
+  }
+
+  const sharedTitle = (formData.get("title") ?? "").toString().trim();
+  const sharedDescription = (formData.get("description") ?? "").toString().trim();
+
+  return files.map((file, index) => {
+    const entry =
+      parsedMetadata && typeof parsedMetadata[index] === "object"
+        ? parsedMetadata[index]
+        : null;
+
+    const entryTitle =
+      entry && typeof entry.title === "string" && entry.title.trim().length
+        ? entry.title.trim()
+        : sharedTitle;
+    const entryDescription =
+      entry && typeof entry.description === "string" && entry.description.trim().length
+        ? entry.description.trim()
+        : sharedDescription;
+    const metadataOverrides =
+      entry && typeof entry.metadata === "object" && entry.metadata
+        ? entry.metadata
+        : entry && typeof entry.cobraMetadata === "object" && entry.cobraMetadata
+        ? entry.cobraMetadata
+        : null;
+
+    const uploadToAzureValue =
+      entry && entry.upload_to_azure !== undefined
+        ? entry.upload_to_azure
+        : entry && entry.uploadToAzure !== undefined
+        ? entry.uploadToAzure
+        : null;
+
+    const uploadToAzure = coerceBoolean(uploadToAzureValue);
+
+    return {
+      title:
+        entryTitle && entryTitle.length
+          ? entryTitle
+          : file.name || `Upload ${index + 1}`,
+      description: entryDescription || "",
+      metadataOverrides: metadataOverrides ?? null,
+      uploadToAzure,
+    };
   });
+}
 
-  if (!collection) {
-    return NextResponse.json({ error: "Collection not found" }, { status: 404 });
+async function processFileUpload({
+  index,
+  file,
+  session,
+  collection,
+  metadataEntry,
+}) {
+  const originalFilename =
+    (typeof file.name === "string" && file.name.length ? file.name : null) ||
+    `video-${index + 1}.mp4`;
+  const mimeType =
+    (typeof file.type === "string" && file.type.length ? file.type : null) ||
+    "video/mp4";
+
+  let buffer;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+  } catch (error) {
+    console.error(`[upload] Failed to read uploaded file data for ${originalFilename}`, error);
+    return {
+      index,
+      fileName: originalFilename,
+      status: "failed",
+      httpStatus: 400,
+      error: "Unable to read the uploaded file contents.",
+      errorDetails: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
 
-  const originalFilename = file.name || "video.mp4";
-  const mimeType = file.type || "video/mp4";
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const cobraUploadMetadata = buildCobraUploadMetadata({
-    session,
-    collection,
-    title,
-    description,
-    fileName: originalFilename,
-  });
-  const shouldUploadToAzure =
-    cobraUploadMetadata?.upload_to_azure !== false && cobraUploadMetadata?.upload_to_azure !== "false";
+  const resolvedTitle =
+    metadataEntry && typeof metadataEntry.title === "string" && metadataEntry.title.trim().length
+      ? metadataEntry.title.trim()
+      : originalFilename;
+  const resolvedDescription =
+    metadataEntry &&
+    typeof metadataEntry.description === "string" &&
+    metadataEntry.description.trim().length
+      ? metadataEntry.description.trim()
+      : "";
+
+  let cobraUploadMetadata =
+    buildCobraUploadMetadata({
+      session,
+      collection,
+      title: resolvedTitle,
+      description: resolvedDescription,
+      fileName: originalFilename,
+    }) || {};
+
+  const metadataOverrides = sanitizeUploadMetadata(
+    metadataEntry && metadataEntry.metadataOverrides
+      ? metadataEntry.metadataOverrides
+      : null,
+  );
+
+  if (metadataOverrides) {
+    cobraUploadMetadata =
+      sanitizeUploadMetadata({
+        ...(cobraUploadMetadata || {}),
+        ...metadataOverrides,
+      }) || cobraUploadMetadata;
+  } else {
+    cobraUploadMetadata = sanitizeUploadMetadata(cobraUploadMetadata) || cobraUploadMetadata;
+  }
+
+  let shouldUploadToAzure = true;
+  if (
+    cobraUploadMetadata &&
+    Object.prototype.hasOwnProperty.call(cobraUploadMetadata, "upload_to_azure")
+  ) {
+    const coerced = coerceBoolean(cobraUploadMetadata.upload_to_azure);
+    if (coerced !== null) {
+      shouldUploadToAzure = coerced;
+    }
+  }
+
+  const uploadToAzureOverride = coerceBoolean(metadataEntry?.uploadToAzure);
+  if (uploadToAzureOverride !== null) {
+    shouldUploadToAzure = uploadToAzureOverride;
+  }
+
+  if (cobraUploadMetadata) {
+    cobraUploadMetadata =
+      sanitizeUploadMetadata({
+        ...(cobraUploadMetadata || {}),
+        upload_to_azure: shouldUploadToAzure,
+      }) || cobraUploadMetadata;
+  }
 
   let cobraUpload;
   try {
@@ -484,28 +633,35 @@ export async function POST(request) {
         cause: error.cause instanceof Error ? error.cause.stack ?? error.cause.message : error.cause,
       });
 
-      const status = error.status && error.status >= 400 ? error.status : 502;
-      return NextResponse.json(
-        {
-          error: error.message,
-          cobraEndpoint: error.endpoint,
-          cobraStatus: error.status,
-          cobraStatusText: error.statusText,
+      const failureStatus = error.status && error.status >= 400 ? error.status : 502;
+
+      return {
+        index,
+        fileName: originalFilename,
+        status: "failed",
+        httpStatus: failureStatus,
+        error: error.message,
+        errorDetails: {
+          cobraEndpoint: error.endpoint ?? null,
+          cobraStatus: error.status ?? null,
+          cobraStatusText: error.statusText ?? null,
           cobraResponse: error.responseBody ?? null,
           details: error.details ?? null,
         },
-        { status },
-      );
+      };
     }
 
     console.error("[upload] Unexpected error contacting Cobra", error);
-    return NextResponse.json(
-      {
-        error: "Failed to upload video due to an unexpected error.",
-        details: error instanceof Error ? error.message : String(error),
+    return {
+      index,
+      fileName: originalFilename,
+      status: "failed",
+      httpStatus: 502,
+      error: "Failed to upload video due to an unexpected error.",
+      errorDetails: {
+        message: error instanceof Error ? error.message : String(error),
       },
-      { status: 502 },
-    );
+    };
   }
 
   let storageUrl = cobraUpload?.storage_url ?? null;
@@ -514,24 +670,34 @@ export async function POST(request) {
     try {
       storageUrl = await uploadToAzureStorage(buffer, originalFilename, mimeType);
     } catch (error) {
-      return NextResponse.json(
-        {
-          error:
-            "Failed to upload the video to storage. Confirm Azure Storage managed identity settings are configured or enable uploads in CobraPy.",
-        },
-        { status: 500 },
+      console.error(
+        `[upload] Failed to upload video to storage for ${originalFilename}`,
+        error,
       );
+      return {
+        index,
+        fileName: originalFilename,
+        status: "failed",
+        httpStatus: 500,
+        error:
+          "Failed to upload the video to storage. Confirm Azure Storage managed identity settings are configured or enable uploads in CobraPy.",
+        errorDetails: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
   }
 
   if (!storageUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "Video upload service did not return an Azure Storage URL. Confirm CobraPy uploads are enabled or configure managed identity access.",
-      },
-      { status: 502 },
-    );
+    return {
+      index,
+      fileName: originalFilename,
+      status: "failed",
+      httpStatus: 502,
+      error:
+        "Video upload service did not return an Azure Storage URL. Confirm CobraPy uploads are enabled or configure managed identity access.",
+      errorDetails: null,
+    };
   }
 
   const processingMetadata = buildProcessingMetadata({
@@ -543,22 +709,147 @@ export async function POST(request) {
     }),
   });
 
-  const content = await prisma.content.create({
-    data: {
-      title: title || originalFilename,
-      description: description || null,
-      videoUrl: storageUrl,
-      collectionId: collection.id,
-      organizationId: collection.organizationId,
-      uploadedById: session.user.id,
-      processingMetadata,
-    },
+  try {
+    const content = await prisma.content.create({
+      data: {
+        title: resolvedTitle || originalFilename,
+        description: resolvedDescription || null,
+        videoUrl: storageUrl,
+        collectionId: collection.id,
+        organizationId: collection.organizationId,
+        uploadedById: session.user.id,
+        processingMetadata,
+      },
+      include: {
+        organization: true,
+        collection: true,
+        uploadedBy: true,
+      },
+    });
+
+    return {
+      index,
+      fileName: originalFilename,
+      status: "succeeded",
+      httpStatus: 201,
+      content,
+      error: null,
+      errorDetails: null,
+    };
+  } catch (error) {
+    console.error("[upload] Failed to save uploaded content record", error);
+    return {
+      index,
+      fileName: originalFilename,
+      status: "failed",
+      httpStatus: 500,
+      error: "Failed to save uploaded video metadata.",
+      errorDetails: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+export async function POST(request) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id || !canUploadContent(session.user.role)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const formData = await request.formData();
+  const collectionId = formData.get("collectionId");
+  const candidateFiles = formData.getAll("files");
+  const files = [];
+
+  for (const candidate of candidateFiles) {
+    if (isUploadFile(candidate)) {
+      files.push(candidate);
+    }
+  }
+
+  const fallbackFile = formData.get("file");
+  if (!files.length && isUploadFile(fallbackFile)) {
+    files.push(fallbackFile);
+  }
+
+  if (!files.length) {
+    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+  }
+
+  if (!collectionId || typeof collectionId !== "string") {
+    return NextResponse.json({ error: "Collection is required" }, { status: 400 });
+  }
+
+  const collection = await prisma.collection.findFirst({
+    where: buildCollectionAccessWhere(session.user, collectionId),
     include: {
       organization: true,
-      collection: true,
-      uploadedBy: true,
     },
   });
 
-  return NextResponse.json({ content }, { status: 201 });
+  if (!collection) {
+    return NextResponse.json({ error: "Collection not found" }, { status: 404 });
+  }
+
+  const metadataEntries = parseBatchMetadata(formData, files);
+
+  const results = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const metadataEntry = metadataEntries[index] || {};
+    const result = await processFileUpload({
+      index,
+      file,
+      session,
+      collection,
+      metadataEntry,
+    });
+    results.push(result);
+  }
+
+  const successes = results.filter(
+    (result) => result.status === "succeeded" && result.content,
+  );
+  const failures = results.filter((result) => result.status === "failed");
+  const contents = successes.map((result) => result.content);
+
+  let status = 500;
+  if (successes.length && failures.length) {
+    status = 207;
+  } else if (successes.length) {
+    status = 201;
+  } else {
+    const firstFailureStatus = failures.find(
+      (failure) => typeof failure.httpStatus === "number" && failure.httpStatus >= 400,
+    );
+    status = firstFailureStatus?.httpStatus ?? 500;
+  }
+
+  const response = {
+    content: contents[0] ?? null,
+    contents,
+    results: results.map((result) => ({
+      index: result.index,
+      fileName: result.fileName,
+      status: result.status,
+      httpStatus: result.httpStatus,
+      content: result.content ?? null,
+      error: result.error ?? null,
+      errorDetails: result.errorDetails ?? null,
+    })),
+  };
+
+  if (failures.length) {
+    response.errors = failures.map((failure) => ({
+      index: failure.index,
+      fileName: failure.fileName,
+      error: failure.error,
+      httpStatus: failure.httpStatus,
+      errorDetails: failure.errorDetails ?? null,
+    }));
+  }
+
+  return NextResponse.json(response, { status });
 }
