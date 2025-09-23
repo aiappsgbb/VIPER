@@ -545,11 +545,11 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: backendEnv
         }
       ]
-      scale: any({
+      scale: {
         minReplicas: 1
         maxReplicas: 1
-        workloadProfileName: containerAppsWorkloadProfileName
-      })
+      }
+      workloadProfileName: containerAppsWorkloadProfileName
     }
   }
 }
@@ -589,11 +589,11 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: frontendEnv
         }
       ]
-      scale: any({
+      scale: {
         minReplicas: 1
         maxReplicas: 1
-        workloadProfileName: containerAppsWorkloadProfileName
-      })
+      }
+      workloadProfileName: containerAppsWorkloadProfileName
     }
   }
 }
