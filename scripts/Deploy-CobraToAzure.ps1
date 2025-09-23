@@ -113,6 +113,28 @@ function Parse-EnvFile {
     return $result
 }
 
+function Convert-EnvVarCollectionToHashtable {
+    param([Parameter(Mandatory)][object[]]$Collection)
+
+    $result = [ordered]@{}
+    foreach ($item in $Collection) {
+        if (-not $item) { continue }
+
+        $nameProperty = $item.PSObject.Properties['name']
+        if (-not $nameProperty) { continue }
+
+        $name = [string]$nameProperty.Value
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+
+        $valueProperty = $item.PSObject.Properties['value']
+        $value = $valueProperty ? [string]$valueProperty.Value : ""
+
+        $result[$name] = $value
+    }
+
+    return $result
+}
+
 Assert-CommandExists -Name "az"
 Assert-CommandExists -Name "docker"
 
@@ -214,10 +236,16 @@ function New-TempParameterFile {
 }
 
 if ($backendEnvVars.Count -gt 0) {
-    $backendEnvFile = New-TempParameterFile -Content $backendEnvVars
+    $backendEnvObject = Convert-EnvVarCollectionToHashtable -Collection $backendEnvVars
+    if ($backendEnvObject.Count -gt 0) {
+        $backendEnvFile = New-TempParameterFile -Content $backendEnvObject
+    }
 }
 if ($frontendEnvVars.Count -gt 0) {
-    $frontendEnvFile = New-TempParameterFile -Content $frontendEnvVars
+    $frontendEnvObject = Convert-EnvVarCollectionToHashtable -Collection $frontendEnvVars
+    if ($frontendEnvObject.Count -gt 0) {
+        $frontendEnvFile = New-TempParameterFile -Content $frontendEnvObject
+    }
 }
 
 $bicepPath = Join-Path $projectRootPath "azure/containerapps.bicep"
