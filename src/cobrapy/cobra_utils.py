@@ -10,6 +10,9 @@ import time
 from shutil import rmtree
 from typing import Iterable, Optional, Sequence, Tuple, Union
 
+
+_SPEECH_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
+
 from .models.environment import CobraEnvironment
 from .models.transcription import SegmentTiming, TranscriptionResult, WordTiming
 from .models.video import VideoManifest
@@ -30,13 +33,34 @@ def generate_safe_dir_name(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*.]', "_", name).replace(" ", "_")
 
 
-def _create_speech_config(env: CobraEnvironment):
+def _acquire_managed_identity_token(env: CobraEnvironment) -> str:
+    from azure.identity import DefaultAzureCredential
+
+    credential = DefaultAzureCredential(
+        managed_identity_client_id=env.speech.managed_identity_client_id
+    )
+    try:
+        return credential.get_token(_SPEECH_TOKEN_SCOPE).token
+    finally:
+        credential.close()
+
+
+def _create_speech_config(
+    env: CobraEnvironment, *, auth_token: Optional[str] = None
+):
     import azure.cognitiveservices.speech as speechsdk
 
     speech_settings = env.speech
 
     if speech_settings.use_managed_identity:
-        speech_config = speechsdk.SpeechConfig(region=speech_settings.region)
+        if not auth_token:
+            raise RuntimeError(
+                "Managed identity requires an authorization token for Azure Speech."
+            )
+        speech_config = speechsdk.SpeechConfig(
+            auth_token=auth_token,
+            region=speech_settings.region,
+        )
     else:
         speech_config = speechsdk.SpeechConfig(
             subscription=speech_settings.api_key.get_secret_value(),
@@ -56,7 +80,9 @@ def _create_speech_config(env: CobraEnvironment):
     return speech_config
 
 
-def _start_managed_identity_token_refresher(recognizer, env: CobraEnvironment):
+def _start_managed_identity_token_refresher(
+    recognizer, env: CobraEnvironment, initial_token: Optional[str] = None
+):
     """Start a background thread that refreshes the speech token when needed."""
 
     from azure.identity import DefaultAzureCredential
@@ -66,13 +92,11 @@ def _start_managed_identity_token_refresher(recognizer, env: CobraEnvironment):
         managed_identity_client_id=speech_settings.managed_identity_client_id
     )
 
-    token_scope = "https://cognitiveservices.azure.com/.default"
-
     def acquire_token() -> str:
-        return credential.get_token(token_scope).token
+        return credential.get_token(_SPEECH_TOKEN_SCOPE).token
 
     # Set the initial token on the recognizer.
-    recognizer.authorization_token = acquire_token()
+    recognizer.authorization_token = initial_token or acquire_token()
 
     stop_event = threading.Event()
 
@@ -91,6 +115,10 @@ def _start_managed_identity_token_refresher(recognizer, env: CobraEnvironment):
     def stop():
         stop_event.set()
         thread.join(timeout=1)
+        try:
+            credential.close()
+        except AttributeError:  # pragma: no cover - defensive cleanup
+            pass
 
     return stop
 
@@ -103,7 +131,11 @@ def generate_transcript(audio_file_path: str, env: CobraEnvironment) -> Transcri
     if not os.path.exists(audio_file_path):
         raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
-    speech_config = _create_speech_config(env)
+    managed_identity_token: Optional[str] = None
+    if env.speech.use_managed_identity:
+        managed_identity_token = _acquire_managed_identity_token(env)
+
+    speech_config = _create_speech_config(env, auth_token=managed_identity_token)
     audio_config = speechsdk.audio.AudioConfig(filename=audio_file_path)
     recognizer = speechsdk.SpeechRecognizer(
         speech_config=speech_config,
@@ -112,7 +144,11 @@ def generate_transcript(audio_file_path: str, env: CobraEnvironment) -> Transcri
 
     stop_refresher: Optional[callable] = None
     if env.speech.use_managed_identity:
-        stop_refresher = _start_managed_identity_token_refresher(recognizer, env)
+        stop_refresher = _start_managed_identity_token_refresher(
+            recognizer,
+            env,
+            initial_token=managed_identity_token,
+        )
 
     results: list[dict] = []
     done = threading.Event()
