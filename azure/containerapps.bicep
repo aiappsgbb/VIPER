@@ -476,20 +476,28 @@ resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDn
 var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
 var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
 
-var backendEnv = [for key in union([], keys(backendEnvVars)): {
+var backendEnv = [for (key, value) in backendEnvVars: {
   name: key
-  value: string(backendEnvVars[key])
+  value: string(value)
 }]
 
-var frontendEnvMap = union({
-  VIPER_BASE_URL: resolvedBackendBaseUrl
-  VIPER_BACKEND_INTERNAL_URL: backendInternalUrl
-}, frontendEnvVars)
+var frontendBaseEnv = [
+  {
+    name: 'VIPER_BASE_URL'
+    value: resolvedBackendBaseUrl
+  }
+  {
+    name: 'VIPER_BACKEND_INTERNAL_URL'
+    value: backendInternalUrl
+  }
+]
 
-var frontendEnv = [for key in union([], keys(frontendEnvMap)): {
+var frontendAdditionalEnv = [for (key, value) in frontendEnvVars: {
   name: key
-  value: string(frontendEnvMap[key])
+  value: string(value)
 }]
+
+var frontendEnv = concat(frontendBaseEnv, frontendAdditionalEnv)
 
 var registryServer = '${acrName}.azurecr.io'
 var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
