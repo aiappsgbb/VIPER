@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ChatWidget from "@/components/chat/chat-widget";
+import { Clapperboard } from "lucide-react";
 
 function formatStatus(status) {
   const normalized = (status ?? "QUEUED").toUpperCase();
@@ -162,6 +163,13 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [exportingResultId, setExportingResultId] = useState(null);
+  const [clipchampStatus, setClipchampStatus] = useState({
+    resultId: null,
+    type: "idle",
+    message: "",
+    url: null,
+  });
 
   const videoCount = collection?.contents?.length ?? 0;
   const firstContentId = collection?.contents?.[0]?.id ?? null;
@@ -251,6 +259,79 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
       setSearchResults([]);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleExportToClipchamp = async (result) => {
+    if (!result || !result.contentId) {
+      setClipchampStatus({
+        resultId: result?.id ?? null,
+        type: "error",
+        message: "Export is unavailable because this result is not linked to a video.",
+        url: null,
+      });
+      return;
+    }
+
+    setExportingResultId(result.id);
+    setClipchampStatus({
+      resultId: result.id,
+      type: "pending",
+      message: "",
+      url: null,
+    });
+
+    try {
+      const response = await fetch("/api/clipchamp/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentId: result.contentId,
+          startSeconds:
+            typeof result.startSeconds === "number" && Number.isFinite(result.startSeconds)
+              ? result.startSeconds
+              : null,
+          summary: result.summary ?? null,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Clipchamp export failed.");
+      }
+
+      const clipchampUrl = data?.export?.clipchampUrl ?? data?.clipchampUrl ?? null;
+      if (!clipchampUrl) {
+        throw new Error("Clipchamp export link is unavailable.");
+      }
+
+      let opened = null;
+      if (typeof window !== "undefined" && typeof window.open === "function") {
+        opened = window.open(clipchampUrl, "_blank", "noopener,noreferrer");
+      }
+
+      setClipchampStatus({
+        resultId: result.id,
+        type: "success",
+        message: opened
+          ? "Clipchamp opened in a new tab."
+          : "Clipchamp export link is ready below.",
+        url: clipchampUrl,
+      });
+    } catch (error) {
+      console.error("[collection-overview] clipchamp export failed", error);
+      setClipchampStatus({
+        resultId: result.id,
+        type: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to export this result to Clipchamp.",
+        url: null,
+      });
+    } finally {
+      setExportingResultId(null);
     }
   };
 
@@ -399,11 +480,55 @@ export default function CollectionOverview({ collection, canDeleteCollection = f
                                   ) : null}
                                 </div>
                               </div>
-                              {result.contentId ? (
-                                <Button asChild size="sm" variant="outline">
-                                  <Link href={href}>{buttonLabel}</Link>
-                                </Button>
-                              ) : null}
+                              <div className="flex flex-col items-stretch gap-2 sm:items-end sm:text-right">
+                                {result.contentId ? (
+                                  <>
+                                    <Button asChild size="sm" variant="outline">
+                                      <Link href={href}>{buttonLabel}</Link>
+                                    </Button>
+                                    <Button
+                                      className="gap-2"
+                                      disabled={exportingResultId === result.id}
+                                      onClick={() => handleExportToClipchamp(result)}
+                                      size="sm"
+                                      type="button"
+                                    >
+                                      <Clapperboard className="h-4 w-4" />
+                                      {exportingResultId === result.id
+                                        ? "Preparing…"
+                                        : "Export to Clipchamp"}
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button className="gap-2" disabled size="sm" type="button" variant="outline">
+                                      <Clapperboard className="h-4 w-4" />
+                                      Export to Clipchamp
+                                    </Button>
+                                    <p className="text-xs text-slate-500">
+                                      Clipchamp export requires a linked video.
+                                    </p>
+                                  </>
+                                )}
+                                {clipchampStatus.resultId === result.id && clipchampStatus.message ? (
+                                  <p
+                                    className={`text-xs ${
+                                      clipchampStatus.type === "error" ? "text-red-600" : "text-slate-500"
+                                    }`}
+                                  >
+                                    {clipchampStatus.message}
+                                    {clipchampStatus.url ? (
+                                      <>
+                                        {" "}
+                                        <a className="underline" href={clipchampStatus.url} rel="noreferrer" target="_blank">
+                                          Open Clipchamp
+                                        </a>
+                                        .
+                                      </>
+                                    ) : null}
+                                  </p>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         );
