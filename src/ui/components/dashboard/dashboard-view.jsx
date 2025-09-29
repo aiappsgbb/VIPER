@@ -30,6 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ChevronDown,
+  Clapperboard,
   Download,
   PanelRightClose,
   PanelRightOpen,
@@ -1699,6 +1700,13 @@ export default function DashboardView({
   const [openSearchResultId, setOpenSearchResultId] = useState(null);
   const [openChapterId, setOpenChapterId] = useState(null);
   const [searchError, setSearchError] = useState("");
+  const [exportingSearchResultId, setExportingSearchResultId] = useState(null);
+  const [clipchampExportStatus, setClipchampExportStatus] = useState({
+    resultId: null,
+    type: "idle",
+    message: "",
+    url: null,
+  });
   const shouldLimitSearchResultsHeight = searchResults.length > 5;
   const [isRunningActionSummary, setIsRunningActionSummary] = useState(false);
   const [isRunningChapterAnalysis, setIsRunningChapterAnalysis] = useState(false);
@@ -2743,6 +2751,83 @@ export default function DashboardView({
       contentId: activeContentFilterId || null,
     });
   };
+
+  const handleExportSearchResult = useCallback(async (result) => {
+    if (!result || !result.contentId) {
+      setClipchampExportStatus({
+        resultId: result?.id ?? null,
+        type: "error",
+        message: "Clipchamp export is unavailable for this result.",
+        url: null,
+      });
+      return;
+    }
+
+    setExportingSearchResultId(result.id);
+    setClipchampExportStatus({
+      resultId: result.id,
+      type: "pending",
+      message: "",
+      url: null,
+    });
+
+    try {
+      const response = await fetch("/api/clipchamp/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentId: result.contentId,
+          startSeconds:
+            typeof result.startSeconds === "number" && Number.isFinite(result.startSeconds)
+              ? result.startSeconds
+              : null,
+          durationSeconds:
+            typeof result.durationSeconds === "number" && Number.isFinite(result.durationSeconds)
+              ? result.durationSeconds
+              : null,
+          summary: result.summary ?? null,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Clipchamp export failed.");
+      }
+
+      const clipchampUrl = data?.export?.clipchampUrl ?? data?.clipchampUrl ?? null;
+      if (!clipchampUrl) {
+        throw new Error("Clipchamp export link is unavailable.");
+      }
+
+      let opened = null;
+      if (typeof window !== "undefined" && typeof window.open === "function") {
+        opened = window.open(clipchampUrl, "_blank", "noopener,noreferrer");
+      }
+
+      setClipchampExportStatus({
+        resultId: result.id,
+        type: "success",
+        message: opened
+          ? "Clipchamp opened in a new tab."
+          : "Clipchamp export link is ready below.",
+        url: clipchampUrl,
+      });
+    } catch (error) {
+      console.error("[dashboard] clipchamp export failed", error);
+      setClipchampExportStatus({
+        resultId: result.id,
+        type: "error",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to export this result to Clipchamp.",
+        url: null,
+      });
+    } finally {
+      setExportingSearchResultId(null);
+    }
+  }, []);
 
   const handleSeekToTimestamp = useCallback(
     (timestamp) => {
@@ -4410,6 +4495,17 @@ export default function DashboardView({
                           ? "Open & jump"
                           : "Jump";
 
+                      const clipchampPayload = {
+                        id: resultKey,
+                        contentId: resultContentId,
+                        startSeconds: timestamp,
+                        durationSeconds:
+                          typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0
+                            ? durationSeconds
+                            : null,
+                        summary: summaryText,
+                      };
+
                       return (
                         <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm" key={resultKey}>
                           <Collapsible
@@ -4428,16 +4524,54 @@ export default function DashboardView({
                                 </div>
                                 <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-sky-600 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                               </CollapsibleTrigger>
-                              {timestamp != null ? (
+                              <div className="flex shrink-0 flex-col items-end gap-2 text-right">
+                                {timestamp != null ? (
+                                  <Button
+                                    onClick={handleResultJump}
+                                    size="sm"
+                                    type="button"
+                                    variant="outline"
+                                  >
+                                    {jumpButtonLabel}
+                                  </Button>
+                                ) : null}
                                 <Button
-                                  onClick={handleResultJump}
+                                  className="gap-2"
+                                  disabled={exportingSearchResultId === resultKey}
+                                  onClick={() => handleExportSearchResult(clipchampPayload)}
                                   size="sm"
                                   type="button"
-                                  variant="outline"
+                                  variant="secondary"
                                 >
-                                  {jumpButtonLabel}
+                                  <Clapperboard className="h-4 w-4" />
+                                  {exportingSearchResultId === resultKey
+                                    ? "Preparing…"
+                                    : "Export to Clipchamp"}
                                 </Button>
-                              ) : null}
+                                {clipchampExportStatus.resultId === resultKey && clipchampExportStatus.message ? (
+                                  <p
+                                    className={`w-48 text-xs ${
+                                      clipchampExportStatus.type === "error" ? "text-red-600" : "text-slate-500"
+                                    }`}
+                                  >
+                                    {clipchampExportStatus.message}
+                                    {clipchampExportStatus.url ? (
+                                      <>
+                                        {" "}
+                                        <a
+                                          className="underline"
+                                          href={clipchampExportStatus.url}
+                                          rel="noreferrer"
+                                          target="_blank"
+                                        >
+                                          Open Clipchamp
+                                        </a>
+                                        .
+                                      </>
+                                    ) : null}
+                                  </p>
+                                ) : null}
+                              </div>
                             </div>
                             <CollapsibleContent className="space-y-3 pt-3">
                               {detailItems.length ? (
