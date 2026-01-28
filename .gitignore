@@ -619,3 +619,6 @@ samples/*.jpeg
 >>>>>>> 9d98690879d992d4aec38b497d977b92c94d3adf
 
 !src/ui/lib/
+
+# Azure Developer CLI (azd)
+.azure/

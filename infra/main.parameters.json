@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "azureOpenaiGptVisionApiKey": {
+      "value": "$(secretOrEnvOrDefault 'AZURE_OPENAI_GPT_VISION_API_KEY' '')"
+    },
+    "azureOpenaiGptVisionEndpoint": {
+      "value": "$(envOrDefault 'AZURE_OPENAI_GPT_VISION_ENDPOINT' '')"
+    },
+    "azureOpenaiGptVisionApiVersion": {
+      "value": "$(envOrDefault 'AZURE_OPENAI_GPT_VISION_API_VERSION' '2024-06-01')"
+    },
+    "azureOpenaiGptVisionDeployment": {
+      "value": "$(envOrDefault 'AZURE_OPENAI_GPT_VISION_DEPLOYMENT' 'gpt4o')"
+    },
+    "azureSpeechRegion": {
+      "value": "$(envOrDefault 'AZURE_SPEECH_REGION' '')"
+    },
+    "azureSpeechUseManagedIdentity": {
+      "value": "$(envOrDefault 'AZURE_SPEECH_USE_MANAGED_IDENTITY' 'true')"
+    },
+    "azureStorageAccountUrl": {
+      "value": "$(envOrDefault 'AZURE_STORAGE_ACCOUNT_URL' '')"
+    },
+    "azureSearchEndpoint": {
+      "value": "$(envOrDefault 'AZURE_SEARCH_ENDPOINT' '')"
+    },
+    "azOpenaiKey": {
+      "value": "$(secretOrEnvOrDefault 'AZ_OPENAI_KEY' '')"
+    },
+    "azOpenaiBase": {
+      "value": "$(envOrDefault 'AZ_OPENAI_BASE' '')"
+    },
+    "azOpenaiVersion": {
+      "value": "$(envOrDefault 'AZ_OPENAI_VERSION' '')"
+    },
+    "gpt4": {
+      "value": "$(envOrDefault 'GPT4' '4turbo')"
+    },
+    "searchEndpoint": {
+      "value": "$(envOrDefault 'SEARCH_ENDPOINT' '')"
+    },
+    "searchApiKey": {
+      "value": "$(secretOrEnvOrDefault 'SEARCH_API_KEY' '')"
+    },
+    "searchIndexName": {
+      "value": "$(envOrDefault 'AZURE_SEARCH_INDEX_NAME' 'viper-search')"
+    },
+    "storageVideoContainer": {
+      "value": "$(envOrDefault 'AZURE_STORAGE_VIDEO_CONTAINER' 'videos')"
+    },
+    "storageOutputContainer": {
+      "value": "$(envOrDefault 'AZURE_STORAGE_OUTPUT_CONTAINER' 'analysis')"
+    },
+    "databaseUrl": {
+      "value": "$(secretOrEnvOrDefault 'DATABASE_URL' '')"
+    },
+    "nextauthSecret": {
+      "value": "$(secretOrEnvOrDefault 'NEXTAUTH_SECRET' '')"
+    },
+    "nextauthUrl": {
+      "value": "$(envOrDefault 'NEXTAUTH_URL' 'http://localhost:3000')"
+    }
+  }
+}
