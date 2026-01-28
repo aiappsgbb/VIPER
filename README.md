@@ -79,8 +79,8 @@ The deployment inherits configuration from your `.env` file. Key variables inclu
 | `AZURE_OPENAI_GPT_VISION_ENDPOINT` | Azure OpenAI endpoint for vision analysis |
 | `AZURE_OPENAI_GPT_VISION_API_KEY` | API key for Azure OpenAI |
 | `AZURE_SPEECH_REGION` | Azure Speech Services region |
-| `AZURE_STORAGE_ACCOUNT_URL` | Blob storage URL for videos |
-| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint |
+| `AZURE_STORAGE_ACCOUNT_URL` | Blob storage URL for videos (auto-generated if not provided) |
+| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint (auto-generated if not provided) |
 | `DATABASE_URL` | PostgreSQL connection string |
 
 See `sample.env` for the complete list of configuration options.
@@ -90,9 +90,9 @@ See `sample.env` for the complete list of configuration options.
 For more control over the deployment process, use the PowerShell script:
 
 ```powershell
-./scripts/Deploy-ViperToAzure.ps1 \
-    -SubscriptionId "your-subscription-id" \
-    -ResourceGroupName "viper-prod" \
+./scripts/Deploy-ViperToAzure.ps1 `
+    -SubscriptionId "your-subscription-id" `
+    -ResourceGroupName "viper-prod" `
     -Location "eastus"
 ```
 

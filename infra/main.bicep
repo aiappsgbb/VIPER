@@ -75,6 +75,12 @@ param azureSpeechRegion string = ''
 @description('Azure Speech use managed identity')
 param azureSpeechUseManagedIdentity string = 'true'
 
+@description('Azure Storage Account URL (auto-generated if not provided)')
+param azureStorageAccountUrl string = ''
+
+@description('Azure Search Endpoint (auto-generated if not provided)')
+param azureSearchEndpoint string = ''
+
 @secure()
 @description('Azure OpenAI Key for UI')
 param azOpenaiKey string = ''
@@ -85,8 +91,11 @@ param azOpenaiBase string = ''
 @description('Azure OpenAI Version for UI')
 param azOpenaiVersion string = ''
 
-@description('GPT4 model name')
+@description('GPT4 deployment name')
 param gpt4 string = '4turbo'
+
+@description('Search endpoint for UI')
+param searchEndpoint string = ''
 
 @secure()
 @description('Search API Key for UI')
@@ -151,6 +160,10 @@ module acr 'modules/acr.bicep' = {
   }
 }
 
+// Compute endpoint URLs (use provided values or generate from resource names)
+var computedStorageAccountUrl = !empty(azureStorageAccountUrl) ? azureStorageAccountUrl : 'https://${resolvedStorageAccountName}.blob.${environment().suffixes.storage}'
+var computedSearchEndpoint = !empty(azureSearchEndpoint) ? azureSearchEndpoint : 'https://${resolvedSearchServiceName}.search.windows.net'
+
 // Build environment variables for backend
 var backendEnvVars = {
   AZURE_OPENAI_GPT_VISION_API_KEY: azureOpenaiGptVisionApiKey
@@ -159,11 +172,16 @@ var backendEnvVars = {
   AZURE_OPENAI_GPT_VISION_DEPLOYMENT: azureOpenaiGptVisionDeployment
   AZURE_SPEECH_REGION: azureSpeechRegion
   AZURE_SPEECH_USE_MANAGED_IDENTITY: azureSpeechUseManagedIdentity
+  AZURE_STORAGE_ACCOUNT_URL: computedStorageAccountUrl
   AZURE_STORAGE_VIDEO_CONTAINER: storageVideoContainer
   AZURE_STORAGE_OUTPUT_CONTAINER: storageOutputContainer
+  AZURE_SEARCH_ENDPOINT: computedSearchEndpoint
   AZURE_SEARCH_INDEX_NAME: searchIndexName
   DATABASE_URL: databaseUrl
 }
+
+// Compute frontend search endpoint (use provided value or computed value)
+var computedFrontendSearchEndpoint = !empty(searchEndpoint) ? searchEndpoint : computedSearchEndpoint
 
 // Build environment variables for frontend
 var frontendEnvVars = {
@@ -171,6 +189,7 @@ var frontendEnvVars = {
   AZ_OPENAI_BASE: azOpenaiBase
   AZ_OPENAI_VERSION: azOpenaiVersion
   GPT4: gpt4
+  SEARCH_ENDPOINT: computedFrontendSearchEndpoint
   SEARCH_API_KEY: searchApiKey
   INDEX_NAME: searchIndexName
   DATABASE_URL: databaseUrl

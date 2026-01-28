@@ -26,6 +26,12 @@
     "azureSpeechUseManagedIdentity": {
       "value": "$(envOrDefault 'AZURE_SPEECH_USE_MANAGED_IDENTITY' 'true')"
     },
+    "azureStorageAccountUrl": {
+      "value": "$(envOrDefault 'AZURE_STORAGE_ACCOUNT_URL' '')"
+    },
+    "azureSearchEndpoint": {
+      "value": "$(envOrDefault 'AZURE_SEARCH_ENDPOINT' '')"
+    },
     "azOpenaiKey": {
       "value": "$(secretOrEnvOrDefault 'AZ_OPENAI_KEY' '')"
     },
@@ -37,6 +43,9 @@
     },
     "gpt4": {
       "value": "$(envOrDefault 'GPT4' '4turbo')"
+    },
+    "searchEndpoint": {
+      "value": "$(envOrDefault 'SEARCH_ENDPOINT' '')"
     },
     "searchApiKey": {
       "value": "$(secretOrEnvOrDefault 'SEARCH_API_KEY' '')"
