@@ -2,7 +2,7 @@
 
 name: viper
 metadata:
-  template: viper@0.0.1-beta
+  template: viper@1.0.0
 
 # Inherit environment variables from the .env file located at the repository root.
 # These values are passed to the infrastructure-as-code templates and container apps.
