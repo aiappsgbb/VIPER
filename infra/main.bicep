@@ -1,0 +1,214 @@
+targetScope = 'subscription'
+
+@minLength(1)
+@maxLength(64)
+@description('Name of the environment that can be used as part of naming resource convention')
+param environmentName string
+
+@minLength(1)
+@description('Primary location for all resources')
+param location string
+
+// Optional parameters to override defaults
+@description('Name of the resource group to create or use')
+param resourceGroupName string = ''
+
+@description('Name of the Azure Container Registry')
+param acrName string = ''
+
+@description('Name of the Container Apps managed environment')
+param managedEnvironmentName string = ''
+
+@description('Name of the Log Analytics workspace')
+param logAnalyticsWorkspaceName string = ''
+
+@description('Name of the backend container app')
+param backendContainerAppName string = ''
+
+@description('Name of the frontend container app')
+param frontendContainerAppName string = ''
+
+@description('Name of the virtual network')
+param virtualNetworkName string = ''
+
+@description('Name of the Storage Account')
+param storageAccountName string = ''
+
+@description('Name of the Azure AI Search service')
+param searchServiceName string = ''
+
+@description('Name of the Azure Cosmos DB account')
+param cosmosAccountName string = ''
+
+@description('Azure AI Search index name')
+param searchIndexName string = 'viper-search'
+
+@description('Storage container for videos')
+param storageVideoContainer string = 'videos'
+
+@description('Storage container for analysis output')
+param storageOutputContainer string = 'analysis'
+
+@description('Cosmos DB database name')
+param cosmosDatabaseName string = 'viper'
+
+@description('Cosmos DB container name')
+param cosmosContainerName string = 'manifests'
+
+// Environment variables from .env file (passed via azd)
+@secure()
+@description('Azure OpenAI GPT Vision API Key')
+param azureOpenaiGptVisionApiKey string = ''
+
+@description('Azure OpenAI GPT Vision Endpoint')
+param azureOpenaiGptVisionEndpoint string = ''
+
+@description('Azure OpenAI GPT Vision API Version')
+param azureOpenaiGptVisionApiVersion string = '2024-06-01'
+
+@description('Azure OpenAI GPT Vision Deployment name')
+param azureOpenaiGptVisionDeployment string = 'gpt4o'
+
+@description('Azure Speech Region')
+param azureSpeechRegion string = ''
+
+@description('Azure Speech use managed identity')
+param azureSpeechUseManagedIdentity string = 'true'
+
+@secure()
+@description('Azure OpenAI Key for UI')
+param azOpenaiKey string = ''
+
+@description('Azure OpenAI Base URL for UI')
+param azOpenaiBase string = ''
+
+@description('Azure OpenAI Version for UI')
+param azOpenaiVersion string = ''
+
+@description('GPT4 model name')
+param gpt4 string = '4turbo'
+
+@secure()
+@description('Search API Key for UI')
+param searchApiKey string = ''
+
+@secure()
+@description('Database connection URL')
+param databaseUrl string = ''
+
+@secure()
+@description('NextAuth secret')
+param nextauthSecret string = ''
+
+@description('NextAuth URL')
+param nextauthUrl string = 'http://localhost:3000'
+
+// Tags for all resources
+var tags = {
+  'azd-env-name': environmentName
+}
+
+// Generate resource names if not provided
+var abbrs = {
+  resourceGroup: 'rg-'
+  containerRegistry: 'acr'
+  containerAppsEnvironment: 'cae-'
+  containerApp: 'ca-'
+  logAnalyticsWorkspace: 'log-'
+  virtualNetwork: 'vnet-'
+  storageAccount: 'st'
+  searchService: 'srch-'
+  cosmosAccount: 'cosmos-'
+}
+
+var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var resolvedResourceGroupName = !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourceGroup}${environmentName}'
+var resolvedAcrName = !empty(acrName) ? acrName : '${abbrs.containerRegistry}${resourceToken}'
+var resolvedManagedEnvironmentName = !empty(managedEnvironmentName) ? managedEnvironmentName : '${abbrs.containerAppsEnvironment}${environmentName}'
+var resolvedLogAnalyticsName = !empty(logAnalyticsWorkspaceName) ? logAnalyticsWorkspaceName : '${abbrs.logAnalyticsWorkspace}${environmentName}'
+var resolvedBackendAppName = !empty(backendContainerAppName) ? backendContainerAppName : '${abbrs.containerApp}backend-${resourceToken}'
+var resolvedFrontendAppName = !empty(frontendContainerAppName) ? frontendContainerAppName : '${abbrs.containerApp}frontend-${resourceToken}'
+var resolvedVirtualNetworkName = !empty(virtualNetworkName) ? virtualNetworkName : '${abbrs.virtualNetwork}${environmentName}'
+var resolvedStorageAccountName = !empty(storageAccountName) ? storageAccountName : '${abbrs.storageAccount}${resourceToken}'
+var resolvedSearchServiceName = !empty(searchServiceName) ? searchServiceName : '${abbrs.searchService}${resourceToken}'
+var resolvedCosmosAccountName = !empty(cosmosAccountName) ? cosmosAccountName : '${abbrs.cosmosAccount}${resourceToken}'
+
+// Resource Group
+resource rg 'Microsoft.Resources/resourceGroups@2022-09-01' = {
+  name: resolvedResourceGroupName
+  location: location
+  tags: tags
+}
+
+// Azure Container Registry
+module acr 'modules/acr.bicep' = {
+  name: 'acr'
+  scope: rg
+  params: {
+    name: resolvedAcrName
+    location: location
+    tags: tags
+  }
+}
+
+// Build environment variables for backend
+var backendEnvVars = {
+  AZURE_OPENAI_GPT_VISION_API_KEY: azureOpenaiGptVisionApiKey
+  AZURE_OPENAI_GPT_VISION_ENDPOINT: azureOpenaiGptVisionEndpoint
+  AZURE_OPENAI_GPT_VISION_API_VERSION: azureOpenaiGptVisionApiVersion
+  AZURE_OPENAI_GPT_VISION_DEPLOYMENT: azureOpenaiGptVisionDeployment
+  AZURE_SPEECH_REGION: azureSpeechRegion
+  AZURE_SPEECH_USE_MANAGED_IDENTITY: azureSpeechUseManagedIdentity
+  AZURE_STORAGE_VIDEO_CONTAINER: storageVideoContainer
+  AZURE_STORAGE_OUTPUT_CONTAINER: storageOutputContainer
+  AZURE_SEARCH_INDEX_NAME: searchIndexName
+  DATABASE_URL: databaseUrl
+}
+
+// Build environment variables for frontend
+var frontendEnvVars = {
+  AZ_OPENAI_KEY: azOpenaiKey
+  AZ_OPENAI_BASE: azOpenaiBase
+  AZ_OPENAI_VERSION: azOpenaiVersion
+  GPT4: gpt4
+  SEARCH_API_KEY: searchApiKey
+  INDEX_NAME: searchIndexName
+  DATABASE_URL: databaseUrl
+  NEXTAUTH_SECRET: nextauthSecret
+  NEXTAUTH_URL: nextauthUrl
+}
+
+// Deploy Container Apps infrastructure using existing bicep
+module containerApps '../azure/containerapps.bicep' = {
+  name: 'containerApps'
+  scope: rg
+  params: {
+    location: location
+    acrName: acr.outputs.name
+    managedEnvironmentName: resolvedManagedEnvironmentName
+    logAnalyticsWorkspaceName: resolvedLogAnalyticsName
+    backendContainerAppName: resolvedBackendAppName
+    frontendContainerAppName: resolvedFrontendAppName
+    backendImage: '${acr.outputs.loginServer}/viper-backend:latest'
+    frontendImage: '${acr.outputs.loginServer}/viper-frontend:latest'
+    virtualNetworkName: resolvedVirtualNetworkName
+    storageAccountName: resolvedStorageAccountName
+    searchServiceName: resolvedSearchServiceName
+    cosmosAccountName: resolvedCosmosAccountName
+    cosmosDatabaseName: cosmosDatabaseName
+    cosmosContainerName: cosmosContainerName
+    backendEnvVars: backendEnvVars
+    frontendEnvVars: frontendEnvVars
+  }
+}
+
+// Outputs for azd
+output AZURE_LOCATION string = location
+output AZURE_TENANT_ID string = tenant().tenantId
+output AZURE_RESOURCE_GROUP string = rg.name
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.outputs.loginServer
+output AZURE_CONTAINER_REGISTRY_NAME string = acr.outputs.name
+output SERVICE_BACKEND_NAME string = resolvedBackendAppName
+output SERVICE_FRONTEND_NAME string = resolvedFrontendAppName
+output SERVICE_FRONTEND_URL string = containerApps.outputs.frontendUrl
+output SERVICE_BACKEND_INTERNAL_URL string = containerApps.outputs.backendInternalUrl

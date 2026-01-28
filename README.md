@@ -34,6 +34,70 @@ npm run dev
 
 The UI automatically proxies requests to `http://localhost:8000`, so no additional environment variables are required to wire the services together.
 
+## Deploy to Azure with Azure Developer CLI (azd)
+
+The fastest way to deploy VIPER to Azure is using the [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/overview) (`azd`).
+
+### Prerequisites
+
+- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- [Docker](https://www.docker.com/products/docker-desktop)
+- An Azure subscription
+
+### Quick Start
+
+1. Copy `sample.env` to `.env` and populate it with your Azure service credentials:
+
+   ```bash
+   cp sample.env .env
+   # Edit .env with your Azure OpenAI, Speech, Storage, and Search credentials
+   ```
+
+2. Initialize the azd environment (first time only):
+
+   ```bash
+   azd init
+   ```
+
+3. Provision infrastructure and deploy:
+
+   ```bash
+   azd up
+   ```
+
+   This command will:
+   - Create or update Azure resources (Container Registry, Container Apps, Storage, Search, Cosmos DB)
+   - Build and push Docker images for the backend and frontend
+   - Deploy the containers with environment variables from your `.env` file
+
+### Environment Variables
+
+The deployment inherits configuration from your `.env` file. Key variables include:
+
+| Variable | Description |
+|----------|-------------|
+| `AZURE_OPENAI_GPT_VISION_ENDPOINT` | Azure OpenAI endpoint for vision analysis |
+| `AZURE_OPENAI_GPT_VISION_API_KEY` | API key for Azure OpenAI |
+| `AZURE_SPEECH_REGION` | Azure Speech Services region |
+| `AZURE_STORAGE_ACCOUNT_URL` | Blob storage URL for videos |
+| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint |
+| `DATABASE_URL` | PostgreSQL connection string |
+
+See `sample.env` for the complete list of configuration options.
+
+### Manual Deployment
+
+For more control over the deployment process, use the PowerShell script:
+
+```powershell
+./scripts/Deploy-ViperToAzure.ps1 \
+    -SubscriptionId "your-subscription-id" \
+    -ResourceGroupName "viper-prod" \
+    -Location "eastus"
+```
+
+See `azure/README.md` for detailed deployment options.
+
 ## Contributing
 
 This project welcomes contributions and suggestions. Most contributions require you to agree to a

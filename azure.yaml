@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: viper
+metadata:
+  template: viper@0.0.1-beta
+
+# Inherit environment variables from the .env file located at the repository root.
+# These values are passed to the infrastructure-as-code templates and container apps.
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+services:
+  backend:
+    project: .
+    language: python
+    host: containerapp
+    docker:
+      path: Dockerfile.backend
+      context: .
+  frontend:
+    project: src/ui
+    language: js
+    host: containerapp
+    docker:
+      path: ../../Dockerfile.frontend
+      context: ../..
+
+hooks:
+  # Load environment variables from the repository .env file before provisioning
+  preprovision:
+    posix:
+      shell: sh
+      run: |
+        if [ -f .env ]; then
+          echo "Loading environment variables from .env"
+          set -a
+          . ./.env
+          set +a
+        fi
+    windows:
+      shell: pwsh
+      run: |
+        if (Test-Path .env) {
+          Write-Host "Loading environment variables from .env"
+          Get-Content .env | ForEach-Object {
+            if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+              $name = $matches[1].Trim()
+              $value = $matches[2].Trim()
+              if ($value.StartsWith('"') -and $value.EndsWith('"')) {
+                $value = $value.Substring(1, $value.Length - 2)
+              }
+              [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            }
+          }
+        }
+
+  # Load environment variables before deployment so containers inherit them
+  predeploy:
+    posix:
+      shell: sh
+      run: |
+        if [ -f .env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
+    windows:
+      shell: pwsh
+      run: |
+        if (Test-Path .env) {
+          Get-Content .env | ForEach-Object {
+            if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+              $name = $matches[1].Trim()
+              $value = $matches[2].Trim()
+              if ($value.StartsWith('"') -and $value.EndsWith('"')) {
+                $value = $value.Substring(1, $value.Length - 2)
+              }
+              [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            }
+          }
+        }
