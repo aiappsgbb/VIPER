@@ -1,0 +1,61 @@
+{
+  "name": "VIPER",
+  "description": "A Media Asset Management tool using the COBRA video analysis pattern as the backbone for video search, management, and analysis",
+  "maturity": "Silver",
+  "region": "AMER",
+  "industry": "Cross",
+  "owner": "owenv",
+  "pattern": [
+    "AI/ML",
+    "Data & Analytics",
+    "Application Innovation",
+    "Cloud Native",
+    "Integration"
+  ],
+  "services": [
+    "Azure OpenAI",
+    "Azure AI Search",
+    "Azure Container Apps",
+    "Azure Cosmos DB",
+    "Azure Storage",
+    "Azure Speech Services",
+    "Azure Container Registry",
+    "Azure Cognitive Services"
+  ],
+  "tags": [
+    "image retrieval",
+    "vision AI",
+    "LLM",
+    "FastAPI",
+    "Next.js",
+    "Azure",
+    "Python",
+    "video analysis",
+    "content analysis",
+    "cloud deployment",
+    "media asset management",
+    "VIPER",
+    "COBRA"
+  ],
+  "version": "1.0.0",
+  "createdDate": "2026-01-28",
+  "lastUpdated": "2026-01-28",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/aiappsgbb/VIPER",
+    "branch": "main"
+  },
+  "documentation": {
+    "readme": "https://github.com/aiappsgbb/VIPER/blob/main/README.md",
+    "architecture": "",
+    "demo": ""
+  },
+  "contacts": {
+    "technical": [
+      "owenv"
+    ],
+    "business": [
+      "owenv"
+    ]
+  }
+}
