@@ -1,0 +1,1764 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "9021499027816923319"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "metadata": {
+        "description": "Name of the environment that can be used as part of naming resource convention"
+      }
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "Primary location for all resources"
+      }
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the resource group to create or use"
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Azure Container Registry"
+      }
+    },
+    "managedEnvironmentName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Container Apps managed environment"
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace"
+      }
+    },
+    "backendContainerAppName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the backend container app"
+      }
+    },
+    "frontendContainerAppName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the frontend container app"
+      }
+    },
+    "virtualNetworkName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the virtual network"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Storage Account"
+      }
+    },
+    "searchServiceName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Azure AI Search service"
+      }
+    },
+    "cosmosAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the Azure Cosmos DB account"
+      }
+    },
+    "searchIndexName": {
+      "type": "string",
+      "defaultValue": "viper-search",
+      "metadata": {
+        "description": "Azure AI Search index name"
+      }
+    },
+    "storageVideoContainer": {
+      "type": "string",
+      "defaultValue": "videos",
+      "metadata": {
+        "description": "Storage container for videos"
+      }
+    },
+    "storageOutputContainer": {
+      "type": "string",
+      "defaultValue": "analysis",
+      "metadata": {
+        "description": "Storage container for analysis output"
+      }
+    },
+    "cosmosDatabaseName": {
+      "type": "string",
+      "defaultValue": "viper",
+      "metadata": {
+        "description": "Cosmos DB database name"
+      }
+    },
+    "cosmosContainerName": {
+      "type": "string",
+      "defaultValue": "manifests",
+      "metadata": {
+        "description": "Cosmos DB container name"
+      }
+    },
+    "azureOpenaiGptVisionApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI GPT Vision API Key"
+      }
+    },
+    "azureOpenaiGptVisionEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI GPT Vision Endpoint"
+      }
+    },
+    "azureOpenaiGptVisionApiVersion": {
+      "type": "string",
+      "defaultValue": "2024-06-01",
+      "metadata": {
+        "description": "Azure OpenAI GPT Vision API Version"
+      }
+    },
+    "azureOpenaiGptVisionDeployment": {
+      "type": "string",
+      "defaultValue": "gpt4o",
+      "metadata": {
+        "description": "Azure OpenAI GPT Vision Deployment name"
+      }
+    },
+    "azureSpeechRegion": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Speech Region"
+      }
+    },
+    "azureSpeechUseManagedIdentity": {
+      "type": "string",
+      "defaultValue": "true",
+      "metadata": {
+        "description": "Azure Speech use managed identity"
+      }
+    },
+    "azureStorageAccountUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Storage Account URL (auto-generated if not provided)"
+      }
+    },
+    "azureSearchEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Search Endpoint (auto-generated if not provided)"
+      }
+    },
+    "azOpenaiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI Key for UI"
+      }
+    },
+    "azOpenaiBase": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI Base URL for UI"
+      }
+    },
+    "azOpenaiVersion": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure OpenAI Version for UI"
+      }
+    },
+    "gpt4": {
+      "type": "string",
+      "defaultValue": "4turbo",
+      "metadata": {
+        "description": "GPT4 deployment name"
+      }
+    },
+    "searchEndpoint": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Search endpoint for UI"
+      }
+    },
+    "searchApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Search API Key for UI"
+      }
+    },
+    "databaseUrl": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Database connection URL"
+      }
+    },
+    "nextauthSecret": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "NextAuth secret"
+      }
+    },
+    "nextauthUrl": {
+      "type": "string",
+      "defaultValue": "http://localhost:3000",
+      "metadata": {
+        "description": "NextAuth URL"
+      }
+    }
+  },
+  "variables": {
+    "tags": {
+      "azd-env-name": "[parameters('environmentName')]"
+    },
+    "abbrs": {
+      "resourceGroup": "rg-",
+      "containerRegistry": "acr",
+      "containerAppsEnvironment": "cae-",
+      "containerApp": "ca-",
+      "logAnalyticsWorkspace": "log-",
+      "virtualNetwork": "vnet-",
+      "storageAccount": "st",
+      "searchService": "srch-",
+      "cosmosAccount": "cosmos-"
+    },
+    "resourceToken": "[toLower(uniqueString(subscription().id, parameters('environmentName'), parameters('location')))]",
+    "resolvedResourceGroupName": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}', variables('abbrs').resourceGroup, parameters('environmentName')))]",
+    "resolvedAcrName": "[if(not(empty(parameters('acrName'))), parameters('acrName'), format('{0}{1}', variables('abbrs').containerRegistry, variables('resourceToken')))]",
+    "resolvedManagedEnvironmentName": "[if(not(empty(parameters('managedEnvironmentName'))), parameters('managedEnvironmentName'), format('{0}{1}', variables('abbrs').containerAppsEnvironment, parameters('environmentName')))]",
+    "resolvedLogAnalyticsName": "[if(not(empty(parameters('logAnalyticsWorkspaceName'))), parameters('logAnalyticsWorkspaceName'), format('{0}{1}', variables('abbrs').logAnalyticsWorkspace, parameters('environmentName')))]",
+    "resolvedBackendAppName": "[if(not(empty(parameters('backendContainerAppName'))), parameters('backendContainerAppName'), format('{0}backend-{1}', variables('abbrs').containerApp, variables('resourceToken')))]",
+    "resolvedFrontendAppName": "[if(not(empty(parameters('frontendContainerAppName'))), parameters('frontendContainerAppName'), format('{0}frontend-{1}', variables('abbrs').containerApp, variables('resourceToken')))]",
+    "resolvedVirtualNetworkName": "[if(not(empty(parameters('virtualNetworkName'))), parameters('virtualNetworkName'), format('{0}{1}', variables('abbrs').virtualNetwork, parameters('environmentName')))]",
+    "resolvedStorageAccountName": "[if(not(empty(parameters('storageAccountName'))), parameters('storageAccountName'), format('{0}{1}', variables('abbrs').storageAccount, variables('resourceToken')))]",
+    "resolvedSearchServiceName": "[if(not(empty(parameters('searchServiceName'))), parameters('searchServiceName'), format('{0}{1}', variables('abbrs').searchService, variables('resourceToken')))]",
+    "resolvedCosmosAccountName": "[if(not(empty(parameters('cosmosAccountName'))), parameters('cosmosAccountName'), format('{0}{1}', variables('abbrs').cosmosAccount, variables('resourceToken')))]",
+    "computedStorageAccountUrl": "[if(not(empty(parameters('azureStorageAccountUrl'))), parameters('azureStorageAccountUrl'), format('https://{0}.blob.{1}', variables('resolvedStorageAccountName'), environment().suffixes.storage))]",
+    "computedSearchEndpoint": "[if(not(empty(parameters('azureSearchEndpoint'))), parameters('azureSearchEndpoint'), format('https://{0}.search.windows.net', variables('resolvedSearchServiceName')))]",
+    "backendEnvVars": {
+      "AZURE_OPENAI_GPT_VISION_API_KEY": "[parameters('azureOpenaiGptVisionApiKey')]",
+      "AZURE_OPENAI_GPT_VISION_ENDPOINT": "[parameters('azureOpenaiGptVisionEndpoint')]",
+      "AZURE_OPENAI_GPT_VISION_API_VERSION": "[parameters('azureOpenaiGptVisionApiVersion')]",
+      "AZURE_OPENAI_GPT_VISION_DEPLOYMENT": "[parameters('azureOpenaiGptVisionDeployment')]",
+      "AZURE_SPEECH_REGION": "[parameters('azureSpeechRegion')]",
+      "AZURE_SPEECH_USE_MANAGED_IDENTITY": "[parameters('azureSpeechUseManagedIdentity')]",
+      "AZURE_STORAGE_ACCOUNT_URL": "[variables('computedStorageAccountUrl')]",
+      "AZURE_STORAGE_VIDEO_CONTAINER": "[parameters('storageVideoContainer')]",
+      "AZURE_STORAGE_OUTPUT_CONTAINER": "[parameters('storageOutputContainer')]",
+      "AZURE_SEARCH_ENDPOINT": "[variables('computedSearchEndpoint')]",
+      "AZURE_SEARCH_INDEX_NAME": "[parameters('searchIndexName')]",
+      "DATABASE_URL": "[parameters('databaseUrl')]"
+    },
+    "computedFrontendSearchEndpoint": "[if(not(empty(parameters('searchEndpoint'))), parameters('searchEndpoint'), variables('computedSearchEndpoint'))]",
+    "frontendEnvVars": {
+      "AZ_OPENAI_KEY": "[parameters('azOpenaiKey')]",
+      "AZ_OPENAI_BASE": "[parameters('azOpenaiBase')]",
+      "AZ_OPENAI_VERSION": "[parameters('azOpenaiVersion')]",
+      "GPT4": "[parameters('gpt4')]",
+      "SEARCH_ENDPOINT": "[variables('computedFrontendSearchEndpoint')]",
+      "SEARCH_API_KEY": "[parameters('searchApiKey')]",
+      "INDEX_NAME": "[parameters('searchIndexName')]",
+      "DATABASE_URL": "[parameters('databaseUrl')]",
+      "NEXTAUTH_SECRET": "[parameters('nextauthSecret')]",
+      "NEXTAUTH_URL": "[parameters('nextauthUrl')]"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('resolvedResourceGroupName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "acr",
+      "resourceGroup": "[variables('resolvedResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('resolvedAcrName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "10120964399552040952"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure Container Registry"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for the registry"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags for the registry"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "adminUserEnabled": false,
+                "publicNetworkAccess": "Enabled"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "loginServer": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('name')), '2023-07-01').loginServer]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resolvedResourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "containerApps",
+      "resourceGroup": "[variables('resolvedResourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "acrName": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+          },
+          "managedEnvironmentName": {
+            "value": "[variables('resolvedManagedEnvironmentName')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[variables('resolvedLogAnalyticsName')]"
+          },
+          "backendContainerAppName": {
+            "value": "[variables('resolvedBackendAppName')]"
+          },
+          "frontendContainerAppName": {
+            "value": "[variables('resolvedFrontendAppName')]"
+          },
+          "backendImage": {
+            "value": "[format('{0}/viper-backend:latest', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value)]"
+          },
+          "frontendImage": {
+            "value": "[format('{0}/viper-frontend:latest', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value)]"
+          },
+          "virtualNetworkName": {
+            "value": "[variables('resolvedVirtualNetworkName')]"
+          },
+          "storageAccountName": {
+            "value": "[variables('resolvedStorageAccountName')]"
+          },
+          "searchServiceName": {
+            "value": "[variables('resolvedSearchServiceName')]"
+          },
+          "cosmosAccountName": {
+            "value": "[variables('resolvedCosmosAccountName')]"
+          },
+          "cosmosDatabaseName": {
+            "value": "[parameters('cosmosDatabaseName')]"
+          },
+          "cosmosContainerName": {
+            "value": "[parameters('cosmosContainerName')]"
+          },
+          "backendEnvVars": {
+            "value": "[variables('backendEnvVars')]"
+          },
+          "frontendEnvVars": {
+            "value": "[variables('frontendEnvVars')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "8162830787842286082"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "acrName": {
+              "type": "string"
+            },
+            "managedEnvironmentName": {
+              "type": "string"
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string"
+            },
+            "backendContainerAppName": {
+              "type": "string"
+            },
+            "frontendContainerAppName": {
+              "type": "string"
+            },
+            "backendImage": {
+              "type": "string"
+            },
+            "frontendImage": {
+              "type": "string"
+            },
+            "backendEnvVars": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Optional environment variables to inject into the Viper backend container."
+              }
+            },
+            "frontendEnvVars": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Optional environment variables to inject into the Viper UI frontend container."
+              }
+            },
+            "frontendBaseUrl": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional override for the Viper UI base URL that points to the Viper backend."
+              }
+            },
+            "virtualNetworkName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the virtual network that hosts the Container Apps environment and private endpoints."
+              }
+            },
+            "virtualNetworkResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Resource group for the virtual network when reusing an existing network."
+              }
+            },
+            "createVirtualNetwork": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Create the virtual network and subnets when true. Set to false to reference existing subnets by resource ID."
+              }
+            },
+            "containerAppsSubnetResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the Container Apps infrastructure subnet when referencing an existing virtual network."
+              }
+            },
+            "privateEndpointSubnetResourceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Resource ID of the subnet reserved for private endpoints when referencing an existing virtual network."
+              }
+            },
+            "virtualNetworkAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.100.0.0/16",
+              "metadata": {
+                "description": "Address prefix allocated to the virtual network."
+              }
+            },
+            "containerAppsSubnetName": {
+              "type": "string",
+              "defaultValue": "apps-infra",
+              "metadata": {
+                "description": "Name of the subnet used by Azure Container Apps infrastructure."
+              }
+            },
+            "containerAppsSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.100.0.0/23",
+              "metadata": {
+                "description": "CIDR block for the Azure Container Apps infrastructure subnet."
+              }
+            },
+            "containerAppsWorkloadSubnetName": {
+              "type": "string",
+              "defaultValue": "apps-workload",
+              "metadata": {
+                "description": "Name of the subnet assigned to dedicated Container Apps workloads."
+              }
+            },
+            "containerAppsWorkloadSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.100.3.0/24",
+              "metadata": {
+                "description": "CIDR block for the dedicated Container Apps workload subnet."
+              }
+            },
+            "privateEndpointSubnetName": {
+              "type": "string",
+              "defaultValue": "private-endpoints",
+              "metadata": {
+                "description": "Name of the subnet reserved for private endpoints."
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.100.2.0/24",
+              "metadata": {
+                "description": "CIDR block for the private endpoint subnet."
+              }
+            },
+            "containerAppsWorkloadProfileName": {
+              "type": "string",
+              "defaultValue": "wp-d4",
+              "metadata": {
+                "description": "Name of the dedicated workload profile used by the container apps."
+              }
+            },
+            "containerAppsWorkloadProfileType": {
+              "type": "string",
+              "defaultValue": "D4",
+              "metadata": {
+                "description": "Dedicated workload profile SKU for the container apps environment."
+              }
+            },
+            "containerAppsWorkloadMinimumCount": {
+              "type": "int",
+              "defaultValue": 1,
+              "minValue": 1,
+              "metadata": {
+                "description": "Minimum number of replicas for the dedicated workload profile."
+              }
+            },
+            "containerAppsWorkloadMaximumCount": {
+              "type": "int",
+              "defaultValue": 3,
+              "minValue": 1,
+              "metadata": {
+                "description": "Maximum number of replicas for the dedicated workload profile."
+              }
+            },
+            "enableDedicatedWorkloadProfile": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Enable a dedicated Container Apps workload profile. When false, the apps run on the Consumption workload profile."
+              }
+            },
+            "createStorageAccount": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Create a new Storage Account when true. Set to false to reference an existing account."
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Name of the Storage Account to create or reference."
+              }
+            },
+            "storageAccountResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Resource group containing the existing Storage Account when createStorageAccount is false."
+              }
+            },
+            "createSearchService": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Create a new Azure AI Search service when true. Set to false to reference an existing service."
+              }
+            },
+            "searchServiceName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Name of the Azure AI Search service to create or reference."
+              }
+            },
+            "searchServiceResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Resource group containing the existing Azure AI Search service when createSearchService is false."
+              }
+            },
+            "createCosmosAccount": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Create a new Azure Cosmos DB account when true. Set to false to reference an existing account."
+              }
+            },
+            "cosmosAccountName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Name of the Azure Cosmos DB account to create or reference."
+              }
+            },
+            "cosmosAccountResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Resource group containing the existing Azure Cosmos DB account when createCosmosAccount is false."
+              }
+            },
+            "cosmosDatabaseName": {
+              "type": "string",
+              "defaultValue": "viper",
+              "metadata": {
+                "description": "Name of the Azure Cosmos DB SQL database to create when provisioning a new account."
+              }
+            },
+            "cosmosContainerName": {
+              "type": "string",
+              "defaultValue": "manifests",
+              "metadata": {
+                "description": "Name of the Azure Cosmos DB SQL container to create when provisioning a new account."
+              }
+            },
+            "cosmosContainerPartitionKeyPath": {
+              "type": "string",
+              "defaultValue": "/id",
+              "metadata": {
+                "description": "Partition key path used by the Azure Cosmos DB SQL container."
+              }
+            },
+            "cosmosAccountConsistency": {
+              "type": "string",
+              "defaultValue": "Session",
+              "allowedValues": [
+                "Eventual",
+                "ConsistentPrefix",
+                "Session",
+                "BoundedStaleness",
+                "Strong"
+              ],
+              "metadata": {
+                "description": "Default consistency level for the Cosmos DB account when created by this deployment."
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "backendEnv",
+                "count": "[length(items(parameters('backendEnvVars')))]",
+                "input": {
+                  "name": "[items(parameters('backendEnvVars'))[copyIndex('backendEnv')].key]",
+                  "value": "[string(items(parameters('backendEnvVars'))[copyIndex('backendEnv')].value)]"
+                }
+              },
+              {
+                "name": "frontendAdditionalEnv",
+                "count": "[length(items(parameters('frontendEnvVars')))]",
+                "input": {
+                  "name": "[items(parameters('frontendEnvVars'))[copyIndex('frontendAdditionalEnv')].key]",
+                  "value": "[string(items(parameters('frontendEnvVars'))[copyIndex('frontendAdditionalEnv')].value)]"
+                }
+              }
+            ],
+            "sanitizedResourceGroupName": "[toLower(replace(replace(resourceGroup().name, '-', ''), '_', ''))]",
+            "truncatedResourceGroupName": "[if(greaterOrEquals(length(variables('sanitizedResourceGroupName')), 11), substring(variables('sanitizedResourceGroupName'), 0, 11), variables('sanitizedResourceGroupName'))]",
+            "storageNamePrefix": "[if(empty(variables('truncatedResourceGroupName')), 'viper', variables('truncatedResourceGroupName'))]",
+            "generatedStorageAccountName": "[toLower(format('{0}{1}', variables('storageNamePrefix'), substring(uniqueString(resourceGroup().id, 'storage'), 0, 12)))]",
+            "resolvedStorageAccountName": "[toLower(if(parameters('createStorageAccount'), if(empty(parameters('storageAccountName')), variables('generatedStorageAccountName'), parameters('storageAccountName')), parameters('storageAccountName')))]",
+            "searchNamePrefix": "[if(empty(variables('sanitizedResourceGroupName')), 'vipersearch', if(greaterOrEquals(length(variables('sanitizedResourceGroupName')), 20), substring(variables('sanitizedResourceGroupName'), 0, 20), variables('sanitizedResourceGroupName')))]",
+            "generatedSearchServiceName": "[toLower(format('{0}{1}', variables('searchNamePrefix'), substring(uniqueString(resourceGroup().id, 'search'), 0, 6)))]",
+            "resolvedSearchServiceName": "[toLower(if(parameters('createSearchService'), if(empty(parameters('searchServiceName')), variables('generatedSearchServiceName'), parameters('searchServiceName')), parameters('searchServiceName')))]",
+            "cosmosNamePrefix": "[if(empty(variables('sanitizedResourceGroupName')), 'vipercosmos', if(greaterOrEquals(length(variables('sanitizedResourceGroupName')), 20), substring(variables('sanitizedResourceGroupName'), 0, 20), variables('sanitizedResourceGroupName')))]",
+            "generatedCosmosAccountName": "[toLower(format('{0}{1}', variables('cosmosNamePrefix'), substring(uniqueString(resourceGroup().id, 'cosmos'), 0, 8)))]",
+            "resolvedCosmosAccountName": "[toLower(if(parameters('createCosmosAccount'), if(empty(parameters('cosmosAccountName')), variables('generatedCosmosAccountName'), parameters('cosmosAccountName')), parameters('cosmosAccountName')))]",
+            "hasStorageAccount": "[or(parameters('createStorageAccount'), not(empty(variables('resolvedStorageAccountName'))))]",
+            "hasSearchService": "[or(parameters('createSearchService'), not(empty(variables('resolvedSearchServiceName'))))]",
+            "hasCosmosAccount": "[or(parameters('createCosmosAccount'), not(empty(variables('resolvedCosmosAccountName'))))]",
+            "virtualNetworkId": "[resourceId(parameters('virtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+            "containerAppsSubnetIdGenerated": "[resourceId(parameters('virtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('containerAppsSubnetName'))]",
+            "privateEndpointSubnetIdGenerated": "[resourceId(parameters('virtualNetworkResourceGroup'), 'Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('privateEndpointSubnetName'))]",
+            "resolvedContainerAppsSubnetId": "[if(parameters('createVirtualNetwork'), variables('containerAppsSubnetIdGenerated'), parameters('containerAppsSubnetResourceId'))]",
+            "resolvedPrivateEndpointSubnetId": "[if(parameters('createVirtualNetwork'), variables('privateEndpointSubnetIdGenerated'), parameters('privateEndpointSubnetResourceId'))]",
+            "registryServer": "[format('{0}.azurecr.io', parameters('acrName'))]",
+            "acrPullRoleGuid": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+            "storageRoleGuid": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+            "searchRoleGuid": "de139f84-1756-47ae-9be6-808fbbe84772",
+            "cosmosRoleGuid": "db49f5e6-0bde-4f5e-8eaa-36847e330f73",
+            "storageRoleDefinitionId": "[if(variables('hasStorageAccount'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageRoleGuid')), '')]",
+            "searchRoleDefinitionId": "[if(variables('hasSearchService'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('searchRoleGuid')), '')]",
+            "cosmosRoleDefinitionId": "[if(variables('hasCosmosAccount'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cosmosRoleGuid')), '')]",
+            "acrPullRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleGuid'))]",
+            "containerAppWorkloadProfile": "[if(parameters('enableDedicatedWorkloadProfile'), parameters('containerAppsWorkloadProfileName'), 'Consumption')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('logAnalyticsWorkspaceName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "PerGB2018"
+              },
+              "properties": {
+                "retentionInDays": 30
+              }
+            },
+            {
+              "condition": "[parameters('createVirtualNetwork')]",
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('virtualNetworkName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('virtualNetworkAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('containerAppsSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('containerAppsSubnetPrefix')]",
+                      "delegations": [
+                        {
+                          "name": "container-apps-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "[parameters('containerAppsWorkloadSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('containerAppsWorkloadSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "[parameters('privateEndpointSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('managedEnvironmentName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2023-09-01').customerId]",
+                    "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName')), '2020-08-01').primarySharedKey]"
+                  }
+                },
+                "vnetConfiguration": {
+                  "infrastructureSubnetId": "[variables('resolvedContainerAppsSubnetId')]"
+                },
+                "workloadProfiles": "[if(parameters('enableDedicatedWorkloadProfile'), createArray(createObject('name', parameters('containerAppsWorkloadProfileName'), 'workloadProfileType', parameters('containerAppsWorkloadProfileType'), 'minimumCount', parameters('containerAppsWorkloadMinimumCount'), 'maximumCount', parameters('containerAppsWorkloadMaximumCount'))), createArray())]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createStorageAccount')]",
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2022-09-01",
+              "name": "[variables('resolvedStorageAccountName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2",
+              "properties": {
+                "allowBlobPublicAccess": false,
+                "allowSharedKeyAccess": true,
+                "minimumTlsVersion": "TLS1_2",
+                "publicNetworkAccess": "Disabled",
+                "supportsHttpsTrafficOnly": true,
+                "networkAcls": {
+                  "defaultAction": "Deny",
+                  "bypass": "AzureServices"
+                }
+              }
+            },
+            {
+              "condition": "[parameters('createSearchService')]",
+              "type": "Microsoft.Search/searchServices",
+              "apiVersion": "2020-08-01",
+              "name": "[variables('resolvedSearchServiceName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "standard"
+              },
+              "properties": {
+                "replicaCount": 1,
+                "partitionCount": 1,
+                "hostingMode": "default",
+                "publicNetworkAccess": "disabled"
+              }
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.DocumentDB/databaseAccounts",
+              "apiVersion": "2023-04-15",
+              "name": "[variables('resolvedCosmosAccountName')]",
+              "location": "[parameters('location')]",
+              "kind": "GlobalDocumentDB",
+              "properties": {
+                "databaseAccountOfferType": "Standard",
+                "locations": [
+                  {
+                    "locationName": "[parameters('location')]",
+                    "failoverPriority": 0,
+                    "isZoneRedundant": false
+                  }
+                ],
+                "enableAutomaticFailover": false,
+                "enableFreeTier": false,
+                "enableAnalyticalStorage": false,
+                "publicNetworkAccess": "Disabled",
+                "enableMultipleWriteLocations": false,
+                "disableKeyBasedMetadataWriteAccess": false,
+                "minimalTlsVersion": "Tls12",
+                "apiProperties": {
+                  "serverVersion": "4.0"
+                },
+                "consistencyPolicy": {
+                  "defaultConsistencyLevel": "[parameters('cosmosAccountConsistency')]"
+                },
+                "backupPolicy": {
+                  "type": "Periodic",
+                  "periodicModeProperties": {
+                    "backupIntervalInMinutes": 240,
+                    "backupRetentionIntervalInHours": 8,
+                    "backupStorageRedundancy": "Geo"
+                  }
+                },
+                "capabilities": []
+              }
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+              "apiVersion": "2023-04-15",
+              "name": "[format('{0}/{1}', variables('resolvedCosmosAccountName'), parameters('cosmosDatabaseName'))]",
+              "properties": {
+                "resource": {
+                  "id": "[parameters('cosmosDatabaseName')]"
+                },
+                "options": {}
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resolvedCosmosAccountName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-04-15",
+              "name": "[format('{0}/{1}/{2}', variables('resolvedCosmosAccountName'), parameters('cosmosDatabaseName'), parameters('cosmosContainerName'))]",
+              "properties": {
+                "resource": {
+                  "id": "[parameters('cosmosContainerName')]",
+                  "partitionKey": {
+                    "paths": [
+                      "[parameters('cosmosContainerPartitionKeyPath')]"
+                    ],
+                    "kind": "Hash"
+                  }
+                },
+                "options": {}
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('resolvedCosmosAccountName'), parameters('cosmosDatabaseName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createStorageAccount')]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[format('privatelink.blob.{0}', environment().suffixes.storage)]",
+              "location": "global"
+            },
+            {
+              "condition": "[parameters('createStorageAccount')]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', format('privatelink.blob.{0}', environment().suffixes.storage), format('{0}-blob-link', parameters('virtualNetworkName')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[variables('virtualNetworkId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createStorageAccount')]",
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}-blob-pe', variables('resolvedStorageAccountName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[variables('resolvedPrivateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-blob-connection', variables('resolvedStorageAccountName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('resolvedStorageAccountName'))]",
+                      "groupIds": [
+                        "blob"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('resolvedStorageAccountName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createStorageAccount')]",
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('{0}-blob-pe', variables('resolvedStorageAccountName')), format('{0}-blob-dns', variables('resolvedStorageAccountName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "blob",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.blob.{0}', environment().suffixes.storage))]",
+                "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-blob-pe', variables('resolvedStorageAccountName')))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createSearchService')]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.search.windows.net",
+              "location": "global"
+            },
+            {
+              "condition": "[parameters('createSearchService')]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.search.windows.net', format('{0}-search-link', parameters('virtualNetworkName')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[variables('virtualNetworkId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.search.windows.net')]"
+              ]
+            },
+            {
+              "condition": "[parameters('createSearchService')]",
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}-pe', variables('resolvedSearchServiceName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[variables('resolvedPrivateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-connection', variables('resolvedSearchServiceName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.Search/searchServices', variables('resolvedSearchServiceName'))]",
+                      "groupIds": [
+                        "searchService"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Search/searchServices', variables('resolvedSearchServiceName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createSearchService')]",
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('{0}-pe', variables('resolvedSearchServiceName')), format('{0}-dns', variables('resolvedSearchServiceName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "search",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.search.windows.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.search.windows.net')]",
+                "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-pe', variables('resolvedSearchServiceName')))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.documents.azure.com",
+              "location": "global"
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.documents.azure.com', format('{0}-cosmos-link', parameters('virtualNetworkName')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[variables('virtualNetworkId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.documents.azure.com')]"
+              ]
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}-sql-pe', variables('resolvedCosmosAccountName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "subnet": {
+                  "id": "[variables('resolvedPrivateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[format('{0}-sql-connection', variables('resolvedCosmosAccountName'))]",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resolvedCosmosAccountName'))]",
+                      "groupIds": [
+                        "Sql"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resolvedCosmosAccountName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('createCosmosAccount')]",
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', format('{0}-sql-pe', variables('resolvedCosmosAccountName')), format('{0}-sql-dns', variables('resolvedCosmosAccountName')))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "cosmos",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.documents.azure.com')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.documents.azure.com')]",
+                "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-sql-pe', variables('resolvedCosmosAccountName')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('backendContainerAppName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName'))]",
+                "workloadProfileName": "[variables('containerAppWorkloadProfile')]",
+                "configuration": {
+                  "ingress": {
+                    "external": false,
+                    "targetPort": 8000,
+                    "transport": "auto",
+                    "traffic": [
+                      {
+                        "latestRevision": true,
+                        "weight": 100
+                      }
+                    ]
+                  },
+                  "registries": [
+                    {
+                      "server": "[variables('registryServer')]",
+                      "identity": "system"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "backend",
+                      "image": "[parameters('backendImage')]",
+                      "env": "[variables('backendEnv')]"
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 1
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('frontendContainerAppName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName'))]",
+                "workloadProfileName": "[variables('containerAppWorkloadProfile')]",
+                "configuration": {
+                  "ingress": {
+                    "external": true,
+                    "targetPort": 3000,
+                    "transport": "auto",
+                    "traffic": [
+                      {
+                        "latestRevision": true,
+                        "weight": 100
+                      }
+                    ]
+                  },
+                  "registries": [
+                    {
+                      "server": "[variables('registryServer')]",
+                      "identity": "system"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "frontend",
+                      "image": "[parameters('frontendImage')]",
+                      "env": "[concat(createArray(createObject('name', 'VIPER_BASE_URL', 'value', if(empty(parameters('frontendBaseUrl')), format('https://{0}.{1}', parameters('backendContainerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName')), '2024-03-01').defaultDomain), parameters('frontendBaseUrl'))), createObject('name', 'VIPER_BACKEND_INTERNAL_URL', 'value', format('https://{0}.{1}', parameters('backendContainerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName')), '2024-03-01').defaultDomain))), variables('frontendAdditionalEnv'))]"
+                    }
+                  ],
+                  "scale": {
+                    "minReplicas": 1,
+                    "maxReplicas": 1
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceGroup().id, parameters('backendContainerAppName'), variables('acrPullRoleGuid'))]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId]",
+                "roleDefinitionId": "[variables('acrPullRoleDefinitionId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceGroup().id, parameters('frontendContainerAppName'), variables('acrPullRoleGuid'))]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId]",
+                "roleDefinitionId": "[variables('acrPullRoleDefinitionId')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('createStorageAccount'), variables('hasStorageAccount'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "storageRoleAssignmentsNew",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "storageAccountName": {
+                    "value": "[variables('resolvedStorageAccountName')]"
+                  },
+                  "assignments": "[if(variables('hasStorageAccount'), createObject('value', createArray(createObject('name', guid(variables('resolvedStorageAccountName'), parameters('backendContainerAppName'), variables('storageRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('storageRoleDefinitionId')), createObject('name', guid(variables('resolvedStorageAccountName'), parameters('frontendContainerAppName'), variables('storageRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('storageRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "553232197292661958"
+                    }
+                  },
+                  "parameters": {
+                    "storageAccountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the storage account to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the storage account."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "storageRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('resolvedStorageAccountName'))]"
+              ]
+            },
+            {
+              "condition": "[and(not(parameters('createStorageAccount')), variables('hasStorageAccount'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "storageRoleAssignmentsExisting",
+              "resourceGroup": "[parameters('storageAccountResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "storageAccountName": {
+                    "value": "[variables('resolvedStorageAccountName')]"
+                  },
+                  "assignments": "[if(variables('hasStorageAccount'), createObject('value', createArray(createObject('name', guid(variables('resolvedStorageAccountName'), parameters('backendContainerAppName'), variables('storageRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('storageRoleDefinitionId')), createObject('name', guid(variables('resolvedStorageAccountName'), parameters('frontendContainerAppName'), variables('storageRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('storageRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "553232197292661958"
+                    }
+                  },
+                  "parameters": {
+                    "storageAccountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the storage account to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the storage account."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "storageRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('createSearchService'), variables('hasSearchService'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "searchRoleAssignmentsNew",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "searchServiceName": {
+                    "value": "[variables('resolvedSearchServiceName')]"
+                  },
+                  "assignments": "[if(variables('hasSearchService'), createObject('value', createArray(createObject('name', guid(variables('resolvedSearchServiceName'), parameters('backendContainerAppName'), variables('searchRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('searchRoleDefinitionId')), createObject('name', guid(variables('resolvedSearchServiceName'), parameters('frontendContainerAppName'), variables('searchRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('searchRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "1168626396602137578"
+                    }
+                  },
+                  "parameters": {
+                    "searchServiceName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the search service to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the search service."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "searchRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.Search/searchServices', parameters('searchServiceName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]",
+                "[resourceId('Microsoft.Search/searchServices', variables('resolvedSearchServiceName'))]"
+              ]
+            },
+            {
+              "condition": "[and(not(parameters('createSearchService')), variables('hasSearchService'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "searchRoleAssignmentsExisting",
+              "resourceGroup": "[parameters('searchServiceResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "searchServiceName": {
+                    "value": "[variables('resolvedSearchServiceName')]"
+                  },
+                  "assignments": "[if(variables('hasSearchService'), createObject('value', createArray(createObject('name', guid(variables('resolvedSearchServiceName'), parameters('backendContainerAppName'), variables('searchRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('searchRoleDefinitionId')), createObject('name', guid(variables('resolvedSearchServiceName'), parameters('frontendContainerAppName'), variables('searchRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('searchRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "1168626396602137578"
+                    }
+                  },
+                  "parameters": {
+                    "searchServiceName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the search service to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the search service."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "searchRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.Search/searchServices', parameters('searchServiceName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('createCosmosAccount'), variables('hasCosmosAccount'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "cosmosRoleAssignmentsNew",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "cosmosAccountName": {
+                    "value": "[variables('resolvedCosmosAccountName')]"
+                  },
+                  "assignments": "[if(variables('hasCosmosAccount'), createObject('value', createArray(createObject('name', guid(variables('resolvedCosmosAccountName'), parameters('backendContainerAppName'), variables('cosmosRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('cosmosRoleDefinitionId')), createObject('name', guid(variables('resolvedCosmosAccountName'), parameters('frontendContainerAppName'), variables('cosmosRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('cosmosRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "7219475070085523212"
+                    }
+                  },
+                  "parameters": {
+                    "cosmosAccountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the Cosmos DB account to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the Cosmos DB account."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "cosmosRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('resolvedCosmosAccountName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]"
+              ]
+            },
+            {
+              "condition": "[and(not(parameters('createCosmosAccount')), variables('hasCosmosAccount'))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "cosmosRoleAssignmentsExisting",
+              "resourceGroup": "[parameters('cosmosAccountResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "cosmosAccountName": {
+                    "value": "[variables('resolvedCosmosAccountName')]"
+                  },
+                  "assignments": "[if(variables('hasCosmosAccount'), createObject('value', createArray(createObject('name', guid(variables('resolvedCosmosAccountName'), parameters('backendContainerAppName'), variables('cosmosRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('cosmosRoleDefinitionId')), createObject('name', guid(variables('resolvedCosmosAccountName'), parameters('frontendContainerAppName'), variables('cosmosRoleGuid')), 'principalId', reference(resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName')), '2024-03-01', 'full').identity.principalId, 'roleDefinitionId', variables('cosmosRoleDefinitionId')))), createObject('value', createArray()))]"
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.40.2.10011",
+                      "templateHash": "7219475070085523212"
+                    }
+                  },
+                  "parameters": {
+                    "cosmosAccountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the Cosmos DB account to assign roles to."
+                      }
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Role assignments to create for the Cosmos DB account."
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "copy": {
+                        "name": "cosmosRoleAssignments",
+                        "count": "[length(parameters('assignments'))]"
+                      },
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName'))]",
+                      "name": "[parameters('assignments')[copyIndex()].name]",
+                      "properties": {
+                        "principalId": "[parameters('assignments')[copyIndex()].principalId]",
+                        "roleDefinitionId": "[parameters('assignments')[copyIndex()].roleDefinitionId]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/containerApps', parameters('backendContainerAppName'))]",
+                "[resourceId('Microsoft.App/containerApps', parameters('frontendContainerAppName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "frontendUrl": {
+              "type": "string",
+              "value": "[format('https://{0}.{1}', parameters('frontendContainerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName')), '2024-03-01').defaultDomain)]"
+            },
+            "backendInternalUrl": {
+              "type": "string",
+              "value": "[format('https://{0}.{1}', parameters('backendContainerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', parameters('managedEnvironmentName')), '2024-03-01').defaultDomain)]"
+            },
+            "storageAccountOutput": {
+              "type": "string",
+              "value": "[if(variables('hasStorageAccount'), variables('resolvedStorageAccountName'), '')]"
+            },
+            "searchServiceOutput": {
+              "type": "string",
+              "value": "[if(variables('hasSearchService'), variables('resolvedSearchServiceName'), '')]"
+            },
+            "cosmosAccountOutput": {
+              "type": "string",
+              "value": "[if(variables('hasCosmosAccount'), variables('resolvedCosmosAccountName'), '')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resolvedResourceGroupName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "AZURE_LOCATION": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "AZURE_TENANT_ID": {
+      "type": "string",
+      "value": "[tenant().tenantId]"
+    },
+    "AZURE_RESOURCE_GROUP": {
+      "type": "string",
+      "value": "[variables('resolvedResourceGroupName')]"
+    },
+    "AZURE_CONTAINER_REGISTRY_ENDPOINT": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
+    },
+    "AZURE_CONTAINER_REGISTRY_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+    },
+    "SERVICE_BACKEND_NAME": {
+      "type": "string",
+      "value": "[variables('resolvedBackendAppName')]"
+    },
+    "SERVICE_FRONTEND_NAME": {
+      "type": "string",
+      "value": "[variables('resolvedFrontendAppName')]"
+    },
+    "SERVICE_FRONTEND_URL": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.frontendUrl.value]"
+    },
+    "SERVICE_BACKEND_INTERNAL_URL": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.backendInternalUrl.value]"
+    }
+  }
+}
