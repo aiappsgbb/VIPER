@@ -116,8 +116,9 @@ if [ "$INDEX_EXISTS" = false ]; then
 }
 EOF
     
-    # Replace placeholder with actual index name
-    sed -i "s/INDEX_NAME_PLACEHOLDER/$SEARCH_INDEX/g" "$TEMP_FILE"
+    # Replace placeholder with actual index name - portable sed syntax for macOS and Linux
+    sed "s/INDEX_NAME_PLACEHOLDER/$SEARCH_INDEX/g" "$TEMP_FILE" > "$TEMP_FILE.tmp"
+    mv "$TEMP_FILE.tmp" "$TEMP_FILE"
     
     echo "Creating search index..."
     az rest --method put \
@@ -139,19 +140,39 @@ QUERY_KEYS_JSON=$(az search query-key list \
     --service-name "$SEARCH_SERVICE" \
     --resource-group "$RESOURCE_GROUP")
 
-# Check if key already exists
-if echo "$QUERY_KEYS_JSON" | grep -q "\"name\": \"$TARGET_QUERY_KEY_NAME\""; then
-    echo "Query key '$TARGET_QUERY_KEY_NAME' already exists"
-    SEARCH_QUERY_KEY=$(echo "$QUERY_KEYS_JSON" | grep -A 1 "\"name\": \"$TARGET_QUERY_KEY_NAME\"" | grep "\"key\":" | sed 's/.*"key": "\([^"]*\)".*/\1/')
-else
-    echo "Creating new query key '$TARGET_QUERY_KEY_NAME'..."
-    QUERY_KEY_JSON=$(az search query-key create \
-        --service-name "$SEARCH_SERVICE" \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$TARGET_QUERY_KEY_NAME")
+# Check if jq is available for robust JSON parsing
+if command -v jq >/dev/null 2>&1; then
+    # Use jq for reliable JSON parsing
+    SEARCH_QUERY_KEY=$(echo "$QUERY_KEYS_JSON" | jq -r ".[] | select(.name == \"$TARGET_QUERY_KEY_NAME\") | .key" | head -1)
     
-    SEARCH_QUERY_KEY=$(echo "$QUERY_KEY_JSON" | grep "\"key\":" | sed 's/.*"key": "\([^"]*\)".*/\1/')
-    echo "Query key created successfully"
+    if [ -z "$SEARCH_QUERY_KEY" ] || [ "$SEARCH_QUERY_KEY" = "null" ]; then
+        echo "Creating new query key '$TARGET_QUERY_KEY_NAME'..."
+        QUERY_KEY_JSON=$(az search query-key create \
+            --service-name "$SEARCH_SERVICE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$TARGET_QUERY_KEY_NAME")
+        
+        SEARCH_QUERY_KEY=$(echo "$QUERY_KEY_JSON" | jq -r '.key')
+        echo "Query key created successfully"
+    else
+        echo "Query key '$TARGET_QUERY_KEY_NAME' already exists"
+    fi
+else
+    # Fallback to grep/sed if jq is not available
+    echo "Note: jq not found, using fallback JSON parsing"
+    if echo "$QUERY_KEYS_JSON" | grep -q "\"name\": \"$TARGET_QUERY_KEY_NAME\""; then
+        echo "Query key '$TARGET_QUERY_KEY_NAME' already exists"
+        SEARCH_QUERY_KEY=$(echo "$QUERY_KEYS_JSON" | grep -A 1 "\"name\": \"$TARGET_QUERY_KEY_NAME\"" | grep "\"key\":" | sed 's/.*"key": "\([^"]*\)".*/\1/')
+    else
+        echo "Creating new query key '$TARGET_QUERY_KEY_NAME'..."
+        QUERY_KEY_JSON=$(az search query-key create \
+            --service-name "$SEARCH_SERVICE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$TARGET_QUERY_KEY_NAME")
+        
+        SEARCH_QUERY_KEY=$(echo "$QUERY_KEY_JSON" | grep "\"key\":" | sed 's/.*"key": "\([^"]*\)".*/\1/')
+        echo "Query key created successfully"
+    fi
 fi
 
 # Update frontend container app with search API key
