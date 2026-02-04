@@ -75,6 +75,10 @@ param azureSpeechRegion string = ''
 @description('Azure Speech use managed identity')
 param azureSpeechUseManagedIdentity string = 'true'
 
+@secure()
+@description('Azure Speech API Key (required when managed identity is disabled)')
+param azureSpeechApiKey string = ''
+
 @description('Azure Storage Account URL (auto-generated if not provided)')
 param azureStorageAccountUrl string = ''
 
@@ -172,6 +176,7 @@ var backendEnvVars = {
   AZURE_OPENAI_GPT_VISION_DEPLOYMENT: azureOpenaiGptVisionDeployment
   AZURE_SPEECH_REGION: azureSpeechRegion
   AZURE_SPEECH_USE_MANAGED_IDENTITY: azureSpeechUseManagedIdentity
+  AZURE_SPEECH_API_KEY: azureSpeechApiKey
   AZURE_STORAGE_ACCOUNT_URL: computedStorageAccountUrl
   AZURE_STORAGE_VIDEO_CONTAINER: storageVideoContainer
   AZURE_STORAGE_OUTPUT_CONTAINER: storageOutputContainer

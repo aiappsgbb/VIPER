@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "8494858767939307469"
+      "templateHash": "17559231566438951233"
     }
   },
   "parameters": {
@@ -171,6 +171,13 @@
         "description": "Azure Speech use managed identity"
       }
     },
+    "azureSpeechApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Azure Speech API Key (required when managed identity is disabled)"
+      }
+    },
     "azureStorageAccountUrl": {
       "type": "string",
       "defaultValue": "",
@@ -284,6 +291,7 @@
       "AZURE_OPENAI_GPT_VISION_DEPLOYMENT": "[parameters('azureOpenaiGptVisionDeployment')]",
       "AZURE_SPEECH_REGION": "[parameters('azureSpeechRegion')]",
       "AZURE_SPEECH_USE_MANAGED_IDENTITY": "[parameters('azureSpeechUseManagedIdentity')]",
+      "AZURE_SPEECH_API_KEY": "[parameters('azureSpeechApiKey')]",
       "AZURE_STORAGE_ACCOUNT_URL": "[variables('computedStorageAccountUrl')]",
       "AZURE_STORAGE_VIDEO_CONTAINER": "[parameters('storageVideoContainer')]",
       "AZURE_STORAGE_OUTPUT_CONTAINER": "[parameters('storageOutputContainer')]",
