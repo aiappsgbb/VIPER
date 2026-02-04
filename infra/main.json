@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "9021499027816923319"
+      "templateHash": "8494858767939307469"
     }
   },
   "parameters": {
@@ -1759,6 +1759,22 @@
     "SERVICE_BACKEND_INTERNAL_URL": {
       "type": "string",
       "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.backendInternalUrl.value]"
+    },
+    "AZURE_SEARCH_SERVICE_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.searchServiceOutput.value]"
+    },
+    "AZURE_SEARCH_INDEX_NAME": {
+      "type": "string",
+      "value": "[parameters('searchIndexName')]"
+    },
+    "AZURE_STORAGE_ACCOUNT_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.storageAccountOutput.value]"
+    },
+    "AZURE_COSMOS_ACCOUNT_NAME": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('resolvedResourceGroupName')), 'Microsoft.Resources/deployments', 'containerApps'), '2025-04-01').outputs.cosmosAccountOutput.value]"
     }
   }
 }

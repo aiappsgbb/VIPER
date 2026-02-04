@@ -231,3 +231,9 @@ output SERVICE_BACKEND_NAME string = resolvedBackendAppName
 output SERVICE_FRONTEND_NAME string = resolvedFrontendAppName
 output SERVICE_FRONTEND_URL string = containerApps.outputs.frontendUrl
 output SERVICE_BACKEND_INTERNAL_URL string = containerApps.outputs.backendInternalUrl
+
+// Additional resource outputs for postprovision hooks
+output AZURE_SEARCH_SERVICE_NAME string = containerApps.outputs.searchServiceOutput
+output AZURE_SEARCH_INDEX_NAME string = searchIndexName
+output AZURE_STORAGE_ACCOUNT_NAME string = containerApps.outputs.storageAccountOutput
+output AZURE_COSMOS_ACCOUNT_NAME string = containerApps.outputs.cosmosAccountOutput
