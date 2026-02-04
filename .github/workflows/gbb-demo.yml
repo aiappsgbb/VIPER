@@ -120,20 +120,42 @@ jobs:
               az group create \
                 --name "$AZURE_RESOURCE_GROUP" \
                 --location "$AZURE_LOCATION" \
-                --subscription "$AZURE_SUBSCRIPTION_ID"
+                --subscription "$AZURE_SUBSCRIPTION_ID" \
+                --tags "azd-env-name=$AZURE_ENV_NAME"
               echo "Resource group '$AZURE_RESOURCE_GROUP' created successfully"
             fi
         env:
           AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
           AZURE_LOCATION: ${{ env.AZURE_LOCATION }}
           AZURE_SUBSCRIPTION_ID: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ env.AZURE_ENV_NAME }}
 
       - name: Provision Infrastructure (Subscription Scope)
         if: ${{ env.TARGET_SCOPE == 'subscription' }}
         run: azd provision --no-prompt
         env:
           # uncomment this if you are using infrastructure parameters
-          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          AZURE_OPENAI_GPT_VISION_API_KEY: ${{ secrets.AZURE_OPENAI_GPT_VISION_API_KEY }}
+          AZURE_OPENAI_GPT_VISION_ENDPOINT: ${{ secrets.AZURE_OPENAI_GPT_VISION_ENDPOINT }}
+          AZURE_OPENAI_GPT_VISION_API_VERSION: ${{ secrets.AZURE_OPENAI_GPT_VISION_API_VERSION }}
+          AZURE_OPENAI_GPT_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_GPT_VISION_DEPLOYMENT }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_SPEECH_USE_MANAGED_IDENTITY: ${{ secrets.AZURE_SPEECH_USE_MANAGED_IDENTITY }}
+          AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}
+          AZURE_SEARCH_ENDPOINT: ${{ secrets.AZURE_SEARCH_ENDPOINT }}
+          AZ_OPENAI_KEY: ${{ secrets.AZ_OPENAI_KEY }}
+          AZ_OPENAI_BASE: ${{ secrets.AZ_OPENAI_BASE }}
+          AZ_OPENAI_VERSION: ${{ secrets.AZ_OPENAI_VERSION }}
+          GPT4: ${{ secrets.GPT4 }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
+          AZURE_SEARCH_INDEX_NAME: ${{ secrets.AZURE_SEARCH_INDEX_NAME }}
+          AZURE_STORAGE_VIDEO_CONTAINER: ${{ secrets.AZURE_STORAGE_VIDEO_CONTAINER }}
+          AZURE_STORAGE_OUTPUT_CONTAINER: ${{ secrets.AZURE_STORAGE_OUTPUT_CONTAINER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+          AZURE_SPEECH_API_KEY: ${{ secrets.AZURE_SPEECH_API_KEY }}
           ## Define the additional variables or secrets that are required only for provision
 
       - name: Provision Infrastructure (Resource Group Scope)
@@ -143,7 +165,27 @@ jobs:
         env:
           AZURE_RESOURCE_GROUP: ${{ env.AZURE_RESOURCE_GROUP }}
           # uncomment this if you are using infrastructure parameters
-          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+          AZURE_OPENAI_GPT_VISION_API_KEY: ${{ secrets.AZURE_OPENAI_GPT_VISION_API_KEY }}
+          AZURE_OPENAI_GPT_VISION_ENDPOINT: ${{ secrets.AZURE_OPENAI_GPT_VISION_ENDPOINT }}
+          AZURE_OPENAI_GPT_VISION_API_VERSION: ${{ secrets.AZURE_OPENAI_GPT_VISION_API_VERSION }}
+          AZURE_OPENAI_GPT_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_GPT_VISION_DEPLOYMENT }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_SPEECH_USE_MANAGED_IDENTITY: ${{ secrets.AZURE_SPEECH_USE_MANAGED_IDENTITY }}
+          AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}
+          AZURE_SEARCH_ENDPOINT: ${{ secrets.AZURE_SEARCH_ENDPOINT }}
+          AZ_OPENAI_KEY: ${{ secrets.AZ_OPENAI_KEY }}
+          AZ_OPENAI_BASE: ${{ secrets.AZ_OPENAI_BASE }}
+          AZ_OPENAI_VERSION: ${{ secrets.AZ_OPENAI_VERSION }}
+          GPT4: ${{ secrets.GPT4 }}
+          SEARCH_ENDPOINT: ${{ secrets.SEARCH_ENDPOINT }}
+          SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
+          AZURE_SEARCH_INDEX_NAME: ${{ secrets.AZURE_SEARCH_INDEX_NAME }}
+          AZURE_STORAGE_VIDEO_CONTAINER: ${{ secrets.AZURE_STORAGE_VIDEO_CONTAINER }}
+          AZURE_STORAGE_OUTPUT_CONTAINER: ${{ secrets.AZURE_STORAGE_OUTPUT_CONTAINER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+          AZURE_SPEECH_API_KEY: ${{ secrets.AZURE_SPEECH_API_KEY }}
           ## Define the additional variables or secrets that are required only for provision
 
       - name: Deploy Application
