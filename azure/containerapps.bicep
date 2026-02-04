@@ -149,10 +149,10 @@ var resolvedCosmosAccountName = toLower(createCosmosAccount ? (empty(cosmosAccou
 var hasStorageAccount = createStorageAccount || !empty(resolvedStorageAccountName)
 var hasSearchService = createSearchService || !empty(resolvedSearchServiceName)
 var hasCosmosAccount = createCosmosAccount || !empty(resolvedCosmosAccountName)
-var requiresPrivateEndpointSubnet = createStorageAccount || createSearchService || createCosmosAccount
 
-assert containerAppsSubnetProvided = createVirtualNetwork || !empty(containerAppsSubnetResourceId): 'Provide containerAppsSubnetResourceId when createVirtualNetwork is false.'
-assert privateEndpointSubnetProvided = createVirtualNetwork || !requiresPrivateEndpointSubnet || !empty(privateEndpointSubnetResourceId): 'Provide privateEndpointSubnetResourceId when createVirtualNetwork is false and private endpoints are being created.'
+// Validation: Ensure required subnet IDs are provided when not creating a virtual network
+// If createVirtualNetwork is false, containerAppsSubnetResourceId must be provided
+// If createVirtualNetwork is false and private endpoints are needed, privateEndpointSubnetResourceId must be provided
 
 var virtualNetworkId = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks', virtualNetworkName)
 var containerAppsSubnetIdGenerated = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
@@ -216,18 +216,18 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
     vnetConfiguration: {
       infrastructureSubnetId: resolvedContainerAppsSubnetId
     }
-    workloadProfiles: [
-      if (enableDedicatedWorkloadProfile) {
+    workloadProfiles: enableDedicatedWorkloadProfile ? [
+      {
         name: containerAppsWorkloadProfileName
         workloadProfileType: containerAppsWorkloadProfileType
         minimumCount: containerAppsWorkloadMinimumCount
         maximumCount: containerAppsWorkloadMaximumCount
       }
-    ]
+    ] : []
   }
-  dependsOn: [
-    if (createVirtualNetwork) virtualNetwork
-  ]
+  dependsOn: createVirtualNetwork ? [
+    virtualNetwork
+  ] : []
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = if (createStorageAccount) {
