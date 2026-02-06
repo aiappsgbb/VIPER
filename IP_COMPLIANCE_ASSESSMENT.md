@@ -32,7 +32,7 @@ The repository uses API key-based authentication for Azure OpenAI instead of man
 - `sample.env:6` - `AZURE_OPENAI_GPT_VISION_API_KEY=""`
 
 **Violated Guideline:**  
-[Azure Best Practices](../.github/azure-bestpractices.md) - "NEVER use API keys or connection strings for Azure service authentication"
+[Azure Best Practices](.github/azure-bestpractices.md) - "NEVER use API keys or connection strings for Azure service authentication"
 
 **Suggested Remediation:**
 1. Remove `api_key` field from `GPTVision` settings class
@@ -62,7 +62,7 @@ Infrastructure uses System Assigned Managed Identity instead of the required Use
 - `azure/containerapps.bicep:465-467` - `identity: { type: 'SystemAssigned' }`
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - "ALL infrastructure MUST use User Assigned Managed Identity"
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - "ALL infrastructure MUST use User Assigned Managed Identity"
 
 **Suggested Remediation:**
 1. Create User Assigned Managed Identity module in `infra/core/security/`
@@ -84,7 +84,7 @@ Container apps do not include the mandatory `AZURE_CLIENT_ID` environment variab
 - `infra/main.bicep:187-198` - Frontend environment variables missing `AZURE_CLIENT_ID`
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - "Always include AZURE_CLIENT_ID for managed identity authentication in Azure Container Apps"
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - "Always include AZURE_CLIENT_ID for managed identity authentication in Azure Container Apps"
 
 **Suggested Remediation:**
 1. Add to backend environment variables:
@@ -112,7 +112,7 @@ Frontend configuration includes API keys for Azure AI Search and Storage, violat
 - `infra/main.bicep:101-102` - `searchApiKey` and `azOpenaiKey` parameters
 
 **Violated Guideline:**  
-[Azure Best Practices](../.github/azure-bestpractices.md) - Forbidden environment variables section
+[Azure Best Practices](.github/azure-bestpractices.md) - Forbidden environment variables section
 
 **Suggested Remediation:**
 1. Remove all API key parameters from infrastructure
@@ -133,7 +133,7 @@ Infrastructure uses `listKeys()` to retrieve Log Analytics workspace keys instea
 - `azure/containerapps.bicep:212` - `sharedKey: logAnalyticsKeys.primarySharedKey`
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - Don't use `listKeys()` functions
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - Don't use `listKeys()` functions
 
 **Suggested Remediation:**
 1. Configure Container Apps Environment to use managed identity for Log Analytics
@@ -162,7 +162,7 @@ Production code contains 20+ `print()` statements in `video_analyzer.py`, violat
 - `src/cobrapy/video_analyzer.py` - Multiple print statements throughout
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#logging--error-handling) - "Always use proper logging modules - never use print() or console.log() in production code"
+[Development Standards](.github/copilot-instructions.md#logging--error-handling) - "Always use proper logging modules - never use print() or console.log() in production code"
 
 **Suggested Remediation:**
 1. Replace all `print()` calls with proper logging:
@@ -190,7 +190,7 @@ Repository has pytest configured in dependencies but no test files exist for the
 - `pyproject.toml:30` - pytest in dev dependencies but unused
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#code-quality--security) - "Testing: Include comprehensive test coverage with Jest (Node.js/React) or pytest (Python)"
+[Development Standards](.github/copilot-instructions.md#code-quality--security) - "Testing: Include comprehensive test coverage with Jest (Node.js/React) or pytest (Python)"
 
 **Suggested Remediation:**
 1. Create `tests/` directory at repository root
@@ -214,7 +214,7 @@ While most code uses type hints, some functions in older modules lack comprehens
 - Various functions in utility modules missing return type annotations
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#code-quality--security) - "Type Safety: Use type hints throughout Python code"
+[Development Standards](.github/copilot-instructions.md#code-quality--security) - "Type Safety: Use type hints throughout Python code"
 
 **Suggested Remediation:**
 1. Add type hints to all function signatures
@@ -235,7 +235,7 @@ No Ruff or Black configuration files present for Python code formatting and lint
 - Frontend has eslint but basic configuration
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#code-quality--security) - "Linting & Formatting: Configure ESLint/Prettier for TypeScript, Ruff/Black for Python"
+[Development Standards](.github/copilot-instructions.md#code-quality--security) - "Linting & Formatting: Configure ESLint/Prettier for TypeScript, Ruff/Black for Python"
 
 **Suggested Remediation:**
 1. Add Ruff configuration to `pyproject.toml`:
@@ -264,7 +264,7 @@ Infrastructure templates inline resource definitions instead of using reusable m
 - No standardized modules for Container Apps, Storage, Search, Cosmos DB
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - "Always use modules from infra/core/ - Never inline resource definitions in main.bicep"
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - "Always use modules from infra/core/ - Never inline resource definitions in main.bicep"
 
 **Suggested Remediation:**
 1. Create modular structure:
@@ -301,7 +301,7 @@ Infrastructure does not include Application Insights for monitoring and observab
 - Missing monitoring outputs in infrastructure
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#logging--error-handling) - "Observability: Include OpenTelemetry tracing for distributed systems"
+[Development Standards](.github/copilot-instructions.md#logging--error-handling) - "Observability: Include OpenTelemetry tracing for distributed systems"
 
 **Suggested Remediation:**
 1. Add Application Insights module to infrastructure
@@ -323,7 +323,7 @@ Backend container uses port 8000 instead of the standard port 80 recommended for
 - `azure/containerapps.bicep` - `targetPort: 8000`
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#containerization) - "Port Configuration: Use port 80 for Azure Container Apps deployment"
+[Development Standards](.github/copilot-instructions.md#containerization) - "Port Configuration: Use port 80 for Azure Container Apps deployment"
 
 **Suggested Remediation:**
 1. Update Dockerfile to expose port 80
@@ -345,7 +345,7 @@ No Azure Key Vault resource deployed for secure secret management, despite using
 - No centralized secret management
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - "Key Vault integration for secrets management"
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - "Key Vault integration for secrets management"
 
 **Suggested Remediation:**
 1. Add Key Vault module to infrastructure
@@ -369,7 +369,7 @@ Repository lacks `.python-version` file for consistent Python version management
 - `pyproject.toml:13` specifies `python = "^3.11"` but no local version file
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#development-experience) - "Environment Management: Include .python-version (Python) files"
+[Development Standards](.github/copilot-instructions.md#development-experience) - "Environment Management: Include .python-version (Python) files"
 
 **Suggested Remediation:**
 1. Create `.python-version` file with content: `3.11`
@@ -389,7 +389,7 @@ Frontend lacks `.nvmrc` file for Node.js version management, leading to potentia
 - Dockerfile uses `node:18-alpine` but no local specification
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#development-experience) - "Environment Management: Include .nvmrc (Node.js) files"
+[Development Standards](.github/copilot-instructions.md#development-experience) - "Environment Management: Include .nvmrc (Node.js) files"
 
 **Suggested Remediation:**
 1. Create `src/ui/.nvmrc` with content: `18`
@@ -409,7 +409,7 @@ Python project uses Poetry instead of the recommended uv package manager for fas
 - `poetry.lock` present in repository
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#development-experience) - "Package Managers: Use uv for Python"
+[Development Standards](.github/copilot-instructions.md#development-experience) - "Package Managers: Use uv for Python"
 
 **Suggested Remediation:**
 1. Migrate from Poetry to uv:
@@ -438,7 +438,7 @@ README lacks several required sections for comprehensive IP compliance including
 - Missing API documentation reference
 
 **Violated Guideline:**  
-[IP Compliance Prompt](../.github/prompts/ipCompliance.prompt.md) - "Documentation Quality: Ensures comprehensive documentation"
+[IP Compliance Prompt](.github/prompts/ipCompliance.prompt.md) - "Documentation Quality: Ensures comprehensive documentation"
 
 **Suggested Remediation:**
 1. Add Architecture section with:
@@ -463,7 +463,7 @@ Documentation doesn't include post-deployment validation steps or health check p
 - No health check endpoints documented
 
 **Violated Guideline:**  
-[IP Compliance Prompt](../.github/prompts/ipCompliance.prompt.md) - "Deployment instructions are clear and complete"
+[IP Compliance Prompt](.github/prompts/ipCompliance.prompt.md) - "Deployment instructions are clear and complete"
 
 **Suggested Remediation:**
 1. Add post-deployment validation section
@@ -483,7 +483,7 @@ Documentation doesn't include post-deployment validation steps or health check p
 - `.github/ip-metadata.json:50` - `"architecture": ""`
 
 **Violated Guideline:**  
-[IP Compliance Prompt](../.github/prompts/ipCompliance.prompt.md) - IP Metadata Validation
+[IP Compliance Prompt](.github/prompts/ipCompliance.prompt.md) - IP Metadata Validation
 
 **Suggested Remediation:**
 1. Create architecture documentation file or wiki
@@ -505,7 +505,7 @@ Dockerfiles use standard Python and Node base images instead of recommended Azur
 - `Dockerfile.frontend:4,11,21` - `FROM node:18-alpine`
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#containerization) - "Base Images: Use Azure Linux base images (mcr.microsoft.com/azurelinux/base/*)"
+[Development Standards](.github/copilot-instructions.md#containerization) - "Base Images: Use Azure Linux base images (mcr.microsoft.com/azurelinux/base/*)"
 
 **Suggested Remediation:**
 1. Update backend Dockerfile:
@@ -532,7 +532,7 @@ Backend container exposes port 8000 instead of standard port 80 for Container Ap
 - `Dockerfile.backend:44` - uvicorn listens on 8000
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#containerization) - "Port Configuration: Use port 80"
+[Development Standards](.github/copilot-instructions.md#containerization) - "Port Configuration: Use port 80"
 
 **Suggested Remediation:**
 1. Change EXPOSE to 80
@@ -554,7 +554,7 @@ Service definitions in `azure.yaml` don't explicitly set `remoteBuild: true` for
 - `azure.yaml:14-28` - Docker configuration missing `remoteBuild` flag
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - "remoteBuild: true is set for container services"
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - "remoteBuild: true is set for container services"
 
 **Suggested Remediation:**
 1. Update azure.yaml services:
@@ -585,7 +585,7 @@ Infrastructure uses inline abbreviations instead of loading from standard `abbre
 - No `infra/abbreviations.json` file present
 
 **Violated Guideline:**  
-[Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md) - Resource naming conventions
+[Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md) - Resource naming conventions
 
 **Suggested Remediation:**
 1. Create `infra/abbreviations.json` with standard Azure abbreviations
@@ -611,7 +611,7 @@ Only one workflow present (`gbb-demo.yml`) - missing essential CI/CD workflows f
 - No automated testing workflow
 
 **Violated Guideline:**  
-[IP Compliance Prompt](../.github/prompts/ipCompliance.prompt.md) - GitHub Actions Workflows section
+[IP Compliance Prompt](.github/prompts/ipCompliance.prompt.md) - GitHub Actions Workflows section
 
 **Suggested Remediation:**
 1. Create `.github/workflows/pr-validation.yml` for PR checks
@@ -632,7 +632,7 @@ Repository lacks Dependabot configuration for automated dependency updates and s
 - No `.github/dependabot.yml` file
 
 **Violated Guideline:**  
-[Development Standards](../.github/copilot-instructions.md#code-quality--security) - "Dependency vulnerability scanning is enabled"
+[Development Standards](.github/copilot-instructions.md#code-quality--security) - "Dependency vulnerability scanning is enabled"
 
 **Suggested Remediation:**
 1. Create `.github/dependabot.yml`:
@@ -779,11 +779,11 @@ To achieve Gold maturity level, address:
 
 ## Appendix: Reference Documents
 
-- [Azure Best Practices](../.github/azure-bestpractices.md)
-- [Bicep Deployment Best Practices](../.github/bicep-deployment-bestpractices.md)
-- [GitHub Copilot Instructions](../.github/copilot-instructions.md)
-- [IP Compliance Prompt](../.github/prompts/ipCompliance.prompt.md)
-- [IP Metadata Schema](../.github/ip-metadata.schema.json)
+- [Azure Best Practices](.github/azure-bestpractices.md)
+- [Bicep Deployment Best Practices](.github/bicep-deployment-bestpractices.md)
+- [GitHub Copilot Instructions](.github/copilot-instructions.md)
+- [IP Compliance Prompt](.github/prompts/ipCompliance.prompt.md)
+- [IP Metadata Schema](.github/ip-metadata.schema.json)
 
 ---
 
