@@ -75,6 +75,10 @@ param azureSpeechRegion string = ''
 @description('Azure Speech use managed identity')
 param azureSpeechUseManagedIdentity string = 'true'
 
+@secure()
+@description('Azure Speech API Key (required when managed identity is disabled)')
+param azureSpeechApiKey string = ''
+
 @description('Azure Storage Account URL (auto-generated if not provided)')
 param azureStorageAccountUrl string = ''
 
@@ -172,6 +176,7 @@ var backendEnvVars = {
   AZURE_OPENAI_GPT_VISION_DEPLOYMENT: azureOpenaiGptVisionDeployment
   AZURE_SPEECH_REGION: azureSpeechRegion
   AZURE_SPEECH_USE_MANAGED_IDENTITY: azureSpeechUseManagedIdentity
+  AZURE_SPEECH_API_KEY: azureSpeechApiKey
   AZURE_STORAGE_ACCOUNT_URL: computedStorageAccountUrl
   AZURE_STORAGE_VIDEO_CONTAINER: storageVideoContainer
   AZURE_STORAGE_OUTPUT_CONTAINER: storageOutputContainer
@@ -231,3 +236,9 @@ output SERVICE_BACKEND_NAME string = resolvedBackendAppName
 output SERVICE_FRONTEND_NAME string = resolvedFrontendAppName
 output SERVICE_FRONTEND_URL string = containerApps.outputs.frontendUrl
 output SERVICE_BACKEND_INTERNAL_URL string = containerApps.outputs.backendInternalUrl
+
+// Additional resource outputs for postprovision hooks
+output AZURE_SEARCH_SERVICE_NAME string = containerApps.outputs.searchServiceOutput
+output AZURE_SEARCH_INDEX_NAME string = searchIndexName
+output AZURE_STORAGE_ACCOUNT_NAME string = containerApps.outputs.storageAccountOutput
+output AZURE_COSMOS_ACCOUNT_NAME string = containerApps.outputs.cosmosAccountOutput

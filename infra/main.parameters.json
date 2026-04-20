@@ -26,6 +26,9 @@
     "azureSpeechUseManagedIdentity": {
       "value": "$(envOrDefault 'AZURE_SPEECH_USE_MANAGED_IDENTITY' 'true')"
     },
+    "azureSpeechApiKey": {
+      "value": "$(secretOrEnvOrDefault 'AZURE_SPEECH_API_KEY' '')"
+    },
     "azureStorageAccountUrl": {
       "value": "$(envOrDefault 'AZURE_STORAGE_ACCOUNT_URL' '')"
     },

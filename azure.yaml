@@ -81,3 +81,14 @@ hooks:
             }
           }
         }
+
+  # Configure Azure resources after provisioning (search index, query keys, etc.)
+  postprovision:
+    posix:
+      shell: sh
+      run: ./scripts/postprovision.sh
+      continueOnError: false
+    windows:
+      shell: pwsh
+      run: ./scripts/postprovision.ps1
+      continueOnError: false
