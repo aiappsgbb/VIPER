@@ -6,15 +6,19 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "db:deploy": "prisma migrate deploy",
+    "e2e": "playwright test",
     "start": "next start -p 3000",
     "start:azure": "prisma migrate deploy && next start -p 3000",
+    "smoke:e2e": "npm run smoke:platform && npm run smoke:ui",
+    "smoke:platform": "node tests/e2e/platform-smoke.mjs",
+    "smoke:ui": "playwright test tests/e2e/viper-smoke.spec.js",
     "lint": "next lint"
   },
   "dependencies": {
     "@azure/identity": "^3.4.1",
     "@azure/openai": "^1.0.0-beta.6",
     "@azure/search-documents": "^12.0.0-alpha.20231023.1",
-    "@azure/storage-blob": "^12.17.0",
+    "@azure/storage-blob": "^12.31.0",
     "@prisma/client": "^6.16.2",
     "@radix-ui/react-collapsible": "^1.0.3",
     "@radix-ui/react-dialog": "^1.0.5",
@@ -44,6 +48,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "eslint": "^8",
     "eslint-config-next": "14.2.2",
     "postcss": "^8",

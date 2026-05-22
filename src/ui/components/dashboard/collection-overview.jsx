@@ -34,6 +34,12 @@ function formatStatus(status) {
   }
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 function formatDateTime(value) {
   if (!value) {
     return "Unknown";
@@ -44,7 +50,7 @@ function formatDateTime(value) {
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    return date.toLocaleString();
+    return dateTimeFormatter.format(date);
   } catch (error) {
     return value;
   }

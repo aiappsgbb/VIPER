@@ -163,6 +163,27 @@ If a previous deployment used hook-created role assignments, the preprovision ho
 
 ## Post-deploy smoke tests
 
+Run the packaged smoke checks from the UI workspace after provisioning or when investigating customer deployment issues:
+
+```powershell
+cd src\ui
+npm install
+npx playwright install chromium
+npm run smoke:platform
+$env:VIPER_SMOKE_BASE_URL = azd env get-value SERVICE_FRONTEND_URL
+npm run smoke:ui
+```
+
+`smoke:platform` checks Azure context, Container App health, managed identities, Storage configuration, and `Storage Blob Data Contributor` assignments for upload paths. `smoke:ui` uses Playwright to verify the login/auth boundary, dashboard UX when an authenticated or anonymous smoke session is available, and dark-mode styling.
+
+To run the real upload journey, use an authenticated or anonymous non-production smoke deployment and enable upload explicitly:
+
+```powershell
+$env:VIPER_SMOKE_UPLOAD = "true"
+$env:VIPER_SMOKE_VIDEO_PATH = "C:\path\to\short-test-video.mp4" # optional when ffmpeg is installed
+npm run smoke:ui
+```
+
 Check Container App health:
 
 ```powershell

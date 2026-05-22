@@ -258,6 +258,9 @@ var frontendEnvVars = {
   SEARCH_ENDPOINT: computedFrontendSearchEndpoint
   SEARCH_API_KEY: searchApiKey
   INDEX_NAME: searchIndexName
+  AZURE_STORAGE_ACCOUNT_URL: computedStorageAccountUrl
+  AZURE_STORAGE_VIDEO_CONTAINER: storageVideoContainer
+  AZURE_STORAGE_OUTPUT_CONTAINER: storageOutputContainer
   DATABASE_URL: resolvedDatabaseUrl
   VIPER_AUTH_MODE: viperAuthMode
   VIPER_ADMIN_EMAILS: viperAdminEmails

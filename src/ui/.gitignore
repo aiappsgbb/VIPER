@@ -8,6 +8,8 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
 *.mp4
 # next.js
 /.next/
