@@ -119,7 +119,7 @@ Container Apps EasyAuth requires an Entra app registration. Configure its redire
 https://<frontend-fqdn>/.auth/login/aad/callback
 ```
 
-If the frontend FQDN is not known yet, run a first provision with `FRONTEND_EASYAUTH_ENABLED=false` to create the Container App and get `SERVICE_FRONTEND_URL`, add the callback URI to the Entra app registration, then set `FRONTEND_EASYAUTH_ENABLED=true` and redeploy.
+If the frontend FQDN is not known yet, run a first provision with `FRONTEND_EASYAUTH_ENABLED=false` to create the Container App and get `SERVICE_FRONTEND_URL`, add the callback URI to the Entra app registration, then set `FRONTEND_EASYAUTH_ENABLED=true` and run `azd provision` followed by `azd deploy frontend` (or run `azd up --no-prompt`). `azd deploy frontend` alone only updates the image; it does not apply Bicep changes such as EasyAuth or Container App environment variables.
 
 When `CREATE_POSTGRES=true`, azd provisions Azure Database for PostgreSQL Flexible Server and the frontend runs `prisma migrate deploy` before starting. Leave `CREATE_POSTGRES=false` when supplying a bring-your-own `DATABASE_URL`.
 
