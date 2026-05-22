@@ -9,6 +9,7 @@ This README is the index. Start with Azure deployment so the required Azure AI r
 | Section | Start here when |
 | --- | --- |
 | [Deploy to Azure](#start-here-deploy-to-azure) | You want to host COBRA or the full COBRA/VIPER app |
+| [Smoke test a deployment](#smoke-test-a-deployment) | You want to verify UI, upload, storage RBAC, and Container Apps health |
 | [Validate locally on one MP4](#then-validate-locally-on-one-mp4) | Azure AI resources already exist and you want a quick real-service test |
 | [Documentation index](#documentation-index) | You need detailed setup, configuration, deployment, or development docs |
 | [Repository layout](#repository-layout) | You want to understand where code and infrastructure live |
@@ -59,6 +60,29 @@ azd deploy backend
 ```
 
 Detailed guide: [docs/azure-deployment.md](docs/azure-deployment.md)
+
+## Smoke test a deployment
+
+After provisioning or when triaging a customer deployment, run the packaged platform and Playwright smoke checks:
+
+```powershell
+cd src\ui
+npm install
+npx playwright install chromium
+npm run smoke:platform
+$env:VIPER_SMOKE_BASE_URL = azd env get-value SERVICE_FRONTEND_URL
+npm run smoke:ui
+```
+
+To include a real upload using the public validation clip or another MP4:
+
+```powershell
+$env:VIPER_SMOKE_UPLOAD = "true"
+$env:VIPER_SMOKE_VIDEO_URL = "https://<public-test-video>.mp4"
+npm run smoke:ui
+```
+
+`smoke:platform` checks Container Apps health, managed identities, storage configuration, and Storage Blob Data Contributor assignments. `smoke:ui` checks login/auth behavior, dashboard/upload UX, dark-mode styling, and optional real upload.
 
 ## Then validate locally on one MP4
 
