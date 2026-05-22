@@ -34,6 +34,19 @@ azd env set --file .env
 azd up --no-prompt
 ```
 
+After deployment, open the VIPER browser app from the frontend output, not the backend Container App:
+
+```powershell
+$frontendUrl = azd env get-value SERVICE_FRONTEND_URL
+Start-Process $frontendUrl
+```
+
+If you see a 404:
+
+- Backend root 404 is expected. The COBRA API exposes `/docs`, `/videos/upload`, and `/analysis/*`; use `SERVICE_FRONTEND_URL` for the UI.
+- `/.auth/login/aad` 404 means Container Apps EasyAuth is not enabled/configured. For non-production smoke testing, set `VIPER_AUTH_MODE=anonymous` and `FRONTEND_EASYAUTH_ENABLED=false`, then redeploy the frontend.
+- For real Entra ID sign-in, set `VIPER_AUTH_MODE=easyauth`, `FRONTEND_EASYAUTH_ENABLED=true`, and configure the Entra app redirect URI as `https://<frontend-fqdn>/.auth/login/aad/callback`.
+
 For backend-only deployment:
 
 ```powershell
