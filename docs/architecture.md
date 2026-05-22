@@ -146,7 +146,7 @@ Azure Speech requires `AZURE_SPEECH_RESOURCE_ID` for keyless auth because the Sp
 aad#<resourceId>#<token>
 ```
 
-Deployment-time RBAC for bring-your-own AI resources is handled by `azure.yaml` postprovision hooks:
+Deployment-time RBAC for bring-your-own AI resources is handled declaratively in Bicep during `azd provision`:
 
 | Resource ID variable | Role assigned to backend managed identity |
 | --- | --- |

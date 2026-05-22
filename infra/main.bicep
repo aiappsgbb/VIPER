@@ -278,6 +278,8 @@ module containerApps '../azure/containerapps.bicep' = {
     frontendImage: containerAppProvisionImage
     enableFrontend: deployFrontend
     tags: tags
+    azureOpenaiGptVisionResourceId: azureOpenaiGptVisionResourceId
+    azureSpeechResourceId: azureSpeechResourceId
     frontendEasyAuthEnabled: deployFrontendEasyAuth
     frontendEasyAuthClientId: frontendEasyAuthClientId
     frontendEasyAuthClientSecret: frontendEasyAuthClientSecret

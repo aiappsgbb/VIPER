@@ -31,7 +31,7 @@ This overwrites `.env`, which is ignored by git.
 | `AZURE_OPENAI_GPT_VISION_API_VERSION` | Yes for analysis | API version used by the OpenAI SDK |
 | `AZURE_OPENAI_GPT_VISION_DEPLOYMENT` | Yes for analysis | Deployment name used for chat/vision analysis |
 | `AZURE_OPENAI_GPT_VISION_API_KEY` | No | Optional API key; leave blank for Entra ID |
-| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | No | Optional resource ID used by deployment hooks to assign backend RBAC |
+| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | No | Optional resource ID used by Bicep to assign backend RBAC during `azd provision` |
 | `AZURE_SPEECH_REGION` | Yes for transcripts | Speech region |
 | `AZURE_SPEECH_ENDPOINT` | No | Optional Speech endpoint override |
 | `AZURE_SPEECH_USE_MANAGED_IDENTITY` | Yes for keyless Speech | Use `true` for Entra ID auth |
@@ -81,11 +81,11 @@ Azure Speech has one extra requirement: when using Entra ID, set `AZURE_SPEECH_R
 
 ## Deployment RBAC
 
-When these resource IDs are set, `azure.yaml` postprovision hooks assign roles to the backend managed identity:
+When these resource IDs are set, Bicep assigns roles to the backend managed identity during `azd provision`:
 
 | Variable | Role |
 | --- | --- |
 | `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | `Cognitive Services OpenAI User` |
 | `AZURE_SPEECH_RESOURCE_ID` | `Cognitive Services User` |
 
-Leave them blank if RBAC is managed outside this deployment.
+Leave them blank if RBAC is managed outside this deployment. After changing either value, run `azd provision` so the role assignments are reconciled.

@@ -150,7 +150,7 @@ The Python backend uses this credential chain:
 2. Azure CLI credential
 3. Managed identity credential
 
-When resource IDs are supplied, `azure.yaml` postprovision hooks assign backend managed identity RBAC:
+When resource IDs are supplied, Bicep assigns backend managed identity RBAC during `azd provision`:
 
 | Variable | Role assigned |
 | --- | --- |
@@ -158,6 +158,8 @@ When resource IDs are supplied, `azure.yaml` postprovision hooks assign backend 
 | `AZURE_SPEECH_RESOURCE_ID` | `Cognitive Services User` |
 
 If you prefer to assign RBAC manually, leave these values blank and assign equivalent roles yourself.
+
+If a previous deployment used hook-created role assignments, `azd provision` can fail with `RoleAssignmentExists` because Azure does not allow duplicate principal+role+scope assignments under a new deterministic Bicep name. Delete only the exact legacy assignment for the backend identity, role, and AI resource scope, then rerun `azd provision`.
 
 ## Post-deploy smoke tests
 
@@ -189,6 +191,6 @@ Unauthenticated frontend smoke expectations:
 | Deployed env vars contain literal `$(envOrDefault ...)` | azd env values were not loaded or unsupported parameter syntax was used | Use `${VAR}` in `infra\main.parameters.json` and run `azd env set --file .env` |
 | Frontend redirects to `/.auth/login/aad` but sign-in fails | Missing or incorrect EasyAuth app registration values | Verify `FRONTEND_EASYAUTH_CLIENT_ID`, secret, issuer, and redirect URI |
 | Frontend starts but dashboard database queries fail | Missing UI database or migrations | Supply `DATABASE_URL` or set `CREATE_POSTGRES=true`; the container runs `prisma migrate deploy` at startup |
-| Backend cannot call Azure OpenAI | Wrong tenant context or missing RBAC | Verify isolated Azure login and assign `Cognitive Services OpenAI User` |
-| Speech transcription auth fails | Missing Speech resource ID or RBAC | Set `AZURE_SPEECH_RESOURCE_ID` and assign `Cognitive Services User` |
+| Backend cannot call Azure OpenAI | Wrong tenant context or missing RBAC | Verify isolated Azure login and set `AZURE_OPENAI_GPT_VISION_RESOURCE_ID`, then run `azd provision` |
+| Speech transcription auth fails | Missing Speech resource ID or RBAC | Set `AZURE_SPEECH_RESOURCE_ID`, then run `azd provision` |
 | First provision cannot pull private ACR image | Managed identity/RBAC is not ready yet | Keep placeholder-image provision and postprovision registry setup in `azure.yaml` |

@@ -27,7 +27,7 @@ Both container apps accept additional environment variables through the `backend
 
 - **`sample.azure.env`** lists optional Azure resource bindings used during deployment. Copy it to `azure/.env` and populate the resource names that should receive managed identity assignments.
 
-Leaving entries blank skips the associated role assignment. When a resource group is omitted the deployment assumes the resource lives in the same resource group as the Container Apps environment. The template expects the referenced resources to reside in the same subscription as the deployment.
+Leaving entries blank skips the associated role assignment. Bicep assigns bring-your-own Azure AI roles during `azd provision` when resource IDs are supplied. The template expects the referenced resources to reside in the same subscription as the deployment.
 
 ## Deployment workflow
 

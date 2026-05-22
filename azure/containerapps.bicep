@@ -16,6 +16,12 @@ param configureAcrRegistry bool = true
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars object = {}
 
+@description('Optional Azure OpenAI or Azure AI Services account resource ID. When supplied, Bicep grants the backend identity Cognitive Services OpenAI User.')
+param azureOpenaiGptVisionResourceId string = ''
+
+@description('Optional Azure Speech or Azure AI Services account resource ID. When supplied, Bicep grants the backend identity Cognitive Services User.')
+param azureSpeechResourceId string = ''
+
 @description('Optional environment variables to inject into the Viper UI frontend container.')
 param frontendEnvVars object = {}
 
@@ -167,6 +173,15 @@ var resolvedSearchServiceName = toLower(createSearchService ? (empty(searchServi
 var cosmosNamePrefix = empty(sanitizedResourceGroupName) ? 'vipercosmos' : (length(sanitizedResourceGroupName) >= 20 ? substring(sanitizedResourceGroupName, 0, 20) : sanitizedResourceGroupName)
 var generatedCosmosAccountName = toLower('${cosmosNamePrefix}${substring(uniqueString(resourceGroup().id, 'cosmos'), 0, 8)}')
 var resolvedCosmosAccountName = toLower(createCosmosAccount ? (empty(cosmosAccountName) ? generatedCosmosAccountName : cosmosAccountName) : cosmosAccountName)
+
+var hasOpenAiResource = !empty(trim(azureOpenaiGptVisionResourceId))
+var hasSpeechResource = !empty(trim(azureSpeechResourceId))
+var openAiResourceIdParts = split(azureOpenaiGptVisionResourceId, '/')
+var speechResourceIdParts = split(azureSpeechResourceId, '/')
+var openAiResourceGroupName = hasOpenAiResource ? openAiResourceIdParts[4] : resourceGroup().name
+var speechResourceGroupName = hasSpeechResource ? speechResourceIdParts[4] : resourceGroup().name
+var openAiAccountName = hasOpenAiResource ? last(openAiResourceIdParts) : ''
+var speechAccountName = hasSpeechResource ? last(speechResourceIdParts) : ''
 
 var hasStorageAccount = createStorageAccount || !empty(resolvedStorageAccountName)
 var hasSearchService = createSearchService || !empty(resolvedSearchServiceName)
@@ -555,11 +570,15 @@ var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchRoleGuid = 'de139f84-1756-47ae-9be6-808fbbe84772'
 var cosmosRoleGuid = 'db49f5e6-0bde-4f5e-8eaa-36847e330f73'
+var cognitiveServicesOpenAiUserRoleGuid = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var cognitiveServicesUserRoleGuid = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 
 var storageRoleDefinitionId = hasStorageAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageRoleGuid) : ''
 var searchRoleDefinitionId = hasSearchService ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid) : ''
 var cosmosRoleDefinitionId = hasCosmosAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cosmosRoleGuid) : ''
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleGuid)
+var cognitiveServicesOpenAiUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleGuid)
+var cognitiveServicesUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleGuid)
 var containerAppWorkloadProfile = enableDedicatedWorkloadProfile ? containerAppsWorkloadProfileName : 'Consumption'
 var backendAppTags = union(tags, {
   'azd-service-name': 'backend'
@@ -750,6 +769,22 @@ var frontendCosmosRoleAssignments = enableFrontend ? [
 
 var cosmosRoleAssignments = hasCosmosAccount ? concat(backendCosmosRoleAssignments, frontendCosmosRoleAssignments) : []
 
+var openAiRoleAssignments = hasOpenAiResource ? [
+  {
+    name: guid(azureOpenaiGptVisionResourceId, backendApp.identity.principalId, cognitiveServicesOpenAiUserRoleGuid)
+    principalId: backendApp.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAiUserRoleDefinitionId
+  }
+] : []
+
+var speechRoleAssignments = hasSpeechResource ? [
+  {
+    name: guid(azureSpeechResourceId, backendApp.identity.principalId, cognitiveServicesUserRoleGuid)
+    principalId: backendApp.identity.principalId
+    roleDefinitionId: cognitiveServicesUserRoleDefinitionId
+  }
+] : []
+
 module storageRoleAssignmentsNew './modules/storageRoleAssignments.bicep' = if (createStorageAccount && hasStorageAccount) {
   name: 'storageRoleAssignmentsNew'
   params: {
@@ -807,6 +842,24 @@ module cosmosRoleAssignmentsExisting './modules/cosmosRoleAssignments.bicep' = i
   params: {
     cosmosAccountName: resolvedCosmosAccountName
     assignments: cosmosRoleAssignments
+  }
+}
+
+module openAiRoleAssignmentsModule './modules/cognitiveServicesRoleAssignments.bicep' = if (hasOpenAiResource) {
+  name: 'openAiRoleAssignments'
+  scope: resourceGroup(openAiResourceGroupName)
+  params: {
+    accountName: openAiAccountName
+    assignments: openAiRoleAssignments
+  }
+}
+
+module speechRoleAssignmentsModule './modules/cognitiveServicesRoleAssignments.bicep' = if (hasSpeechResource) {
+  name: 'speechRoleAssignments'
+  scope: resourceGroup(speechResourceGroupName)
+  params: {
+    accountName: speechAccountName
+    assignments: speechRoleAssignments
   }
 }
 
