@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentSession, getLoginUrl } from "@/lib/auth";
+import { getAuthMode, getCurrentSession, getLoginUrl } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import DashboardLayoutShell from "@/components/dashboard/layout-shell";
 import {
@@ -229,6 +229,7 @@ export default async function DashboardLayout({ children }) {
         managementOrganizations,
         uploadCollections,
         user: session.user,
+        authMode: getAuthMode(),
       }}
       isAdmin={canAccessAdmin(session.user.role)}
       organizations={sidebarData}

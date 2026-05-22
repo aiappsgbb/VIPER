@@ -18,6 +18,7 @@ export default function DashboardHeader({
   canCreateCollections = false,
   canManageCollections = false,
   managementOrganizations = [],
+  authMode = "easyauth",
   isSidebarCollapsed = false,
   onToggleSidebar,
 }) {
@@ -97,7 +98,7 @@ export default function DashboardHeader({
         >
           {getRoleLabel(user?.role)}
         </span>
-        <SignOutButton />
+        <SignOutButton authMode={authMode} />
       </div>
     </header>
   );
