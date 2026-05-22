@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 const truthy = new Set(["1", "true", "yes", "y", "on"]);
 const uploadEnabled = truthy.has(String(process.env.VIPER_SMOKE_UPLOAD || "").toLowerCase());
 const providedVideoPath = process.env.VIPER_SMOKE_VIDEO_PATH || "";
+const providedVideoUrl = process.env.VIPER_SMOKE_VIDEO_URL || "";
 
 function collectPageErrors(page) {
   const errors = [];
@@ -101,10 +101,39 @@ function createSmokeVideo(outputPath) {
   );
 }
 
-function resolveVideoPath(testInfo) {
+async function downloadSmokeVideoFromUrl(videoUrl, outputPath) {
+  expect(typeof fetch, "Node.js fetch API is required for VIPER_SMOKE_VIDEO_URL.").toBe("function");
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(videoUrl);
+  } catch (error) {
+    throw new Error(`VIPER_SMOKE_VIDEO_URL is not a valid URL: ${videoUrl}`);
+  }
+
+  expect(["http:", "https:"], "VIPER_SMOKE_VIDEO_URL must use http or https.").toContain(parsedUrl.protocol);
+
+  const response = await fetch(parsedUrl);
+  expect(response.ok, `Failed to download VIPER_SMOKE_VIDEO_URL ${videoUrl}: HTTP ${response.status}`).toBe(true);
+
+  const arrayBuffer = await response.arrayBuffer();
+  expect(arrayBuffer.byteLength, `VIPER_SMOKE_VIDEO_URL ${videoUrl} returned an empty body.`).toBeGreaterThan(0);
+  fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+}
+
+async function resolveVideoPath(testInfo) {
   if (providedVideoPath) {
     expect(fs.existsSync(providedVideoPath), `VIPER_SMOKE_VIDEO_PATH does not exist: ${providedVideoPath}`).toBe(true);
     return providedVideoPath;
+  }
+
+  if (providedVideoUrl) {
+    const urlPath = new URL(providedVideoUrl).pathname;
+    const extension = path.extname(urlPath) || ".mp4";
+    const downloadedPath = testInfo.outputPath(`viper-smoke-url-${Date.now()}${extension}`);
+    fs.mkdirSync(path.dirname(downloadedPath), { recursive: true });
+    await downloadSmokeVideoFromUrl(providedVideoUrl, downloadedPath);
+    return downloadedPath;
   }
 
   test.skip(!commandExists("ffmpeg"), "Set VIPER_SMOKE_VIDEO_PATH or install ffmpeg to generate a runtime smoke video.");
@@ -187,7 +216,7 @@ test.describe("VIPER smoke journey", () => {
       `Dashboard requires EasyAuth (${dashboardAccess.status}); run upload smoke against anonymous smoke mode or an authenticated browser context.`,
     );
 
-    const videoPath = resolveVideoPath(testInfo);
+    const videoPath = await resolveVideoPath(testInfo);
     const errors = collectPageErrors(page);
     await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
     const uploadSurface = await getUploadSurface(page);

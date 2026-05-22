@@ -180,7 +180,8 @@ To run the real upload journey, use an authenticated or anonymous non-production
 
 ```powershell
 $env:VIPER_SMOKE_UPLOAD = "true"
-$env:VIPER_SMOKE_VIDEO_PATH = "C:\path\to\short-test-video.mp4" # optional when ffmpeg is installed
+$env:VIPER_SMOKE_VIDEO_URL = "https://<public-test-video>.mp4" # optional; use the public clip from local validation
+# Or set VIPER_SMOKE_VIDEO_PATH to a local MP4. If neither is set, ffmpeg generates a tiny runtime clip.
 npm run smoke:ui
 ```
 
