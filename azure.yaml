@@ -38,10 +38,15 @@ hooks:
       shell: sh
       run: |
         azd env get-value AZURE_ENV_NAME >/dev/null
+        azd env get-value RESOURCE_GROUP_TAGS >/dev/null 2>&1 || azd env set RESOURCE_GROUP_TAGS '{}'
     windows:
       shell: pwsh
       run: |
         azd env get-value AZURE_ENV_NAME | Out-Null
+        $resourceGroupTags = azd env get-value RESOURCE_GROUP_TAGS 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resourceGroupTags)) {
+          azd env set RESOURCE_GROUP_TAGS '{}'
+        }
 
   # Configure ACR pull after Container Apps identities and role assignments exist.
   # Provision intentionally uses public placeholder images to avoid first-run ACR

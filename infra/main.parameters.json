@@ -8,6 +8,9 @@
     "location": {
       "value": "${AZURE_LOCATION}"
     },
+    "resourceGroupTags": {
+      "value": "${RESOURCE_GROUP_TAGS}"
+    },
     "azureOpenaiGptVisionApiKey": {
       "value": "${AZURE_OPENAI_GPT_VISION_API_KEY}"
     },

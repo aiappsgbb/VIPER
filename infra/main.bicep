@@ -13,6 +13,9 @@ param location string
 @description('Name of the resource group to create or use')
 param resourceGroupName string = ''
 
+@description('Optional JSON object of additional tags to apply only to the resource group, for example {"CostCenter":"Demo"}.')
+param resourceGroupTags string = '{}'
+
 @description('Name of the Azure Container Registry')
 param acrName string = ''
 
@@ -156,6 +159,7 @@ param postgresDatabaseName string = 'viper'
 var tags = {
   'azd-env-name': environmentName
 }
+var rgTags = union(tags, json(empty(trim(resourceGroupTags)) ? '{}' : resourceGroupTags))
 
 // Generate resource names if not provided
 var abbrs = {
@@ -191,7 +195,7 @@ var deployFrontendEasyAuth = deployFrontend && toLower(trim(frontendEasyAuthEnab
 resource rg 'Microsoft.Resources/resourceGroups@2022-09-01' = {
   name: resolvedResourceGroupName
   location: location
-  tags: tags
+  tags: rgTags
 }
 
 // Azure Container Registry

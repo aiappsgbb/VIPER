@@ -17,6 +17,12 @@ azd env get-values |
 
 This overwrites `.env`, which is ignored by git.
 
+## Deployment metadata
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `RESOURCE_GROUP_TAGS` | No | JSON object of additional tags applied only to the Azure resource group, for example `{"CostCenter":"Demo"}`. Child resources keep only the default deployment tags. |
+
 ## COBRA backend
 
 | Variable | Required | Description |

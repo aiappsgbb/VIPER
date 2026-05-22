@@ -98,6 +98,8 @@ azd up --no-prompt
 Full-stack deployment also needs UI runtime values:
 
 ```text
+RESOURCE_GROUP_TAGS="{}"
+
 VIPER_AUTH_MODE="easyauth"
 VIPER_ADMIN_EMAILS="<admin1@contoso.com,admin2@contoso.com>"
 
@@ -112,6 +114,8 @@ DATABASE_URL="<postgresql-connection-string>"
 CREATE_POSTGRES="true"
 POSTGRES_ADMINISTRATOR_PASSWORD="<strong-postgresql-password>"
 ```
+
+`RESOURCE_GROUP_TAGS` is optional. It accepts a JSON object and applies the extra tags only to the resource group, not to child resources.
 
 Container Apps EasyAuth requires an Entra app registration. Configure its redirect URI for the deployed frontend callback:
 
