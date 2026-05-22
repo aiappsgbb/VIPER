@@ -88,4 +88,4 @@ When these resource IDs are set, Bicep assigns roles to the backend managed iden
 | `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | `Cognitive Services OpenAI User` |
 | `AZURE_SPEECH_RESOURCE_ID` | `Cognitive Services User` |
 
-Leave them blank if RBAC is managed outside this deployment. After changing either value, run `azd provision` so the role assignments are reconciled.
+Leave them blank if RBAC is managed outside this deployment. After changing either value, run `azd provision` so the role assignments are reconciled. Existing hook-created assignments for the same backend identity, role, and AI scope are reported and migrated by the preprovision hook before Bicep applies RBAC.

@@ -159,7 +159,7 @@ When resource IDs are supplied, Bicep assigns backend managed identity RBAC duri
 
 If you prefer to assign RBAC manually, leave these values blank and assign equivalent roles yourself.
 
-If a previous deployment used hook-created role assignments, `azd provision` can fail with `RoleAssignmentExists` because Azure does not allow duplicate principal+role+scope assignments under a new deterministic Bicep name. Delete only the exact legacy assignment for the backend identity, role, and AI resource scope, then rerun `azd provision`.
+If a previous deployment used hook-created role assignments, the preprovision hook reports exact legacy AI RBAC collisions and removes only non-Bicep assignments for the same backend identity, role, and AI resource scope. Bicep then recreates the assignment under its deterministic name. If `RoleAssignmentExists` still occurs, inspect the reported assignment and remove only the duplicate with the same principal, role, and scope before rerunning `azd provision`.
 
 ## Post-deploy smoke tests
 
