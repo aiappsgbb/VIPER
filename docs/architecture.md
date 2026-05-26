@@ -200,8 +200,10 @@ The first-run ACR bootstrap pattern is:
 
 1. provision Container Apps with public placeholder images
 2. create identities and role assignments
-3. configure Container Apps registry access in `postprovision`
+3. configure Container Apps registry access in Bicep and re-assert it in `postprovision`
 4. deploy real backend/frontend images with `azd deploy` or `azd up`
+
+After the first deployment, azd stores `SERVICE_BACKEND_IMAGE_NAME` and `SERVICE_FRONTEND_IMAGE_NAME`. Later Bicep provisions use those values instead of the placeholder so config-only changes do not create a new placeholder revision or steal traffic from the real app image.
 
 Cosmos DB is disabled by default because the current backend runtime does not require it.
 

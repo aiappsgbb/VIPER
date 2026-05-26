@@ -72,6 +72,8 @@ python scripts\export_azd_env.py
 
 The helper preserves `sample.env` comments/defaults, updates matching entries from `azd env get-values`, and appends azd-generated outputs such as service names, URLs, and resource identifiers. This overwrites `.env`, and `.env` is ignored by git. Review the result before running local scripts.
 
+Do not clear azd-generated `SERVICE_BACKEND_IMAGE_NAME` or `SERVICE_FRONTEND_IMAGE_NAME` after the first successful deployment. Infrastructure provisioning uses those values to keep the real ACR images on existing Container Apps; when they are absent, first-run bootstrap falls back to public placeholder images and `azd deploy` must run immediately afterward.
+
 ## Backend-only deployment
 
 Use this first when the goal is to expose only the COBRA API.
@@ -148,12 +150,12 @@ The Python backend uses this credential chain:
 2. Azure CLI credential
 3. Managed identity credential
 
-When resource IDs are supplied, Bicep assigns backend managed identity RBAC during `azd provision`:
+When resource IDs are supplied, Bicep assigns managed identity RBAC during `azd provision`:
 
 | Variable | Role assigned |
 | --- | --- |
-| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | `Cognitive Services OpenAI User` |
-| `AZURE_SPEECH_RESOURCE_ID` | `Cognitive Services User` |
+| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | `Cognitive Services OpenAI User` for backend and frontend |
+| `AZURE_SPEECH_RESOURCE_ID` | `Cognitive Services User` for backend |
 
 If you prefer to assign RBAC manually, leave these values blank and assign equivalent roles yourself.
 
@@ -172,12 +174,14 @@ $env:VIPER_SMOKE_BASE_URL = azd env get-value SERVICE_FRONTEND_URL
 npm run smoke:ui
 ```
 
-`smoke:platform` checks Azure context, Container App health, managed identities, Storage configuration, and `Storage Blob Data Contributor` assignments for upload paths. `smoke:ui` uses Playwright to verify the login/auth boundary, dashboard UX when an authenticated or anonymous smoke session is available, and dark-mode styling.
+`smoke:platform` checks Azure context, Container App health, managed identities, Storage configuration, and `Storage Blob Data Contributor` assignments for upload paths. `smoke:ui` uses Playwright to verify the login/auth boundary, dashboard UX when an authenticated or anonymous smoke session is available, dark-mode styling, and unexpected browser/API failures.
 
 To run the real upload journey, use an authenticated or anonymous non-production smoke deployment and enable upload explicitly:
 
 ```powershell
 $env:VIPER_SMOKE_UPLOAD = "true"
+$env:VIPER_SMOKE_CHAT = "true" # optional; invokes the deployed /api/chat Azure OpenAI path
+$env:VIPER_SMOKE_ACTION_SUMMARY = "true" # optional; uploads a real video and clicks Run action summary
 $env:VIPER_SMOKE_VIDEO_URL = "https://<public-test-video>.mp4" # optional; use the public clip from local validation
 # Or set VIPER_SMOKE_VIDEO_PATH to a local MP4. If neither is set, ffmpeg generates a tiny runtime clip.
 npm run smoke:ui

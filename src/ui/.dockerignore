@@ -1,2 +1,20 @@
-node_modules/
-.next/
+# Local frontend dependencies and build outputs
+node_modules
+.next
+out
+.turbo
+.vercel
+
+# Repo-root paths when azd packages the frontend with context ../..
+../../.git
+../../.azure
+../../.azd
+../../.env
+../../.env.*
+../../outputs
+../../samples/local-test
+../../src/ui/node_modules
+../../src/ui/.next
+../../src/ui/out
+../../src/ui/.turbo
+../../src/ui/.vercel

@@ -673,7 +673,13 @@ export default function VideoUploadPanel({
   if (asDialog) {
     const triggerNode =
       dialogTrigger ?? (
-        <Button size="sm" type="button">
+        <Button
+          aria-expanded={isUploadDialogOpen}
+          aria-haspopup="dialog"
+          onClick={() => handleUploadDialogChange(true)}
+          size="sm"
+          type="button"
+        >
           Upload videos
         </Button>
       );

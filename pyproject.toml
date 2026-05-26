@@ -25,6 +25,7 @@ azure-search-documents = "^11.4.0"
 azure-cognitiveservices-speech = "^1.37.0"
 fastapi = "^0.112.0"
 python-multipart = "^0.0.9"
+aiohttp = "^3.13.5"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"

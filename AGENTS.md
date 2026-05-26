@@ -46,6 +46,7 @@ python scripts\run_local_video_analysis.py "C:\path\to\video.mp4" --output-dir o
 
 - Always load azd env values before deployment: `azd env set --file .env`.
 - To refresh local `.env` from the selected azd environment, use `python scripts/export_azd_env.py`; do not commit the generated `.env`.
+- Preserve azd-generated `SERVICE_BACKEND_IMAGE_NAME` and `SERVICE_FRONTEND_IMAGE_NAME` after the first deploy; clearing them makes later provisions fall back to placeholder bootstrap images.
 - Full stack: `azd up --no-prompt`.
 - Backend only: set `ENABLE_FRONTEND=false`, then `azd provision` and `azd deploy backend`.
 - If assigning BYO AI RBAC, use `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` and `AZURE_SPEECH_RESOURCE_ID`.

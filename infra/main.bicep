@@ -31,6 +31,12 @@ param backendContainerAppName string = ''
 @description('Name of the frontend container app')
 param frontendContainerAppName string = ''
 
+@description('Last backend image built by azd. Leave empty on first provision; azd deploy will populate SERVICE_BACKEND_IMAGE_NAME after the first image build.')
+param backendImageName string = ''
+
+@description('Last frontend image built by azd. Leave empty on first provision; azd deploy will populate SERVICE_FRONTEND_IMAGE_NAME after the first image build.')
+param frontendImageName string = ''
+
 @description('Name of the virtual network')
 param virtualNetworkName string = ''
 
@@ -187,6 +193,8 @@ var resolvedSearchServiceName = !empty(searchServiceName) ? searchServiceName : 
 var resolvedCosmosAccountName = createCosmosAccount ? (!empty(cosmosAccountName) ? cosmosAccountName : '${abbrs.cosmosAccount}${resourceToken}') : cosmosAccountName
 var resolvedPostgresServerName = !empty(postgresServerName) ? postgresServerName : 'psql-${environmentName}-${resourceToken}'
 var containerAppProvisionImage = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+var resolvedBackendImageName = !empty(trim(backendImageName)) ? backendImageName : containerAppProvisionImage
+var resolvedFrontendImageName = !empty(trim(frontendImageName)) ? frontendImageName : containerAppProvisionImage
 var deployFrontend = toLower(trim(enableFrontend)) != 'false'
 var deployPostgres = deployFrontend && toLower(trim(createPostgres)) == 'true'
 var deployFrontendEasyAuth = deployFrontend && toLower(trim(frontendEasyAuthEnabled)) == 'true'
@@ -255,6 +263,11 @@ var frontendEnvVars = {
   AZ_OPENAI_BASE: azOpenaiBase
   AZ_OPENAI_VERSION: azOpenaiVersion
   GPT4: gpt4
+  AZURE_OPENAI_GPT_VISION_API_KEY: azureOpenaiGptVisionApiKey
+  AZURE_OPENAI_GPT_VISION_ENDPOINT: azureOpenaiGptVisionEndpoint
+  AZURE_OPENAI_GPT_VISION_API_VERSION: azureOpenaiGptVisionApiVersion
+  AZURE_OPENAI_GPT_VISION_DEPLOYMENT: azureOpenaiGptVisionDeployment
+  AZURE_OPENAI_GPT_VISION_RESOURCE_ID: azureOpenaiGptVisionResourceId
   SEARCH_ENDPOINT: computedFrontendSearchEndpoint
   SEARCH_API_KEY: searchApiKey
   INDEX_NAME: searchIndexName
@@ -277,8 +290,8 @@ module containerApps '../azure/containerapps.bicep' = {
     logAnalyticsWorkspaceName: resolvedLogAnalyticsName
     backendContainerAppName: resolvedBackendAppName
     frontendContainerAppName: resolvedFrontendAppName
-    backendImage: containerAppProvisionImage
-    frontendImage: containerAppProvisionImage
+    backendImage: resolvedBackendImageName
+    frontendImage: resolvedFrontendImageName
     enableFrontend: deployFrontend
     tags: tags
     azureOpenaiGptVisionResourceId: azureOpenaiGptVisionResourceId
@@ -287,7 +300,7 @@ module containerApps '../azure/containerapps.bicep' = {
     frontendEasyAuthClientId: frontendEasyAuthClientId
     frontendEasyAuthClientSecret: frontendEasyAuthClientSecret
     frontendEasyAuthOpenIdIssuer: frontendEasyAuthOpenIdIssuer
-    configureAcrRegistry: false
+    configureAcrRegistry: true
     virtualNetworkName: resolvedVirtualNetworkName
     storageAccountName: resolvedStorageAccountName
     searchServiceName: resolvedSearchServiceName

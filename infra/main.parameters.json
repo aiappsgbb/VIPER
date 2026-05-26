@@ -92,6 +92,12 @@
     "frontendEasyAuthOpenIdIssuer": {
       "value": "${FRONTEND_EASYAUTH_OPENID_ISSUER}"
     },
+    "backendImageName": {
+      "value": "${SERVICE_BACKEND_IMAGE_NAME}"
+    },
+    "frontendImageName": {
+      "value": "${SERVICE_FRONTEND_IMAGE_NAME}"
+    },
     "createPostgres": {
       "value": "${CREATE_POSTGRES}"
     },

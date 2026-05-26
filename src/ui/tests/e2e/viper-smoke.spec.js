@@ -5,11 +5,16 @@ import path from "node:path";
 
 const truthy = new Set(["1", "true", "yes", "y", "on"]);
 const uploadEnabled = truthy.has(String(process.env.VIPER_SMOKE_UPLOAD || "").toLowerCase());
+const chatEnabled = truthy.has(String(process.env.VIPER_SMOKE_CHAT || "").toLowerCase());
+const actionSummaryEnabled = truthy.has(String(process.env.VIPER_SMOKE_ACTION_SUMMARY || "").toLowerCase());
 const providedVideoPath = process.env.VIPER_SMOKE_VIDEO_PATH || "";
 const providedVideoUrl = process.env.VIPER_SMOKE_VIDEO_URL || "";
 
-function collectPageErrors(page) {
+function collectUxErrors(page, options = {}) {
   const errors = [];
+  const allowedApiStatuses = options.allowedApiStatuses ?? {};
+  const allowedFailedRequests = options.allowedFailedRequests ?? [];
+
   page.on("console", (message) => {
     if (message.type() === "error") {
       errors.push(message.text());
@@ -18,7 +23,59 @@ function collectPageErrors(page) {
   page.on("pageerror", (error) => {
     errors.push(error.message);
   });
+  page.on("response", (response) => {
+    const status = response.status();
+    if (status < 400) {
+      return;
+    }
+
+    let pathName;
+    try {
+      pathName = new URL(response.url()).pathname;
+    } catch {
+      return;
+    }
+
+    if (!pathName.startsWith("/api/")) {
+      return;
+    }
+
+    const allowedStatuses = allowedApiStatuses[pathName] ?? [];
+    if (allowedStatuses.includes(status)) {
+      return;
+    }
+
+    errors.push(`${response.request().method()} ${pathName} returned HTTP ${status}`);
+  });
+  page.on("requestfailed", (request) => {
+    let pathName;
+    try {
+      pathName = new URL(request.url()).pathname;
+    } catch {
+      return;
+    }
+
+    if (!pathName.startsWith("/api/")) {
+      return;
+    }
+
+    const failureText = request.failure()?.errorText ?? "unknown error";
+    if (
+      allowedFailedRequests.some((allowFailedRequest) =>
+        allowFailedRequest({ method: request.method(), pathName, failureText }),
+      )
+    ) {
+      return;
+    }
+
+    errors.push(`${request.method()} ${pathName} failed: ${failureText}`);
+  });
+
   return errors;
+}
+
+function allowAbortedContentVideoRequest({ method, pathName, failureText }) {
+  return method === "GET" && /^\/api\/content\/[^/]+\/video$/u.test(pathName) && failureText === "net::ERR_ABORTED";
 }
 
 async function getDashboardAccess(request) {
@@ -29,8 +86,8 @@ async function getDashboardAccess(request) {
   };
 }
 
-async function expectNoPageErrors(errors) {
-  expect(errors, `Unexpected browser console/page errors:\n${errors.join("\n")}`).toEqual([]);
+async function expectNoUxErrors(errors) {
+  expect(errors, `Unexpected browser console/page/API errors:\n${errors.join("\n")}`).toEqual([]);
 }
 
 async function expectLoginVisualSanity(page) {
@@ -149,15 +206,83 @@ async function getUploadSurface(page) {
     return main;
   }
 
-  await page.getByRole("button", { name: "Upload videos" }).first().click();
+  const uploadButton = page.getByRole("banner").getByRole("button", { name: "Upload videos" });
+  await expect(uploadButton).toBeVisible();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Upload videos" })).toBeVisible();
+  const dialogHeading = dialog.getByRole("heading", { name: "Upload videos" });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await uploadButton.click();
+    try {
+      await expect(dialogHeading).toBeVisible({ timeout: 3_000 });
+      return dialog;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
+      await page.waitForTimeout(500);
+    }
+  }
+
   return dialog;
+}
+
+async function getCurrentCollectionId(page) {
+  const collectionHref = await page.locator('a[href^="/dashboard/collections/"]').first().getAttribute("href");
+  const collectionId = collectionHref?.match(/^\/dashboard\/collections\/([^/?#]+)/u)?.[1] ?? "";
+  expect(collectionId, "No dashboard collection link is available for the upload smoke.").toBeTruthy();
+  return collectionId;
+}
+
+async function uploadSmokeVideo({ page, request, testInfo, titlePrefix }) {
+  const videoPath = await resolveVideoPath(testInfo);
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+
+  const title = `${titlePrefix} ${Date.now()}`;
+  const collectionId = await getCurrentCollectionId(page);
+  const uploadResponse = await request.post("/api/upload", {
+    multipart: {
+      collectionId,
+      title,
+      description: "Automated smoke upload used to verify UI, storage permissions, and analysis execution.",
+      files: {
+        name: path.basename(videoPath),
+        mimeType: "video/mp4",
+        buffer: fs.readFileSync(videoPath),
+      },
+    },
+    timeout: 180_000,
+  });
+
+  const responseBody = await uploadResponse.json().catch(() => ({}));
+  const uploadedContentId = responseBody?.content?.id ?? responseBody?.contents?.[0]?.id ?? null;
+  expect(
+    uploadResponse.ok(),
+    `Upload failed with HTTP ${uploadResponse.status()}: ${JSON.stringify(responseBody)}`,
+  ).toBe(true);
+  expect(JSON.stringify(responseBody)).not.toMatch(/AuthorizationPermissionMismatch|AuthorizationFailure|Forbidden/i);
+  expect(uploadedContentId, `Upload response did not include a content id: ${JSON.stringify(responseBody)}`).toBeTruthy();
+
+  return { id: uploadedContentId, title };
+}
+
+async function warnIfCleanupFails(request, contentId) {
+  if (!contentId) {
+    return;
+  }
+
+  const deleteResponse = await request.delete(`/api/content/${contentId}`);
+  if (!deleteResponse.ok()) {
+    console.warn(`Unable to clean up smoke upload ${contentId}: HTTP ${deleteResponse.status()}`);
+  }
 }
 
 test.describe("VIPER smoke journey", () => {
   test("login page, auth boundaries, and dark-mode styling are healthy", async ({ page, request }) => {
-    const errors = collectPageErrors(page);
+    const errors = collectUxErrors(page, {
+      allowedApiStatuses: {
+        "/api/auth/session": [410],
+      },
+    });
 
     const loginResponse = await page.goto("/login", { waitUntil: "domcontentloaded" });
     expect(loginResponse?.status()).toBeLessThan(500);
@@ -180,7 +305,7 @@ test.describe("VIPER smoke journey", () => {
       expect(dashboardAccess.status).toBe(200);
     }
 
-    await expectNoPageErrors(errors);
+    await expectNoUxErrors(errors);
   });
 
   test("dashboard upload UX is usable when an authenticated smoke session is available", async ({ page, request }) => {
@@ -190,10 +315,10 @@ test.describe("VIPER smoke journey", () => {
       `Dashboard requires EasyAuth (${dashboardAccess.status}); run this against anonymous smoke mode or an authenticated browser context.`,
     );
 
-    const errors = collectPageErrors(page);
+    const errors = collectUxErrors(page);
     await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Signed in as")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload videos" }).first()).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("button", { name: "Upload videos" })).toBeVisible();
     await expectDashboardVisualSanity(page);
 
     const uploadSurface = await getUploadSurface(page);
@@ -204,7 +329,7 @@ test.describe("VIPER smoke journey", () => {
       page.getByText("Attach at least one video file to upload.").or(page.getByText("Select a collection for the upload.")),
     ).toBeVisible();
 
-    await expectNoPageErrors(errors);
+    await expectNoUxErrors(errors);
   });
 
   test("video upload smoke succeeds and does not surface storage permission errors", async ({ page, request }, testInfo) => {
@@ -216,48 +341,100 @@ test.describe("VIPER smoke journey", () => {
       `Dashboard requires EasyAuth (${dashboardAccess.status}); run upload smoke against anonymous smoke mode or an authenticated browser context.`,
     );
 
-    const videoPath = await resolveVideoPath(testInfo);
-    const errors = collectPageErrors(page);
-    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
-    const uploadSurface = await getUploadSurface(page);
+    const errors = collectUxErrors(page, {
+      allowedFailedRequests: [allowAbortedContentVideoRequest],
+    });
 
-    const title = `VIPER smoke upload ${Date.now()}`;
-    await uploadSurface.locator("#title").fill(title);
-    await uploadSurface.locator("#description").fill("Automated smoke upload used to verify UI and storage permissions.");
-    const collectionId = await uploadSurface.locator("#collection").evaluate((select) => select.value);
-    expect(collectionId, "No upload collection is selected on the dashboard.").toBeTruthy();
+    const uploadedContent = await uploadSmokeVideo({
+      page,
+      request,
+      testInfo,
+      titlePrefix: "VIPER smoke upload",
+    });
 
-    const uploadResponse = await request.post("/api/upload", {
-      multipart: {
-        collectionId,
-        title,
-        description: "Automated smoke upload used to verify UI and storage permissions.",
-        files: {
-          name: path.basename(videoPath),
-          mimeType: "video/mp4",
-          buffer: fs.readFileSync(videoPath),
-        },
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: uploadedContent.title })).toBeVisible({ timeout: 30_000 });
+    await warnIfCleanupFails(request, uploadedContent.id);
+
+    await expectNoUxErrors(errors);
+  });
+
+  test("run action summary completes for an uploaded video", async ({ page, request }, testInfo) => {
+    test.skip(!actionSummaryEnabled, "Set VIPER_SMOKE_ACTION_SUMMARY=true to run the real action-summary journey.");
+    test.setTimeout(900_000);
+
+    const dashboardAccess = await getDashboardAccess(request);
+    test.skip(
+      dashboardAccess.status !== 200,
+      `Dashboard requires EasyAuth (${dashboardAccess.status}); run action-summary smoke against anonymous smoke mode or an authenticated browser context.`,
+    );
+
+    const errors = collectUxErrors(page, {
+      allowedFailedRequests: [allowAbortedContentVideoRequest],
+    });
+
+    const uploadedContent = await uploadSmokeVideo({
+      page,
+      request,
+      testInfo,
+      titlePrefix: "VIPER smoke action summary",
+    });
+
+    await page.goto(`/dashboard?contentId=${encodeURIComponent(uploadedContent.id)}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page.getByRole("heading", { name: uploadedContent.title })).toBeVisible({ timeout: 30_000 });
+
+    const actionSummaryResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === `/api/content/${uploadedContent.id}/action-summary`,
+      { timeout: 840_000 },
+    );
+
+    await page.getByRole("button", { name: "Run action summary" }).click();
+    const response = await actionSummaryResponse;
+    const responseText = await response.text();
+    expect(
+      response.ok(),
+      `Run action summary failed with HTTP ${response.status()}: ${responseText}`,
+    ).toBe(true);
+    expect(responseText).not.toMatch(/max_completion_tokens|max_tokens/i);
+
+    await expect(page.getByText("Action summary completed and search index updated.")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText("Run the action summary to generate scene recaps for this video.")).toHaveCount(0);
+    await warnIfCleanupFails(request, uploadedContent.id);
+
+    await expectNoUxErrors(errors);
+  });
+
+  test("chat API smoke succeeds against the deployed Azure OpenAI model", async ({ request }) => {
+    test.skip(!chatEnabled, "Set VIPER_SMOKE_CHAT=true to run the real /api/chat journey.");
+    test.setTimeout(240_000);
+
+    const chatResponse = await request.post("/api/chat", {
+      data: {
+        messages: [
+          {
+            role: "user",
+            content: "Reply with the single word pong.",
+          },
+        ],
+        actionSummary: [],
+        chapterAnalysis: [],
+        searchScope: "video",
       },
       timeout: 180_000,
     });
 
-    const responseBody = await uploadResponse.json().catch(() => ({}));
-    const uploadedContentId = responseBody?.content?.id ?? responseBody?.contents?.[0]?.id ?? null;
+    const responseText = await chatResponse.text();
     expect(
-      uploadResponse.ok(),
-      `Upload failed with HTTP ${uploadResponse.status()}: ${JSON.stringify(responseBody)}`,
+      chatResponse.ok(),
+      `Chat API failed with HTTP ${chatResponse.status()}: ${responseText}`,
     ).toBe(true);
-    expect(JSON.stringify(responseBody)).not.toMatch(/AuthorizationPermissionMismatch|AuthorizationFailure|Forbidden/i);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 30_000 });
-
-    if (uploadedContentId) {
-      const deleteResponse = await request.delete(`/api/content/${uploadedContentId}`);
-      if (!deleteResponse.ok()) {
-        console.warn(`Unable to clean up smoke upload ${uploadedContentId}: HTTP ${deleteResponse.status()}`);
-      }
-    }
-
-    await expectNoPageErrors(errors);
+    expect(responseText.trim(), "Chat API returned an empty response.").not.toBe("");
+    expect(responseText).not.toMatch(/max_completion_tokens|max_tokens/i);
   });
 });

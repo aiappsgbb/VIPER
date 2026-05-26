@@ -16,7 +16,7 @@ param configureAcrRegistry bool = true
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars object = {}
 
-@description('Optional Azure OpenAI or Azure AI Services account resource ID. When supplied, Bicep grants the backend identity Cognitive Services OpenAI User.')
+@description('Optional Azure OpenAI or Azure AI Services account resource ID. When supplied, Bicep grants backend and frontend identities Cognitive Services OpenAI User.')
 param azureOpenaiGptVisionResourceId string = ''
 
 @description('Optional Azure Speech or Azure AI Services account resource ID. When supplied, Bicep grants the backend identity Cognitive Services User.')
@@ -769,13 +769,23 @@ var frontendCosmosRoleAssignments = enableFrontend ? [
 
 var cosmosRoleAssignments = hasCosmosAccount ? concat(backendCosmosRoleAssignments, frontendCosmosRoleAssignments) : []
 
-var openAiRoleAssignments = hasOpenAiResource ? [
+var backendOpenAiRoleAssignments = [
   {
     name: guid(azureOpenaiGptVisionResourceId, backendApp.identity.principalId, cognitiveServicesOpenAiUserRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: cognitiveServicesOpenAiUserRoleDefinitionId
   }
+]
+
+var frontendOpenAiRoleAssignments = enableFrontend ? [
+  {
+    name: guid(azureOpenaiGptVisionResourceId, frontendApp!.identity.principalId, cognitiveServicesOpenAiUserRoleGuid)
+    principalId: frontendApp!.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAiUserRoleDefinitionId
+  }
 ] : []
+
+var openAiRoleAssignments = hasOpenAiResource ? concat(backendOpenAiRoleAssignments, frontendOpenAiRoleAssignments) : []
 
 var speechRoleAssignments = hasSpeechResource ? [
   {

@@ -1,7 +1,11 @@
 import { StreamingTextResponse } from "ai";
-import { SearchClient, AzureKeyCredential as SearchKeyCredential } from "@azure/search-documents";
+import { SearchClient } from "@azure/search-documents";
+import { getAzureCredential } from "@/lib/azure-credentials";
+import { getSearchCredential } from "@/lib/search-client";
 
 const DEFAULT_CHAT_COMPLETION_TOKENS = 2000;
+const DEFAULT_CHAT_UPSTREAM_TIMEOUT_MS = 120_000;
+const DEFAULT_CHAT_SEARCH_TIMEOUT_MS = 15_000;
 
 function getChatCompletionTokenLimit() {
   const rawValue = process.env.VIPER_CHAT_MAX_COMPLETION_TOKENS;
@@ -11,6 +15,46 @@ function getChatCompletionTokenLimit() {
 
   const parsed = Number.parseInt(rawValue, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHAT_COMPLETION_TOKENS;
+}
+
+function getChatUpstreamTimeoutMs() {
+  const rawValue = process.env.VIPER_CHAT_UPSTREAM_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_CHAT_UPSTREAM_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHAT_UPSTREAM_TIMEOUT_MS;
+}
+
+function getChatSearchTimeoutMs() {
+  const rawValue = process.env.VIPER_CHAT_SEARCH_TIMEOUT_MS;
+  if (!rawValue) {
+    return DEFAULT_CHAT_SEARCH_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHAT_SEARCH_TIMEOUT_MS;
+}
+
+function withTimeout(promise, timeoutMs, errorMessage, onTimeout) {
+  return new Promise((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutHandle);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutHandle);
+        reject(error);
+      },
+    );
+  });
 }
 
 function deploymentUsesCompletionTokens(deploymentId) {
@@ -43,36 +87,92 @@ function shouldRetryCompletionTokenArgs(status, responseText, tokenArgs) {
   return message.includes(suppliedArg.toLowerCase()) || message.includes(alternateArg.toLowerCase());
 }
 
+function getNonEmptyEnv(name) {
+  const value = process.env[name];
+  return value && value.trim().length > 0 ? value.trim() : "";
+}
+
+function getAzureOpenAIChatConfig() {
+  const legacyEndpoint = getNonEmptyEnv("AZ_OPENAI_BASE");
+  const endpoint = legacyEndpoint || getNonEmptyEnv("AZURE_OPENAI_GPT_VISION_ENDPOINT");
+  const apiVersion = getNonEmptyEnv("AZ_OPENAI_VERSION") || getNonEmptyEnv("AZURE_OPENAI_GPT_VISION_API_VERSION");
+  const deploymentId = legacyEndpoint
+    ? getNonEmptyEnv("GPT4") || getNonEmptyEnv("AZURE_OPENAI_GPT_VISION_DEPLOYMENT")
+    : getNonEmptyEnv("AZURE_OPENAI_GPT_VISION_DEPLOYMENT") || getNonEmptyEnv("GPT4");
+  const apiKey = getNonEmptyEnv("AZ_OPENAI_KEY") || getNonEmptyEnv("AZURE_OPENAI_GPT_VISION_API_KEY");
+
+  return { endpoint, apiVersion, deploymentId, apiKey };
+}
+
 function buildAzureOpenAIChatUrl(endpoint, deploymentId, apiVersion) {
   const baseUrl = String(endpoint || "").replace(/\/+$/u, "");
   if (!baseUrl || !deploymentId || !apiVersion) {
-    throw new Error("AZ_OPENAI_BASE, AZ_OPENAI_VERSION, and GPT4 must be configured for VIPER chat.");
+    throw new Error("Azure OpenAI endpoint, API version, and deployment must be configured for VIPER chat.");
   }
 
   return `${baseUrl}/openai/deployments/${encodeURIComponent(deploymentId)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
 }
 
-async function createAzureOpenAIChatStream(messages, tokenArgs) {
-  const response = await fetch(
-    buildAzureOpenAIChatUrl(process.env.AZ_OPENAI_BASE, process.env.GPT4, process.env.AZ_OPENAI_VERSION),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": process.env.AZ_OPENAI_KEY ?? "",
-      },
-      body: JSON.stringify({
-        messages,
-        stream: true,
-        ...tokenArgs,
-      }),
-    },
+async function getAzureOpenAIHeaders(apiKey, timeoutMs) {
+  if (apiKey) {
+    return {
+      "Content-Type": "application/json",
+      "api-key": apiKey,
+    };
+  }
+
+  const token = await withTimeout(
+    getAzureCredential().getToken("https://cognitiveservices.azure.com/.default"),
+    timeoutMs,
+    `Azure OpenAI token acquisition timed out after ${timeoutMs}ms.`,
   );
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token.token}`,
+  };
+}
+
+async function createAzureOpenAIChatStream(messages, tokenArgs, config, signal, timeoutMs) {
+  const response = await fetch(buildAzureOpenAIChatUrl(config.endpoint, config.deploymentId, config.apiVersion), {
+    method: "POST",
+    headers: await getAzureOpenAIHeaders(config.apiKey, timeoutMs),
+    signal,
+    body: JSON.stringify({
+      messages,
+      stream: true,
+      ...tokenArgs,
+    }),
+  });
 
   return response;
 }
 
-function createTextStreamFromAzureOpenAI(response) {
+function createChatTimeoutError(timeoutMs) {
+  return new Error(`Azure OpenAI chat completion timed out after ${timeoutMs}ms.`);
+}
+
+function readAzureOpenAIChunk(reader, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      const error = createChatTimeoutError(timeoutMs);
+      reader.cancel(error).catch(() => {});
+      reject(error);
+    }, timeoutMs);
+
+    reader.read().then(
+      (chunk) => {
+        clearTimeout(timeoutHandle);
+        resolve(chunk);
+      },
+      (error) => {
+        clearTimeout(timeoutHandle);
+        reject(error);
+      },
+    );
+  });
+}
+
+function createTextStreamFromAzureOpenAI(response, timeoutMs) {
   if (!response.body) {
     throw new Error("Azure OpenAI response did not include a stream body.");
   }
@@ -85,7 +185,7 @@ function createTextStreamFromAzureOpenAI(response) {
   return new ReadableStream({
     async pull(controller) {
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readAzureOpenAIChunk(reader, timeoutMs);
         if (done) {
           if (buffer.trim()) {
             enqueueAzureOpenAIEvents(buffer, controller, encoder);
@@ -348,6 +448,21 @@ async function retrieveSearchContext(client, query, options) {
   }
 }
 
+async function retrieveSearchContextWithTimeout(client, query, options, timeoutMs) {
+  const abortController = new AbortController();
+  try {
+    return await withTimeout(
+      retrieveSearchContext(client, query, { ...options, abortSignal: abortController.signal }),
+      timeoutMs,
+      `Azure AI Search context retrieval timed out after ${timeoutMs}ms.`,
+      () => abortController.abort(),
+    );
+  } catch (error) {
+    console.warn(`VIPER chat search context unavailable: ${error.message}`);
+    return [];
+  }
+}
+
 export async function POST(request) {
   const body = await request.json();
   const messages = Array.isArray(body?.messages) ? [...body.messages] : [];
@@ -363,7 +478,7 @@ export async function POST(request) {
   const searchClient = new SearchClient(
     process.env.SEARCH_ENDPOINT ?? "",
     process.env.INDEX_NAME ?? "",
-    new SearchKeyCredential(process.env.SEARCH_API_KEY ?? ""),
+    getSearchCredential(),
   );
 
   const filter = buildFilter({
@@ -372,13 +487,18 @@ export async function POST(request) {
     contentId: body?.contentId,
   });
 
-  const searchDocuments = await retrieveSearchContext(searchClient, userMessage.content, {
-    queryType: "semantic",
-    queryLanguage: "en-us",
-    top: 5,
-    semanticConfiguration: "sem",
-    filter,
-  });
+  const searchDocuments = await retrieveSearchContextWithTimeout(
+    searchClient,
+    userMessage.content,
+    {
+      queryType: "semantic",
+      queryLanguage: "en-us",
+      top: 5,
+      semanticConfiguration: "sem",
+      filter,
+    },
+    getChatSearchTimeoutMs(),
+  );
 
   const actionSummary = sanitizeTimeline(body?.actionSummary ?? []);
   const chapterAnalysis = sanitizeChapters(body?.chapterAnalysis ?? []);
@@ -429,8 +549,30 @@ export async function POST(request) {
     };
   }
 
-  const tokenArgs = getCompletionTokenArgs(process.env.GPT4);
-  let response = await createAzureOpenAIChatStream(messages, tokenArgs);
+  const azureOpenAIConfig = getAzureOpenAIChatConfig();
+  const tokenArgs = getCompletionTokenArgs(azureOpenAIConfig.deploymentId);
+  const timeoutMs = getChatUpstreamTimeoutMs();
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => abortController.abort(createChatTimeoutError(timeoutMs)), timeoutMs);
+
+  let response;
+  try {
+    response = await createAzureOpenAIChatStream(
+      messages,
+      tokenArgs,
+      azureOpenAIConfig,
+      abortController.signal,
+      timeoutMs,
+    );
+  } catch (error) {
+    if (error?.name === "AbortError" || abortController.signal.aborted) {
+      return new Response("Azure OpenAI chat completion timed out.", { status: 504 });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
   if (!response.ok) {
     const responseText = await response.text();
     if (!shouldRetryCompletionTokenArgs(response.status, responseText, tokenArgs)) {
@@ -440,10 +582,27 @@ export async function POST(request) {
       });
     }
 
-    response = await createAzureOpenAIChatStream(
-      messages,
-      getAlternateCompletionTokenArgs(tokenArgs),
+    const retryAbortController = new AbortController();
+    const retryTimeoutHandle = setTimeout(
+      () => retryAbortController.abort(createChatTimeoutError(timeoutMs)),
+      timeoutMs,
     );
+    try {
+      response = await createAzureOpenAIChatStream(
+        messages,
+        getAlternateCompletionTokenArgs(tokenArgs),
+        azureOpenAIConfig,
+        retryAbortController.signal,
+        timeoutMs,
+      );
+    } catch (error) {
+      if (error?.name === "AbortError" || retryAbortController.signal.aborted) {
+        return new Response("Azure OpenAI chat completion timed out.", { status: 504 });
+      }
+      throw error;
+    } finally {
+      clearTimeout(retryTimeoutHandle);
+    }
     if (!response.ok) {
       const retryResponseText = await response.text();
       return new Response(retryResponseText || "Azure OpenAI chat completion failed.", {
@@ -453,5 +612,5 @@ export async function POST(request) {
     }
   }
 
-  return new StreamingTextResponse(createTextStreamFromAzureOpenAI(response));
+  return new StreamingTextResponse(createTextStreamFromAzureOpenAI(response, timeoutMs));
 }

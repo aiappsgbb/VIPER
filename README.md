@@ -35,6 +35,8 @@ azd env set --file .env
 azd up --no-prompt
 ```
 
+After the first successful image build, azd writes `SERVICE_BACKEND_IMAGE_NAME` and `SERVICE_FRONTEND_IMAGE_NAME` into the selected azd environment. Keep those values when reloading `.env`; they let later `azd provision` runs preserve the real Container App images while applying config/RBAC changes.
+
 After deployment, open the VIPER browser app from the frontend output, not the backend Container App:
 
 ```powershell
@@ -78,11 +80,13 @@ To include a real upload using the public validation clip or another MP4:
 
 ```powershell
 $env:VIPER_SMOKE_UPLOAD = "true"
+$env:VIPER_SMOKE_CHAT = "true"
+$env:VIPER_SMOKE_ACTION_SUMMARY = "true"
 $env:VIPER_SMOKE_VIDEO_URL = "https://<public-test-video>.mp4"
 npm run smoke:ui
 ```
 
-`smoke:platform` checks Container Apps health, managed identities, storage configuration, and Storage Blob Data Contributor assignments. `smoke:ui` checks login/auth behavior, dashboard/upload UX, dark-mode styling, and optional real upload.
+`smoke:platform` checks Container Apps health, managed identities, storage configuration, and Storage Blob Data Contributor assignments. `smoke:ui` checks login/auth behavior, dashboard/upload UX, dark-mode styling, fails on unexpected browser/API errors, and can optionally run real upload, `/api/chat`, and **Run action summary** calls.
 
 ## Then validate locally on one MP4
 

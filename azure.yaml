@@ -155,9 +155,9 @@ hooks:
           Write-Host "AI RBAC preflight: no existing backend Container App identity found; skipping legacy assignment migration."
         }
 
-  # Configure ACR pull after Container Apps identities and role assignments exist.
-  # Provision intentionally uses public placeholder images to avoid first-run ACR
-  # identity bootstrapping issues; deploy then replaces them with real images.
+  # Re-assert ACR pull after Container Apps identities and role assignments exist.
+  # Bicep also configures the registry so later provisions can preserve real ACR
+  # images; this hook remains as an idempotent first-run bootstrap safeguard.
   postprovision:
     posix:
       shell: sh

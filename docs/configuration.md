@@ -20,6 +20,7 @@ The helper preserves `sample.env` comments/defaults, updates matching entries fr
 | Variable | Required | Description |
 | --- | --- | --- |
 | `RESOURCE_GROUP_TAGS` | No | JSON object of additional tags applied only to the Azure resource group, for example `{"CostCenter":"Demo"}`. Child resources keep only the default deployment tags. |
+| `SERVICE_BACKEND_IMAGE_NAME`, `SERVICE_FRONTEND_IMAGE_NAME` | azd-managed | Last ACR images built by `azd deploy`. Do not set these manually or blank them after the first deployment; Bicep uses them to preserve real Container App images during later `azd provision` runs. |
 
 ## COBRA backend
 
@@ -29,7 +30,7 @@ The helper preserves `sample.env` comments/defaults, updates matching entries fr
 | `AZURE_OPENAI_GPT_VISION_API_VERSION` | Yes for analysis | API version used by the OpenAI SDK |
 | `AZURE_OPENAI_GPT_VISION_DEPLOYMENT` | Yes for analysis | Deployment name used for chat/vision analysis |
 | `AZURE_OPENAI_GPT_VISION_API_KEY` | No | Optional API key; leave blank for Entra ID |
-| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | No | Optional resource ID used by Bicep to assign backend RBAC during `azd provision` |
+| `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` | No | Optional resource ID used by Bicep to assign backend and frontend OpenAI RBAC during `azd provision` |
 | `AZURE_SPEECH_REGION` | Yes for transcripts | Speech region |
 | `AZURE_SPEECH_ENDPOINT` | No | Optional Speech endpoint override |
 | `AZURE_SPEECH_USE_MANAGED_IDENTITY` | Yes for keyless Speech | Use `true` for Entra ID auth |
@@ -63,8 +64,10 @@ The helper preserves `sample.env` comments/defaults, updates matching entries fr
 | `VIPER_BACKEND_INTERNAL_URL` | Optional | Internal backend URL override |
 | `COBRAPY_UPLOAD_ENDPOINT` | Optional | Direct upload endpoint override; defaults to the backend `/videos/upload` route |
 | `COBRAPY_UPLOAD_FALLBACK_HOSTS` | Optional | Comma-separated upload fallback hosts for local networking edge cases |
-| `AZ_OPENAI_KEY`, `AZ_OPENAI_BASE`, `AZ_OPENAI_VERSION`, `GPT4` | UI features | Legacy UI OpenAI variables used by UI-specific features |
+| `AZ_OPENAI_KEY`, `AZ_OPENAI_BASE`, `AZ_OPENAI_VERSION`, `GPT4` | UI features | Legacy UI OpenAI variables. Leave blank to reuse `AZURE_OPENAI_GPT_VISION_*` and Entra ID auth. |
 | `VIPER_CHAT_MAX_COMPLETION_TOKENS` | No | Token cap for VIPER chat responses; defaults to `2000` and maps to `max_completion_tokens` for newer model families |
+| `VIPER_CHAT_UPSTREAM_TIMEOUT_MS` | No | Azure OpenAI request/read timeout for VIPER chat; defaults to `120000` so upstream hangs fail clearly instead of leaving the UI waiting indefinitely |
+| `VIPER_CHAT_SEARCH_TIMEOUT_MS` | No | Azure AI Search context timeout for VIPER chat; defaults to `15000` and lets chat continue without supplemental search context if Search stalls |
 | `SEARCH_ENDPOINT`, `SEARCH_API_KEY`, `INDEX_NAME` | UI features | UI search variables |
 
 The UI no longer uses database-backed username/password authentication. Entra ID identities are mapped to Prisma `User` records at sign-in so the existing organization, collection, content, and role model still has a persistent store.
@@ -91,6 +94,8 @@ For local smoke testing only, set `VIPER_AUTH_MODE=anonymous`. This creates or r
 | --- | --- | --- |
 | `VIPER_SMOKE_BASE_URL` | UI smoke | Frontend URL for Playwright smoke tests; defaults to Playwright base URL when set |
 | `VIPER_SMOKE_UPLOAD` | No | Set `true` to include the real upload journey |
+| `VIPER_SMOKE_CHAT` | No | Set `true` to include a real `/api/chat` Azure OpenAI smoke call |
+| `VIPER_SMOKE_ACTION_SUMMARY` | No | Set `true` to upload a real video and click the dashboard **Run action summary** UX path |
 | `VIPER_SMOKE_VIDEO_URL` | No | Public MP4 URL downloaded at runtime for upload smoke |
 | `VIPER_SMOKE_VIDEO_PATH` | No | Local MP4 path for upload smoke |
 
