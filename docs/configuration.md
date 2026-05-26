@@ -64,6 +64,7 @@ The helper preserves `sample.env` comments/defaults, updates matching entries fr
 | `COBRAPY_UPLOAD_ENDPOINT` | Optional | Direct upload endpoint override; defaults to the backend `/videos/upload` route |
 | `COBRAPY_UPLOAD_FALLBACK_HOSTS` | Optional | Comma-separated upload fallback hosts for local networking edge cases |
 | `AZ_OPENAI_KEY`, `AZ_OPENAI_BASE`, `AZ_OPENAI_VERSION`, `GPT4` | UI features | Legacy UI OpenAI variables used by UI-specific features |
+| `VIPER_CHAT_MAX_COMPLETION_TOKENS` | No | Token cap for VIPER chat responses; defaults to `2000` and maps to `max_completion_tokens` for newer model families |
 | `SEARCH_ENDPOINT`, `SEARCH_API_KEY`, `INDEX_NAME` | UI features | UI search variables |
 
 The UI no longer uses database-backed username/password authentication. Entra ID identities are mapped to Prisma `User` records at sign-in so the existing organization, collection, content, and role model still has a persistent store.

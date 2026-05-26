@@ -1,19 +1,136 @@
-import { OpenAIStream, StreamingTextResponse } from "ai";
-import { OpenAIClient, AzureKeyCredential as OpenAIKeyCredential } from "@azure/openai";
+import { StreamingTextResponse } from "ai";
 import { SearchClient, AzureKeyCredential as SearchKeyCredential } from "@azure/search-documents";
 
-function streamChatCompletions(client, deploymentId, messages, options) {
-  const events = client.listChatCompletions(deploymentId, messages, options);
-  const stream = new ReadableStream({
-    async start(controller) {
-      for await (const event of events) {
-        controller.enqueue(event);
+const DEFAULT_CHAT_COMPLETION_TOKENS = 2000;
+
+function getChatCompletionTokenLimit() {
+  const rawValue = process.env.VIPER_CHAT_MAX_COMPLETION_TOKENS;
+  if (!rawValue) {
+    return DEFAULT_CHAT_COMPLETION_TOKENS;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHAT_COMPLETION_TOKENS;
+}
+
+function deploymentUsesCompletionTokens(deploymentId) {
+  const normalized = String(deploymentId || "").trim().toLowerCase();
+  return normalized.includes("gpt-5") || /^(o1|o3|o4)/u.test(normalized);
+}
+
+function getCompletionTokenArgs(deploymentId) {
+  const tokenLimit = getChatCompletionTokenLimit();
+  return deploymentUsesCompletionTokens(deploymentId)
+    ? { max_completion_tokens: tokenLimit }
+    : { max_tokens: tokenLimit };
+}
+
+function getAlternateCompletionTokenArgs(tokenArgs) {
+  const tokenLimit = tokenArgs.max_completion_tokens ?? tokenArgs.max_tokens;
+  return tokenArgs.max_completion_tokens == null
+    ? { max_completion_tokens: tokenLimit }
+    : { max_tokens: tokenLimit };
+}
+
+function shouldRetryCompletionTokenArgs(status, responseText, tokenArgs) {
+  if (![400, 422].includes(status)) {
+    return false;
+  }
+
+  const message = String(responseText || "").toLowerCase();
+  const suppliedArg = Object.keys(tokenArgs)[0];
+  const alternateArg = Object.keys(getAlternateCompletionTokenArgs(tokenArgs))[0];
+  return message.includes(suppliedArg.toLowerCase()) || message.includes(alternateArg.toLowerCase());
+}
+
+function buildAzureOpenAIChatUrl(endpoint, deploymentId, apiVersion) {
+  const baseUrl = String(endpoint || "").replace(/\/+$/u, "");
+  if (!baseUrl || !deploymentId || !apiVersion) {
+    throw new Error("AZ_OPENAI_BASE, AZ_OPENAI_VERSION, and GPT4 must be configured for VIPER chat.");
+  }
+
+  return `${baseUrl}/openai/deployments/${encodeURIComponent(deploymentId)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+}
+
+async function createAzureOpenAIChatStream(messages, tokenArgs) {
+  const response = await fetch(
+    buildAzureOpenAIChatUrl(process.env.AZ_OPENAI_BASE, process.env.GPT4, process.env.AZ_OPENAI_VERSION),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": process.env.AZ_OPENAI_KEY ?? "",
+      },
+      body: JSON.stringify({
+        messages,
+        stream: true,
+        ...tokenArgs,
+      }),
+    },
+  );
+
+  return response;
+}
+
+function createTextStreamFromAzureOpenAI(response) {
+  if (!response.body) {
+    throw new Error("Azure OpenAI response did not include a stream body.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+
+  return new ReadableStream({
+    async pull(controller) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          if (buffer.trim()) {
+            enqueueAzureOpenAIEvents(buffer, controller, encoder);
+          }
+          controller.close();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const boundary = buffer.lastIndexOf("\n\n");
+        if (boundary === -1) {
+          continue;
+        }
+
+        const chunk = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        enqueueAzureOpenAIEvents(chunk, controller, encoder);
+        return;
       }
-      controller.close();
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
     },
   });
+}
 
-  return stream;
+function enqueueAzureOpenAIEvents(rawEvents, controller, encoder) {
+  for (const rawEvent of rawEvents.split(/\n\n/u)) {
+    const dataLines = rawEvent
+      .split(/\r?\n/u)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim());
+
+    for (const data of dataLines) {
+      if (!data || data === "[DONE]") {
+        continue;
+      }
+
+      const parsed = JSON.parse(data);
+      const content = parsed?.choices?.[0]?.delta?.content;
+      if (typeof content === "string" && content.length) {
+        controller.enqueue(encoder.encode(content));
+      }
+    }
+  }
 }
 
 function buildFilter({ organizationId, collectionId, contentId }) {
@@ -243,10 +360,6 @@ export async function POST(request) {
     );
   }
 
-  const openAiClient = new OpenAIClient(
-    process.env.AZ_OPENAI_BASE,
-    new OpenAIKeyCredential(process.env.AZ_OPENAI_KEY ?? ""),
-  );
   const searchClient = new SearchClient(
     process.env.SEARCH_ENDPOINT ?? "",
     process.env.INDEX_NAME ?? "",
@@ -316,7 +429,29 @@ export async function POST(request) {
     };
   }
 
-  const stream = await streamChatCompletions(openAiClient, process.env.GPT4, messages);
-  const responseStream = OpenAIStream(stream);
-  return new StreamingTextResponse(responseStream);
+  const tokenArgs = getCompletionTokenArgs(process.env.GPT4);
+  let response = await createAzureOpenAIChatStream(messages, tokenArgs);
+  if (!response.ok) {
+    const responseText = await response.text();
+    if (!shouldRetryCompletionTokenArgs(response.status, responseText, tokenArgs)) {
+      return new Response(responseText || "Azure OpenAI chat completion failed.", {
+        status: response.status,
+        headers: { "Content-Type": response.headers.get("Content-Type") ?? "text/plain" },
+      });
+    }
+
+    response = await createAzureOpenAIChatStream(
+      messages,
+      getAlternateCompletionTokenArgs(tokenArgs),
+    );
+    if (!response.ok) {
+      const retryResponseText = await response.text();
+      return new Response(retryResponseText || "Azure OpenAI chat completion failed.", {
+        status: response.status,
+        headers: { "Content-Type": response.headers.get("Content-Type") ?? "text/plain" },
+      });
+    }
+  }
+
+  return new StreamingTextResponse(createTextStreamFromAzureOpenAI(response));
 }
