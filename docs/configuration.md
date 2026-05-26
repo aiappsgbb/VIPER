@@ -10,12 +10,10 @@ azd env set --file .env
 To quickly fill local `.env` from the selected azd environment after provisioning or deployment:
 
 ```powershell
-azd env get-values |
-  Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' } |
-  Set-Content .env
+python scripts\export_azd_env.py
 ```
 
-This overwrites `.env`, which is ignored by git.
+The helper preserves `sample.env` comments/defaults, updates matching entries from `azd env get-values`, and appends azd-generated outputs that are not in the template. This overwrites `.env`, which is ignored by git.
 
 ## Deployment metadata
 
@@ -37,6 +35,7 @@ This overwrites `.env`, which is ignored by git.
 | `AZURE_SPEECH_USE_MANAGED_IDENTITY` | Yes for keyless Speech | Use `true` for Entra ID auth |
 | `AZURE_SPEECH_RESOURCE_ID` | Yes for keyless Speech | Required by Speech SDK for `aad#resourceId#token` auth |
 | `AZURE_SPEECH_API_KEY` | No | Optional Speech key when managed identity is disabled |
+| `AZURE_SPEECH_LANGUAGE` | No | Speech recognition language; defaults to `en-US` |
 | `AZURE_STORAGE_ACCOUNT_URL` | Azure upload/deployment | Blob account URL; infra can generate it when blank |
 | `AZURE_STORAGE_VIDEO_CONTAINER` | Azure upload/deployment | Source video container name |
 | `AZURE_STORAGE_OUTPUT_CONTAINER` | Azure upload/deployment | Analysis output container name |
@@ -62,12 +61,37 @@ This overwrites `.env`, which is ignored by git.
 | `POSTGRES_DATABASE_NAME` | PostgreSQL provisioning | UI database name |
 | `VIPER_BASE_URL` | Optional | Backend URL for browser/server calls; defaults to local backend in development and backend internal URL in Azure |
 | `VIPER_BACKEND_INTERNAL_URL` | Optional | Internal backend URL override |
+| `COBRAPY_UPLOAD_ENDPOINT` | Optional | Direct upload endpoint override; defaults to the backend `/videos/upload` route |
+| `COBRAPY_UPLOAD_FALLBACK_HOSTS` | Optional | Comma-separated upload fallback hosts for local networking edge cases |
 | `AZ_OPENAI_KEY`, `AZ_OPENAI_BASE`, `AZ_OPENAI_VERSION`, `GPT4` | UI features | Legacy UI OpenAI variables used by UI-specific features |
 | `SEARCH_ENDPOINT`, `SEARCH_API_KEY`, `INDEX_NAME` | UI features | UI search variables |
 
 The UI no longer uses database-backed username/password authentication. Entra ID identities are mapped to Prisma `User` records at sign-in so the existing organization, collection, content, and role model still has a persistent store.
 
 For local smoke testing only, set `VIPER_AUTH_MODE=anonymous`. This creates or reuses a real local test user, organization, and collection in the configured PostgreSQL database; it does not mock analysis, Speech, or OpenAI calls.
+
+## Backend analysis tuning
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `COBRA_MAX_CONCURRENT_ANALYSES` | `2` | Maximum concurrently running analysis jobs |
+| `COBRA_MAX_PENDING_ANALYSIS_JOBS` | `50` | Maximum queued analysis jobs before requests are rejected |
+| `COBRA_MAX_PREPROCESS_WORKERS` | `4` | Upper bound for preprocessing workers |
+| `COBRA_DEFAULT_PREPROCESS_WORKERS` | `2` | Default preprocessing workers per request |
+| `COBRA_TOKENS_PER_MINUTE_LIMIT` | `1000000` | Token bucket capacity for throttling analysis calls |
+| `COBRA_BASE_TOKENS_PER_REQUEST` | `9000` | Base token estimate per request |
+| `COBRA_TOKENS_PER_SEGMENT` | `450` | Token estimate added for each segment |
+| `COBRA_LENS_CHARS_PER_TOKEN` | `4` | Lens text token estimate ratio |
+| `COBRA_MAX_LENS_TOKEN_BONUS` | `2000` | Maximum extra token estimate from lens text |
+
+## Deployment smoke tests
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VIPER_SMOKE_BASE_URL` | UI smoke | Frontend URL for Playwright smoke tests; defaults to Playwright base URL when set |
+| `VIPER_SMOKE_UPLOAD` | No | Set `true` to include the real upload journey |
+| `VIPER_SMOKE_VIDEO_URL` | No | Public MP4 URL downloaded at runtime for upload smoke |
+| `VIPER_SMOKE_VIDEO_PATH` | No | Local MP4 path for upload smoke |
 
 ## Keyless authentication
 

@@ -41,12 +41,10 @@ azd auth login
 Copy `sample.env` to `.env` and set these values, or hydrate `.env` from the selected azd environment after deployment/provisioning:
 
 ```powershell
-azd env get-values |
-  Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' } |
-  Set-Content .env
+python scripts\export_azd_env.py
 ```
 
-This overwrites the local `.env` file. Leave API keys blank for keyless auth.
+This overwrites the local `.env` file while preserving the `sample.env` structure and appending azd-generated outputs. Leave API keys blank for keyless auth.
 
 ```text
 AZURE_OPENAI_GPT_VISION_API_KEY=""

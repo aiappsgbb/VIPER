@@ -67,12 +67,10 @@ See [configuration.md](configuration.md) for the full environment variable refer
 After `azd env set --file .env`, `azd provision`, or `azd up`, the selected azd environment is the source of truth for deployment values. To quickly refresh a local `.env` from that azd environment:
 
 ```powershell
-azd env get-values |
-  Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' } |
-  Set-Content .env
+python scripts\export_azd_env.py
 ```
 
-This overwrites `.env`, and `.env` is ignored by git. Review the result before running local scripts.
+The helper preserves `sample.env` comments/defaults, updates matching entries from `azd env get-values`, and appends azd-generated outputs such as service names, URLs, and resource identifiers. This overwrites `.env`, and `.env` is ignored by git. Review the result before running local scripts.
 
 ## Backend-only deployment
 

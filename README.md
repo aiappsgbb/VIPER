@@ -89,12 +89,10 @@ npm run smoke:ui
 Local validation is the easier test path after Azure OpenAI/Azure AI Services and Speech resources exist. If you do not have those resources yet, start with Azure deployment above. You can use existing AI resources, or deploy/provision first and then hydrate `.env` from the selected azd environment:
 
 ```powershell
-azd env get-values |
-  Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' } |
-  Set-Content .env
+python scripts\export_azd_env.py
 ```
 
-This overwrites the local `.env` file, which is ignored by git. Review the file, then run the real COBRA pipeline against a local video file:
+The helper preserves `sample.env` comments/defaults, applies values from the selected azd environment, and appends azd-generated outputs such as service names and URLs. It overwrites the local `.env` file, which is ignored by git. Review the file, then run the real COBRA pipeline against a local video file:
 
 ```powershell
 python -m pip install -e .
@@ -131,6 +129,7 @@ Detailed guide: [docs/local-validation.md](docs/local-validation.md)
 | `src\cobrapy` | COBRA Python package, preprocessing, analysis, Azure integration, and FastAPI backend |
 | `src\ui` | VIPER Next.js UI |
 | `scripts\run_local_video_analysis.py` | Local MP4 validation runner |
+| `scripts\export_azd_env.py` | Hydrates local `.env` from the selected azd environment |
 | `samples\cobra_sample_usage.ipynb` | Notebook version of the local validation flow |
 | `infra\main.bicep` and `azure\containerapps.bicep` | azd/Bicep deployment templates |
 | `azure.yaml` | Azure Developer CLI service and deployment hooks |

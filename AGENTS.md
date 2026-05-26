@@ -45,6 +45,7 @@ python scripts\run_local_video_analysis.py "C:\path\to\video.mp4" --output-dir o
 ## Deployment notes
 
 - Always load azd env values before deployment: `azd env set --file .env`.
+- To refresh local `.env` from the selected azd environment, use `python scripts/export_azd_env.py`; do not commit the generated `.env`.
 - Full stack: `azd up --no-prompt`.
 - Backend only: set `ENABLE_FRONTEND=false`, then `azd provision` and `azd deploy backend`.
 - If assigning BYO AI RBAC, use `AZURE_OPENAI_GPT_VISION_RESOURCE_ID` and `AZURE_SPEECH_RESOURCE_ID`.
