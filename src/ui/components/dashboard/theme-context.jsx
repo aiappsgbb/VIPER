@@ -3,6 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_THEME = {
+  backgroundColor: "#e0f2fe",
+  surfaceColor: "#f8fafc",
+  primaryColor: "#2563eb",
+  accentColor: "#0ea5e9",
+  textColor: "#0f172a",
+  mutedTextColor: "#475569",
+  logoDataUrl: null,
+};
+
+const LEGACY_DEFAULT_THEME = {
   backgroundColor: "#f1f5f9",
   surfaceColor: "#ffffff",
   primaryColor: "#2563eb",
@@ -13,6 +23,10 @@ const DEFAULT_THEME = {
 };
 
 const STORAGE_KEY = "dashboard-theme-settings";
+
+function isLegacyDefaultTheme(theme) {
+  return Object.entries(LEGACY_DEFAULT_THEME).every(([key, value]) => theme?.[key] === value);
+}
 
 const DashboardThemeContext = createContext({
   theme: DEFAULT_THEME,
@@ -32,6 +46,10 @@ export function DashboardThemeProvider({ children }) {
 
       const parsedValue = JSON.parse(storedValue);
       if (parsedValue && typeof parsedValue === "object") {
+        if (isLegacyDefaultTheme(parsedValue)) {
+          return;
+        }
+
         setTheme((previous) => ({ ...previous, ...parsedValue }));
       }
     } catch (error) {

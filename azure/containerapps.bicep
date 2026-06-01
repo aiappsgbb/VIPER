@@ -7,14 +7,42 @@ param frontendContainerAppName string
 param backendImage string
 param frontendImage string
 
+@description('Tags to apply to deployed Azure resources.')
+param tags object = {}
+
+@description('Configure the Container Apps to pull images from the supplied Azure Container Registry during provisioning.')
+param configureAcrRegistry bool = true
+
 @description('Optional environment variables to inject into the Viper backend container.')
 param backendEnvVars object = {}
+
+@description('Optional Azure OpenAI or Azure AI Services account resource ID. When supplied, Bicep grants backend and frontend identities Cognitive Services OpenAI User.')
+param azureOpenaiGptVisionResourceId string = ''
+
+@description('Optional Azure Speech or Azure AI Services account resource ID. When supplied, Bicep grants the backend identity Cognitive Services User.')
+param azureSpeechResourceId string = ''
 
 @description('Optional environment variables to inject into the Viper UI frontend container.')
 param frontendEnvVars object = {}
 
 @description('Optional override for the Viper UI base URL that points to the Viper backend.')
 param frontendBaseUrl string = ''
+
+@description('Provision the Viper frontend container app.')
+param enableFrontend bool = true
+
+@description('Enable Azure Container Apps EasyAuth on the Viper frontend.')
+param frontendEasyAuthEnabled bool = false
+
+@description('Entra app registration client ID used by Container Apps EasyAuth.')
+param frontendEasyAuthClientId string = ''
+
+@secure()
+@description('Entra app registration client secret used by Container Apps EasyAuth.')
+param frontendEasyAuthClientSecret string = ''
+
+@description('Optional Entra OpenID issuer override. Leave blank to use the deployment tenant.')
+param frontendEasyAuthOpenIdIssuer string = ''
 
 @description('Name of the virtual network that hosts the Container Apps environment and private endpoints.')
 param virtualNetworkName string
@@ -122,10 +150,10 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsWorkspaceName
   location: location
-  sku: {
-    name: 'PerGB2018'
-  }
   properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
     retentionInDays: 30
   }
 }
@@ -146,13 +174,18 @@ var cosmosNamePrefix = empty(sanitizedResourceGroupName) ? 'vipercosmos' : (leng
 var generatedCosmosAccountName = toLower('${cosmosNamePrefix}${substring(uniqueString(resourceGroup().id, 'cosmos'), 0, 8)}')
 var resolvedCosmosAccountName = toLower(createCosmosAccount ? (empty(cosmosAccountName) ? generatedCosmosAccountName : cosmosAccountName) : cosmosAccountName)
 
+var hasOpenAiResource = !empty(trim(azureOpenaiGptVisionResourceId))
+var hasSpeechResource = !empty(trim(azureSpeechResourceId))
+var openAiResourceIdParts = split(azureOpenaiGptVisionResourceId, '/')
+var speechResourceIdParts = split(azureSpeechResourceId, '/')
+var openAiResourceGroupName = hasOpenAiResource ? openAiResourceIdParts[4] : resourceGroup().name
+var speechResourceGroupName = hasSpeechResource ? speechResourceIdParts[4] : resourceGroup().name
+var openAiAccountName = hasOpenAiResource ? last(openAiResourceIdParts) : ''
+var speechAccountName = hasSpeechResource ? last(speechResourceIdParts) : ''
+
 var hasStorageAccount = createStorageAccount || !empty(resolvedStorageAccountName)
 var hasSearchService = createSearchService || !empty(resolvedSearchServiceName)
 var hasCosmosAccount = createCosmosAccount || !empty(resolvedCosmosAccountName)
-var requiresPrivateEndpointSubnet = createStorageAccount || createSearchService || createCosmosAccount
-
-assert containerAppsSubnetProvided = createVirtualNetwork || !empty(containerAppsSubnetResourceId): 'Provide containerAppsSubnetResourceId when createVirtualNetwork is false.'
-assert privateEndpointSubnetProvided = createVirtualNetwork || !requiresPrivateEndpointSubnet || !empty(privateEndpointSubnetResourceId): 'Provide privateEndpointSubnetResourceId when createVirtualNetwork is false and private endpoints are being created.'
 
 var virtualNetworkId = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks', virtualNetworkName)
 var containerAppsSubnetIdGenerated = resourceId(virtualNetworkResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, containerAppsSubnetName)
@@ -160,6 +193,14 @@ var privateEndpointSubnetIdGenerated = resourceId(virtualNetworkResourceGroup, '
 
 var resolvedContainerAppsSubnetId = createVirtualNetwork ? containerAppsSubnetIdGenerated : containerAppsSubnetResourceId
 var resolvedPrivateEndpointSubnetId = createVirtualNetwork ? privateEndpointSubnetIdGenerated : privateEndpointSubnetResourceId
+var containerAppsWorkloadProfiles = enableDedicatedWorkloadProfile ? [
+  {
+    name: containerAppsWorkloadProfileName
+    workloadProfileType: containerAppsWorkloadProfileType
+    minimumCount: containerAppsWorkloadMinimumCount
+    maximumCount: containerAppsWorkloadMaximumCount
+  }
+] : []
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-05-01' = if (createVirtualNetwork) {
   name: virtualNetworkName
@@ -216,18 +257,11 @@ resource managedEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
     vnetConfiguration: {
       infrastructureSubnetId: resolvedContainerAppsSubnetId
     }
-    workloadProfiles: [
-      if (enableDedicatedWorkloadProfile) {
-        name: containerAppsWorkloadProfileName
-        workloadProfileType: containerAppsWorkloadProfileType
-        minimumCount: containerAppsWorkloadMinimumCount
-        maximumCount: containerAppsWorkloadMaximumCount
-      }
-    ]
+    workloadProfiles: containerAppsWorkloadProfiles
   }
-  dependsOn: [
-    if (createVirtualNetwork) virtualNetwork
-  ]
+  dependsOn: createVirtualNetwork ? [
+    virtualNetwork
+  ] : []
 }
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = if (createStorageAccount) {
@@ -286,9 +320,6 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = if (
     enableMultipleWriteLocations: false
     disableKeyBasedMetadataWriteAccess: false
     minimalTlsVersion: 'Tls12'
-    apiProperties: {
-      serverVersion: '4.0'
-    }
     consistencyPolicy: {
       defaultConsistencyLevel: cosmosAccountConsistency
     }
@@ -492,8 +523,11 @@ resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDn
   }
 }
 
-var backendInternalUrl = format('https://{0}.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
+var backendInternalUrl = format('https://{0}.internal.{1}', backendContainerAppName, managedEnvironment.properties.defaultDomain)
 var resolvedBackendBaseUrl = empty(frontendBaseUrl) ? backendInternalUrl : frontendBaseUrl
+var frontendPublicUrl = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
+var easyAuthSecretName = 'microsoft-provider-authentication-secret'
+var resolvedEasyAuthIssuer = empty(frontendEasyAuthOpenIdIssuer) ? '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0' : frontendEasyAuthOpenIdIssuer
 
 var backendEnv = [for envVar in items(backendEnvVars): {
   name: envVar.key
@@ -517,22 +551,46 @@ var frontendAdditionalEnv = [for envVar in items(frontendEnvVars): {
 }]
 
 var frontendEnv = concat(frontendBaseEnv, frontendAdditionalEnv)
+var configureFrontendEasyAuth = enableFrontend && frontendEasyAuthEnabled && !empty(frontendEasyAuthClientId) && !empty(frontendEasyAuthClientSecret)
+var frontendSecrets = configureFrontendEasyAuth ? [
+  {
+    name: easyAuthSecretName
+    value: frontendEasyAuthClientSecret
+  }
+] : []
 
 var registryServer = '${acrName}.azurecr.io'
+var containerAppRegistries = configureAcrRegistry ? [
+  {
+    server: registryServer
+    identity: 'system'
+  }
+] : []
 var acrPullRoleGuid = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var storageRoleGuid = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var searchRoleGuid = 'de139f84-1756-47ae-9be6-808fbbe84772'
 var cosmosRoleGuid = 'db49f5e6-0bde-4f5e-8eaa-36847e330f73'
+var cognitiveServicesOpenAiUserRoleGuid = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var cognitiveServicesUserRoleGuid = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 
 var storageRoleDefinitionId = hasStorageAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageRoleGuid) : ''
 var searchRoleDefinitionId = hasSearchService ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchRoleGuid) : ''
 var cosmosRoleDefinitionId = hasCosmosAccount ? subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cosmosRoleGuid) : ''
 var acrPullRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleGuid)
+var cognitiveServicesOpenAiUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleGuid)
+var cognitiveServicesUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleGuid)
 var containerAppWorkloadProfile = enableDedicatedWorkloadProfile ? containerAppsWorkloadProfileName : 'Consumption'
+var backendAppTags = union(tags, {
+  'azd-service-name': 'backend'
+})
+var frontendAppTags = union(tags, {
+  'azd-service-name': 'frontend'
+})
 
 resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: backendContainerAppName
   location: location
+  tags: backendAppTags
   identity: {
     type: 'SystemAssigned'
   }
@@ -551,12 +609,7 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
-      registries: [
-        {
-          server: registryServer
-          identity: 'system'
-        }
-      ]
+      registries: containerAppRegistries
     }
     template: {
       containers: [
@@ -574,9 +627,10 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = if (enableFrontend) {
   name: frontendContainerAppName
   location: location
+  tags: frontendAppTags
   identity: {
     type: 'SystemAssigned'
   }
@@ -595,12 +649,8 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
-      registries: [
-        {
-          server: registryServer
-          identity: 'system'
-        }
-      ]
+      secrets: frontendSecrets
+      registries: containerAppRegistries
     }
     template: {
       containers: [
@@ -618,6 +668,35 @@ resource frontendApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+resource frontendAuthConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (configureFrontendEasyAuth) {
+  parent: frontendApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          clientId: frontendEasyAuthClientId
+          clientSecretSettingName: easyAuthSecretName
+          openIdIssuer: resolvedEasyAuthIssuer
+        }
+        validation: {
+          allowedAudiences: [
+            frontendEasyAuthClientId
+          ]
+        }
+      }
+    }
+  }
+}
+
 resource backendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(resourceGroup().id, backendApp.name, acrPullRoleGuid)
   scope: acr
@@ -627,51 +706,92 @@ resource backendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2
   }
 }
 
-resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, frontendApp.name, acrPullRoleGuid)
+resource frontendAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableFrontend) {
+  name: guid(resourceGroup().id, frontendApp!.name, acrPullRoleGuid)
   scope: acr
   properties: {
-    principalId: frontendApp.identity.principalId
+    principalId: frontendApp!.identity.principalId
     roleDefinitionId: acrPullRoleDefinitionId
   }
 }
 
-var storageRoleAssignments = hasStorageAccount ? [
+var backendStorageRoleAssignments = [
   {
     name: guid(resolvedStorageAccountName, backendApp.name, storageRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: storageRoleDefinitionId
   }
+]
+
+var frontendStorageRoleAssignments = enableFrontend ? [
   {
-    name: guid(resolvedStorageAccountName, frontendApp.name, storageRoleGuid)
-    principalId: frontendApp.identity.principalId
+    name: guid(resolvedStorageAccountName, frontendApp!.name, storageRoleGuid)
+    principalId: frontendApp!.identity.principalId
     roleDefinitionId: storageRoleDefinitionId
   }
 ] : []
 
-var searchRoleAssignments = hasSearchService ? [
+var storageRoleAssignments = hasStorageAccount ? concat(backendStorageRoleAssignments, frontendStorageRoleAssignments) : []
+
+var backendSearchRoleAssignments = [
   {
     name: guid(resolvedSearchServiceName, backendApp.name, searchRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: searchRoleDefinitionId
   }
+]
+
+var frontendSearchRoleAssignments = enableFrontend ? [
   {
-    name: guid(resolvedSearchServiceName, frontendApp.name, searchRoleGuid)
-    principalId: frontendApp.identity.principalId
+    name: guid(resolvedSearchServiceName, frontendApp!.name, searchRoleGuid)
+    principalId: frontendApp!.identity.principalId
     roleDefinitionId: searchRoleDefinitionId
   }
 ] : []
 
-var cosmosRoleAssignments = hasCosmosAccount ? [
+var searchRoleAssignments = hasSearchService ? concat(backendSearchRoleAssignments, frontendSearchRoleAssignments) : []
+
+var backendCosmosRoleAssignments = [
   {
     name: guid(resolvedCosmosAccountName, backendApp.name, cosmosRoleGuid)
     principalId: backendApp.identity.principalId
     roleDefinitionId: cosmosRoleDefinitionId
   }
+]
+
+var frontendCosmosRoleAssignments = enableFrontend ? [
   {
-    name: guid(resolvedCosmosAccountName, frontendApp.name, cosmosRoleGuid)
-    principalId: frontendApp.identity.principalId
+    name: guid(resolvedCosmosAccountName, frontendApp!.name, cosmosRoleGuid)
+    principalId: frontendApp!.identity.principalId
     roleDefinitionId: cosmosRoleDefinitionId
+  }
+] : []
+
+var cosmosRoleAssignments = hasCosmosAccount ? concat(backendCosmosRoleAssignments, frontendCosmosRoleAssignments) : []
+
+var backendOpenAiRoleAssignments = [
+  {
+    name: guid(azureOpenaiGptVisionResourceId, backendApp.identity.principalId, cognitiveServicesOpenAiUserRoleGuid)
+    principalId: backendApp.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAiUserRoleDefinitionId
+  }
+]
+
+var frontendOpenAiRoleAssignments = enableFrontend ? [
+  {
+    name: guid(azureOpenaiGptVisionResourceId, frontendApp!.identity.principalId, cognitiveServicesOpenAiUserRoleGuid)
+    principalId: frontendApp!.identity.principalId
+    roleDefinitionId: cognitiveServicesOpenAiUserRoleDefinitionId
+  }
+] : []
+
+var openAiRoleAssignments = hasOpenAiResource ? concat(backendOpenAiRoleAssignments, frontendOpenAiRoleAssignments) : []
+
+var speechRoleAssignments = hasSpeechResource ? [
+  {
+    name: guid(azureSpeechResourceId, backendApp.identity.principalId, cognitiveServicesUserRoleGuid)
+    principalId: backendApp.identity.principalId
+    roleDefinitionId: cognitiveServicesUserRoleDefinitionId
   }
 ] : []
 
@@ -735,8 +855,26 @@ module cosmosRoleAssignmentsExisting './modules/cosmosRoleAssignments.bicep' = i
   }
 }
 
+module openAiRoleAssignmentsModule './modules/cognitiveServicesRoleAssignments.bicep' = if (hasOpenAiResource) {
+  name: 'openAiRoleAssignments'
+  scope: resourceGroup(openAiResourceGroupName)
+  params: {
+    accountName: openAiAccountName
+    assignments: openAiRoleAssignments
+  }
+}
 
-output frontendUrl string = format('https://{0}.{1}', frontendContainerAppName, managedEnvironment.properties.defaultDomain)
+module speechRoleAssignmentsModule './modules/cognitiveServicesRoleAssignments.bicep' = if (hasSpeechResource) {
+  name: 'speechRoleAssignments'
+  scope: resourceGroup(speechResourceGroupName)
+  params: {
+    accountName: speechAccountName
+    assignments: speechRoleAssignments
+  }
+}
+
+
+output frontendUrl string = enableFrontend ? frontendPublicUrl : ''
 output backendInternalUrl string = backendInternalUrl
 output storageAccountOutput string = hasStorageAccount ? resolvedStorageAccountName : ''
 output searchServiceOutput string = hasSearchService ? resolvedSearchServiceName : ''

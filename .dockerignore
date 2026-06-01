@@ -1,6 +1,8 @@
 # General ignores for Docker build context
 .git
 .gitignore
+.azure
+.azd
 .env
 .env.*
 **/__pycache__
@@ -12,10 +14,14 @@
 *.egg-info
 **/.pytest_cache
 **/.mypy_cache
+.venv
+**/.venv
 
 # Node and frontend artifacts that can bloat the context
 node_modules
 **/node_modules
+src/ui/node_modules
+.next
 src/ui/.next
 src/ui/out
 src/ui/.turbo
@@ -25,3 +31,5 @@ src/ui/.vercel
 .DS_Store
 .vscode
 .idea
+outputs
+samples/local-test

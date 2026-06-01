@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthMode, getCurrentSession, getLoginUrl } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import DashboardLayoutShell from "@/components/dashboard/layout-shell";
 import {
@@ -114,10 +113,10 @@ async function getSidebarData(user) {
 }
 
 export default async function DashboardLayout({ children }) {
-  const session = await getServerSession(authOptions);
+  const session = await getCurrentSession();
 
   if (!session?.user?.id) {
-    redirect("/login");
+    redirect(getLoginUrl("/dashboard"));
   }
 
   const sidebarData = await getSidebarData(session.user);
@@ -230,6 +229,7 @@ export default async function DashboardLayout({ children }) {
         managementOrganizations,
         uploadCollections,
         user: session.user,
+        authMode: getAuthMode(),
       }}
       isAdmin={canAccessAdmin(session.user.role)}
       organizations={sidebarData}

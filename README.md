@@ -1,121 +1,157 @@
-# Content Based Image Retrieval Analysis (a.k.a. COBRA)
+# COBRA / VIPER
 
-A python library that illustrates how to do "Content Based image Retrieval Analysis", a technique for prompting vision-enabled LLMs to extract details from video and image content.
+COBRA is a Python video-analysis backend for extracting structured insights from video with Azure Speech and vision-capable Azure OpenAI deployments. VIPER is the optional Next.js UI that can sit in front of the COBRA API.
 
-## Getting Started
+This README is the index. Start with Azure deployment so the required Azure AI resources exist, then use local validation when you want the easier path for testing one MP4.
 
-1. Clone the repository to your device.
-Navigate to the repository directory and install dependencies:
+## Contents
 
-```bash
-cd /path/to/local/repo/cobrapy
- pip install -e . #"." means install at the current location
-```
+| Section | Start here when |
+| --- | --- |
+| [Deploy to Azure](#start-here-deploy-to-azure) | You want to host COBRA or the full COBRA/VIPER app |
+| [Smoke test a deployment](#smoke-test-a-deployment) | You want to verify UI, upload, storage RBAC, and Container Apps health |
+| [Validate locally on one MP4](#then-validate-locally-on-one-mp4) | Azure AI resources already exist and you want a quick real-service test |
+| [Documentation index](#documentation-index) | You need detailed setup, configuration, deployment, or development docs |
+| [Repository layout](#repository-layout) | You want to understand where code and infrastructure live |
+| [Principles](#principles) | You are changing code or docs and need project guardrails |
+| [Contributing](#contributing) | You are opening a PR or need project policy links |
 
-2. Follow the official instructions to download and install FFmpeg:
-[https://ffmpeg.org/download.html](https://ffmpeg.org/download.html)
+## Start here: deploy to Azure
 
-3. Copy `sample.env` to `.env` at the repository root and populate it with your service credentials. The backend and UI components both consume environment variables from this shared file. Run `python scripts/apply_database_url.py` to materialize the local `DATABASE_URL` entry using the shared values in `config/database_urls.json`; the same configuration file provides the cloud connection string used by the container setup and deployment scripts.
+Use Azure Developer CLI (`azd`) for deployment.
 
-4. Start the FastAPI backend on port 8000:
+| Deployment | Use when | Command |
+| --- | --- | --- |
+| Backend-only COBRA API | You only need the API for video upload and analysis | `azd provision` then `azd deploy backend` |
+| Full COBRA + VIPER UI | You also need the browser UI, auth, and PostgreSQL-backed UI state | `azd up --no-prompt` |
 
-```bash
-poetry install
-poetry run uvicorn cobrapy.api.app:app --host 0.0.0.0 --port 8000
-```
-
-5. In a separate terminal, install the UI dependencies and start the Next.js frontend on port 3000:
-
-```bash
-cd src/ui
-npm install
-npm run dev
-```
-
-The UI automatically proxies requests to `http://localhost:8000`, so no additional environment variables are required to wire the services together.
-
-## Deploy to Azure with Azure Developer CLI (azd)
-
-The fastest way to deploy VIPER to Azure is using the [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/overview) (`azd`).
-
-### Prerequisites
-
-- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
-- [Docker](https://www.docker.com/products/docker-desktop)
-- An Azure subscription
-
-### Quick Start
-
-1. Copy `sample.env` to `.env` and populate it with your Azure service credentials:
-
-   ```bash
-   cp sample.env .env
-   # Edit .env with your Azure OpenAI, Speech, Storage, and Search credentials
-   ```
-
-2. Initialize the azd environment (first time only):
-
-   ```bash
-   azd init
-   ```
-
-3. Provision infrastructure and deploy:
-
-   ```bash
-   azd up
-   ```
-
-   This command will:
-   - Create or update Azure resources (Container Registry, Container Apps, Storage, Search, Cosmos DB)
-   - Build and push Docker images for the backend and frontend
-   - Deploy the containers with environment variables from your `.env` file
-
-### Environment Variables
-
-The deployment inherits configuration from your `.env` file. Key variables include:
-
-| Variable | Description |
-|----------|-------------|
-| `AZURE_OPENAI_GPT_VISION_ENDPOINT` | Azure OpenAI endpoint for vision analysis |
-| `AZURE_OPENAI_GPT_VISION_API_KEY` | API key for Azure OpenAI |
-| `AZURE_SPEECH_REGION` | Azure Speech Services region |
-| `AZURE_STORAGE_ACCOUNT_URL` | Blob storage URL for videos (auto-generated if not provided) |
-| `AZURE_SEARCH_ENDPOINT` | Azure AI Search endpoint (auto-generated if not provided) |
-| `DATABASE_URL` | PostgreSQL connection string |
-
-See `sample.env` for the complete list of configuration options.
-
-### Manual Deployment
-
-For more control over the deployment process, use the PowerShell script:
+Minimal flow:
 
 ```powershell
-./scripts/Deploy-ViperToAzure.ps1 `
-    -SubscriptionId "your-subscription-id" `
-    -ResourceGroupName "viper-prod" `
-    -Location "eastus"
+Copy-Item sample.env .env
+# Edit .env with Azure OpenAI/Speech settings and deployment choices.
+# For full-stack UI, also set EasyAuth and PostgreSQL values.
+azd env set --file .env
+azd up --no-prompt
 ```
 
-See `azure/README.md` for detailed deployment options.
+After the first successful image build, azd writes `SERVICE_BACKEND_IMAGE_NAME` and `SERVICE_FRONTEND_IMAGE_NAME` into the selected azd environment. Keep those values when reloading `.env`; they let later `azd provision` runs preserve the real Container App images while applying config/RBAC changes.
+
+After deployment, open the VIPER browser app from the frontend output, not the backend Container App:
+
+```powershell
+$frontendUrl = azd env get-value SERVICE_FRONTEND_URL
+Start-Process $frontendUrl
+```
+
+If you see a 404:
+
+- Backend root 404 is expected. The COBRA API exposes `/docs`, `/videos/upload`, and `/analysis/*`; use `SERVICE_FRONTEND_URL` for the UI.
+- `/.auth/login/aad` 404 means Container Apps EasyAuth is not enabled/configured. For non-production smoke testing, set `VIPER_AUTH_MODE=anonymous` and `FRONTEND_EASYAUTH_ENABLED=false`, then run `azd provision` and `azd deploy frontend` (or `azd up --no-prompt`) so the Container App environment is updated.
+- For real Entra ID sign-in, set `VIPER_AUTH_MODE=easyauth`, `FRONTEND_EASYAUTH_ENABLED=true`, configure the Entra app redirect URI as `https://<frontend-fqdn>/.auth/login/aad/callback`, then run `azd provision` and `azd deploy frontend` (or `azd up --no-prompt`).
+
+For backend-only deployment:
+
+```powershell
+Copy-Item sample.env .env
+# Edit .env with Azure OpenAI/Speech settings and set ENABLE_FRONTEND=false.
+azd env set --file .env
+azd env set ENABLE_FRONTEND false
+azd provision
+azd deploy backend
+```
+
+Detailed guide: [docs/azure-deployment.md](docs/azure-deployment.md)
+
+## Smoke test a deployment
+
+After provisioning or when triaging a customer deployment, run the packaged platform and Playwright smoke checks:
+
+```powershell
+cd src\ui
+npm install
+npx playwright install chromium
+npm run smoke:platform
+$env:VIPER_SMOKE_BASE_URL = azd env get-value SERVICE_FRONTEND_URL
+npm run smoke:ui
+```
+
+To include a real upload using the public validation clip or another MP4:
+
+```powershell
+$env:VIPER_SMOKE_UPLOAD = "true"
+$env:VIPER_SMOKE_CHAT = "true"
+$env:VIPER_SMOKE_ACTION_SUMMARY = "true"
+$env:VIPER_SMOKE_VIDEO_URL = "https://<public-test-video>.mp4"
+npm run smoke:ui
+```
+
+`smoke:platform` checks Container Apps health, managed identities, storage configuration, and Storage Blob Data Contributor assignments. `smoke:ui` checks login/auth behavior, dashboard/upload UX, dark-mode styling, fails on unexpected browser/API errors, and can optionally run real upload, `/api/chat`, and **Run action summary** calls.
+
+## Then validate locally on one MP4
+
+Local validation is the easier test path after Azure OpenAI/Azure AI Services and Speech resources exist. If you do not have those resources yet, start with Azure deployment above. You can use existing AI resources, or deploy/provision first and then hydrate `.env` from the selected azd environment:
+
+```powershell
+python scripts\export_azd_env.py
+```
+
+The helper preserves `sample.env` comments/defaults, applies values from the selected azd environment, and appends azd-generated outputs such as service names and URLs. It overwrites the local `.env` file, which is ignored by git. Review the file, then run the real COBRA pipeline against a local video file:
+
+```powershell
+python -m pip install -e .
+python scripts\run_local_video_analysis.py "C:\path\to\video.mp4" `
+  --output-dir outputs\my-video `
+  --segment-length 10 `
+  --fps 0.5
+```
+
+Skip Speech transcription if you only need visual analysis:
+
+```powershell
+python scripts\run_local_video_analysis.py "C:\path\to\video.mp4" --no-transcripts
+```
+
+Detailed guide: [docs/local-validation.md](docs/local-validation.md)
+
+## Documentation index
+
+| Document | Purpose |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | Component architecture, runtime flows, auth model, and deployment topology |
+| [docs/azure-deployment.md](docs/azure-deployment.md) | Azure deployment with azd, backend-only vs full-stack, RBAC, smoke tests |
+| [docs/local-validation.md](docs/local-validation.md) | Local MP4 validation with the CLI script or notebook |
+| [docs/configuration.md](docs/configuration.md) | Environment variables and keyless auth configuration |
+| [docs/development.md](docs/development.md) | Local backend/UI development and validation commands |
+| [azure/README.md](azure/README.md) | Additional Azure infrastructure details |
+| [AGENTS.md](AGENTS.md) | Coding-agent rules for this repository |
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `src\cobrapy` | COBRA Python package, preprocessing, analysis, Azure integration, and FastAPI backend |
+| `src\ui` | VIPER Next.js UI |
+| `scripts\run_local_video_analysis.py` | Local MP4 validation runner |
+| `scripts\export_azd_env.py` | Hydrates local `.env` from the selected azd environment |
+| `samples\cobra_sample_usage.ipynb` | Notebook version of the local validation flow |
+| `infra\main.bicep` and `azure\containerapps.bicep` | azd/Bicep deployment templates |
+| `azure.yaml` | Azure Developer CLI service and deployment hooks |
+| `sample.env` | Environment variable template |
+
+## Principles
+
+- Real code paths only: no stubbed analysis or fake model responses.
+- Prefer Entra ID and managed identity. API keys are optional where keyless auth is supported.
+- Keep tenant, subscription, customer, and resource-specific values out of committed files.
+- Keep generated videos and analysis outputs out of git.
 
 ## Contributing
 
-This project welcomes contributions and suggestions. Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
+This project welcomes contributions and suggestions. Most contributions require you to agree to a Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit https://cla.opensource.microsoft.com.
 
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information, see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com).
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general). Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos is subject to those third party's policies.

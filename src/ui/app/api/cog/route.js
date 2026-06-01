@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { SearchClient, AzureKeyCredential } from "@azure/search-documents";
+import { SearchClient } from "@azure/search-documents";
+import { getSearchCredential } from "@/lib/search-client";
 
 function buildFilter({ organizationId, collectionId, contentId }) {
   const clauses = [];
@@ -29,7 +30,7 @@ export async function POST(request) {
   const client = new SearchClient(
     process.env.SEARCH_ENDPOINT,
     process.env.INDEX_NAME,
-    new AzureKeyCredential(process.env.SEARCH_API_KEY ?? ""),
+    getSearchCredential(),
   );
 
   const filter = buildFilter({

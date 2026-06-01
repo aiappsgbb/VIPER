@@ -1,12 +1,11 @@
-"use client";
-
-import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
-export default function SignOutButton() {
+export default function SignOutButton({ authMode = "easyauth" }) {
+  const isAnonymous = authMode === "anonymous";
+
   return (
-    <Button onClick={() => signOut({ callbackUrl: "/login" })} size="sm" variant="outline">
-      Sign out
+    <Button asChild size="sm" variant="outline">
+      <a href={isAnonymous ? "/" : "/.auth/logout?post_logout_redirect_uri=/"}>{isAnonymous ? "Leave" : "Sign out"}</a>
     </Button>
   );
 }

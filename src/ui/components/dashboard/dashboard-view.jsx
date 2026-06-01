@@ -1528,6 +1528,17 @@ function normalizeChapterAnalysisEntries(analysis) {
   return [];
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeZone: "UTC",
+});
+
 function formatDateTime(value) {
   if (!value) {
     return "Not run yet";
@@ -1538,7 +1549,20 @@ function formatDateTime(value) {
     return value;
   }
 
-  return date.toLocaleString();
+  return dateTimeFormatter.format(date);
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return dateFormatter.format(date);
 }
 
 function buildFilterLabel(filters, organizationLookup, collectionLookup, contentLookup) {
@@ -3477,7 +3501,7 @@ export default function DashboardView({
                 <p className="font-medium text-slate-700">Uploaded by</p>
                 <p>{selectedContent.uploadedBy?.name ?? selectedContent.uploadedBy?.email ?? "Unknown"}</p>
                 <p className="text-xs text-slate-400">
-                  Created {new Date(selectedContent.createdAt).toLocaleString()}
+                  Created {formatDateTime(selectedContent.createdAt)}
                 </p>
               </div>
               <div className="space-y-4 rounded-2xl border border-sky-100/80 bg-white/80 p-4 shadow">
@@ -4634,7 +4658,7 @@ export default function DashboardView({
                     >
                       <span>{content.title}</span>
                       <span className="text-xs opacity-70">
-                        {new Date(content.createdAt).toLocaleDateString()}
+                        {formatDate(content.createdAt)}
                       </span>
                     </button>
                   ))
